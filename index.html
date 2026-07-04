@@ -126,6 +126,56 @@
   .rbcard .meta span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .rbcard .meta .cst{flex:0 0 auto;cursor:default}
   .rbempty{border:1px solid var(--line);border-radius:8px;padding:14px;color:var(--muted);font-size:13px;background:#0f1115;margin-top:12px}
+  /* ── UI polish (2026-07-04) ─────────────────── */
+  /* mobile: let grid items shrink below content min-width and re-assert the
+     single-column override (the later .col2{grid-column:2} rule was beating
+     the media query above, leaking a second column onto narrow screens) */
+  main > *{min-width:0}
+  .rb .ctx{overflow-wrap:anywhere}
+  @media (max-width:880px){.col2{grid-column:1 / -1}}
+  header h1::before{content:"";display:inline-block;width:9px;height:9px;border-radius:50%;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));margin-right:9px}
+  html{scrollbar-color:#2e323b transparent}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-thumb{background:#2e323b;border-radius:5px;border:2px solid var(--bg)}
+  ::-webkit-scrollbar-thumb:hover{background:#3a3f4a}
+  ::-webkit-scrollbar-track{background:transparent}
+  .controls{position:sticky;top:18px;max-height:calc(100vh - 36px);overflow-y:auto;scrollbar-width:thin}
+  @media (max-width:880px){.controls{position:static;max-height:none;overflow:visible}}
+  .btn:not(.sec){background:linear-gradient(180deg,#3fd0d6,var(--accent));box-shadow:0 1px 2px rgba(0,0,0,.3)}
+  .btn:focus-visible,.ibtn:focus-visible,select:focus-visible,input:focus-visible,
+  textarea:focus-visible,summary:focus-visible{outline:2px solid var(--accent2);outline-offset:2px}
+  input[type=number]:hover{border-color:#3a4150}
+  .presetbar select:hover,.presetbar select:focus{border-color:var(--accent);outline:none}
+  .ibtn{transition:border-color .12s,background .12s}
+  .ibtn:hover{background:#262a33}
+  .opt{transition:border-color .12s,background .12s}
+  .opt:hover{background:#262b34}
+  .seg label{transition:background .12s,color .12s}
+  .seg label:hover{color:var(--txt)}
+  .seg input:checked + label{box-shadow:inset 0 0 0 1px rgba(255,255,255,.14)}
+  summary:hover{color:var(--accent)}
+  #tbl tbody tr:nth-child(odd) td{background:rgba(255,255,255,.016)}
+  #tbl tbody tr:hover td{background:rgba(54,194,200,.06)}
+  .rbcard{transition:border-color .15s,transform .15s,box-shadow .15s}
+  .rbcard:hover{border-color:var(--accent);transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.35)}
+  .rbcard img{transition:opacity .15s}
+  .rbcard img:hover{opacity:.9}
+  .rbcard textarea{transition:height .15s,background .12s}
+  .rbcard textarea:focus{height:64px}
+  /* lightbox for render previews */
+  .lb{position:fixed;inset:0;background:rgba(10,12,16,.86);backdrop-filter:blur(6px);
+    display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px;
+    padding:28px;z-index:50;cursor:zoom-out}
+  .lb.open{display:flex}
+  .lb img{max-width:min(94vw,1600px);max-height:80vh;border-radius:10px;border:1px solid var(--line);
+    box-shadow:0 18px 60px rgba(0,0,0,.5);background:#0f1115;cursor:default}
+  .lb .cap{font-size:13px;color:var(--txt);display:flex;gap:12px;align-items:baseline;
+    flex-wrap:wrap;justify-content:center;max-width:94vw}
+  .lb .cap .fn{color:var(--muted);font-family:var(--mono);font-size:12px;overflow:hidden;text-overflow:ellipsis}
+  .lb .cap a{color:var(--accent2);font-size:12px;white-space:nowrap}
+  .lb .hint{font-size:11px;color:var(--muted)}
+  @media (prefers-reduced-motion:reduce){*,*::before,*::after{transition:none !important;animation:none !important}}
 </style>
 </head>
 <body>
@@ -136,7 +186,7 @@
 
 <main>
   <!-- ── Controls ───────────────────────────── -->
-  <section class="panel">
+  <section class="panel controls">
     <h2>Shot / view</h2>
     <span class="seg" id="viewseg">
       <input type="radio" name="view" id="vF" value="F" checked /><label for="vF">F</label>
@@ -953,6 +1003,27 @@ if (typeof document !== "undefined"){
     return rbManifestPromise;
   }
 
+  /* Lightbox for render previews (click a card image; backdrop or Esc closes). */
+  const lb = document.createElement("div"); lb.className = "lb";
+  const lbImg = document.createElement("img"); lbImg.alt = "";
+  const lbCap = document.createElement("div"); lbCap.className = "cap";
+  const lbNm = document.createElement("span");
+  const lbFn = document.createElement("span"); lbFn.className = "fn";
+  const lbLink = document.createElement("a"); lbLink.textContent = "open file ↗"; lbLink.target = "_blank"; lbLink.rel = "noopener";
+  const lbHint = document.createElement("div"); lbHint.className = "hint"; lbHint.textContent = "click outside or press Esc to close";
+  lbCap.append(lbNm, lbFn, lbLink);
+  lb.append(lbImg, lbCap, lbHint);
+  document.body.appendChild(lb);
+  const lbClose = () => { lb.classList.remove("open"); lbImg.removeAttribute("src"); };
+  const lbOpen = (url, label, fname) => {
+    lbImg.src = url; lbNm.textContent = label; lbFn.textContent = fname; lbLink.href = url;
+    lb.classList.add("open");
+  };
+  lb.addEventListener("click", lbClose);
+  lbImg.addEventListener("click", e => e.stopPropagation());
+  lbCap.addEventListener("click", e => e.stopPropagation());
+  document.addEventListener("keydown", e => { if (e.key === "Escape") lbClose(); });
+
   function renderBoard(){
     const grid = $("rbGrid"), status = $("rbStatus"); if (!grid) return;
     const token = ++rbToken, presetName = $("preset").value, view = currentView(), preset = rbPreset();
@@ -1013,7 +1084,7 @@ if (typeof document !== "undefined"){
           file.textContent = activeRel.split("/").pop();
           file.title = activeRel;
           cmtWire(ta, state, activeRel, activeUrl, comments);
-          img.onclick = () => window.open(activeUrl, "_blank");
+          img.onclick = () => lbOpen(activeUrl, rbLabelOf(dir), activeRel.split("/").pop());
           grid.appendChild(card);
           done();
         });

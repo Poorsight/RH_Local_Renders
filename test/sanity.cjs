@@ -23,11 +23,8 @@ try {
   fs.unlinkSync(tmp);
 }
 
-const { REF_DEFAULT, TEMPLATE, VIEWS, computeAll, generateT3D } = L;
-const armViewMatch = html.match(/function rbRequiredViewForPreset\(name\)\{([\s\S]*?)\n  \}/);
-const rbRequiredViewForPreset = armViewMatch
-  ? new Function("name", armViewMatch[1])
-  : () => "__missing__";
+const { REF_DEFAULT, TEMPLATE, VIEWS, computeAll, generateT3D,
+        rbCandidateFiles, rbMatchManifest, presetArmSide, armRequiredView, armBlocksView } = L;
 
 let failed = 0;
 function check(name, cond) {
@@ -45,14 +42,33 @@ check("identity F / mode B === TEMPLATE", gen("F", "B") === TEMPLATE);
 // 2. Every view generates valid, structurally-identical, brand-free T3D.
 const views = Object.keys(VIEWS);
 check("VIEWS = [F, FH, TQR, TQL]", views.join(",") === "F,FH,TQR,TQL");
-check("default Koper preset is 384x305x82",
-  /"KOPER_LEFT_ARM_L_SECTIONAL_prod39250480":\s*\{\s*W:384,\s*D:305,\s*H:82,/.test(html));
-check("render previews: Left Arm -> TQL, Right Arm -> TQR",
-  rbRequiredViewForPreset("KOPER_LEFT_ARM_L_SECTIONAL_prod39250480") === "TQL" &&
-  rbRequiredViewForPreset("Borgo · Right-Arm L (39250511)") === "TQR" &&
-  rbRequiredViewForPreset("Koper · U (39250483)") === "");
-check("render previews: arm side gates only opposite TQ views",
-  /requiredView && \(view === "TQR" \|\| view === "TQL"\) && view !== requiredView/.test(html));
+check("default Koper preset is 384x305x82, arm L",
+  /"KOPER_LEFT_ARM_L_SECTIONAL_prod39250480":\s*\{\s*W:384,\s*D:305,\s*H:82,\s*arm:"L",/.test(html));
+check("arm side: explicit preset.arm wins over the name",
+  presetArmSide({ arm:"R" }, "KOPER_LEFT_ARM_L_SECTIONAL_prod39250480") === "R" &&
+  presetArmSide({ arm:"L" }, "no arm hints here") === "L");
+check("arm side: inferred from the name when preset.arm is absent",
+  presetArmSide({}, "KOPER_LEFT_ARM_L_SECTIONAL_prod39250480") === "L" &&
+  presetArmSide({}, "Borgo · Right-Arm L (39250511)") === "R" &&
+  presetArmSide({}, "Koper · U (39250483)") === "");
+check("armRequiredView: L -> TQL, R -> TQR, none -> ''",
+  armRequiredView("L") === "TQL" && armRequiredView("R") === "TQR" && armRequiredView("") === "");
+check("arm gating blocks only the opposite TQ view (F/FH stay open)",
+  armBlocksView("L", "TQR") === true  && armBlocksView("L", "TQL") === false &&
+  armBlocksView("R", "TQL") === true  && armBlocksView("R", "TQR") === false &&
+  armBlocksView("L", "F")   === false && armBlocksView("L", "FH")  === false &&
+  armBlocksView("",  "TQR") === false);
+check("render candidates: prefix variants x view suffixes, probe-priority order",
+  JSON.stringify(rbCandidateFiles("P", "DIR", "TQL")) ===
+  JSON.stringify(["DIR/P_LEFT_ARM.png", "DIR/P_TQ.png", "DIR/P_FH_LEFT_ARM.png", "DIR/P_FH_TQ.png"]));
+const mf = ["MAT_A/PFX_F.png", "MAT_A/PFX_TQ.png", "MAT_B/PFX_FH_F.png", "MAT_B/OTHER_F.png"];
+check("manifest match: exact + _FH variant, materials discovered from the list",
+  JSON.stringify(rbMatchManifest(mf, "PFX", "F")) ===
+  JSON.stringify({ MAT_A: ["MAT_A/PFX_F.png"], MAT_B: ["MAT_B/PFX_FH_F.png"] }));
+check("manifest match: TQ fallback suffix, no false positives",
+  JSON.stringify(rbMatchManifest(mf, "PFX", "TQR")) ===
+  JSON.stringify({ MAT_A: ["MAT_A/PFX_TQ.png"] }) &&
+  JSON.stringify(rbMatchManifest(mf, "OTHER", "TQR")) === "{}");
 for (const v of views) {
   const out = gen(v);
   const actors = (out.match(/Begin Actor/g) || []).length;

@@ -72,3 +72,14 @@ On this machine, invoke the Codex PowerShell uploader directly from PowerShell:
 ```
 
 Running it through a nested `powershell -File ...` failed once with a curl connect error even though direct invocation worked.
+
+## Update 2026-07-04 (Claude, macOS session)
+
+The render board is now manifest-first:
+
+- `index.html` fetches `Renders/manifest.json` (`{ files:["<material>/<file>.png", ...] }`) and shows exactly the listed files. Material folders are discovered from the manifest (labels prettified from the dir name; `RB_MATERIALS` keeps label overrides). With a manifest there is no 404 probing at all.
+- Without a manifest the old per-file probing over `RB_MATERIALS` still runs, so existing deploys keep working unchanged.
+- Deploy step to add: regenerate the manifest and upload it together with the render files:
+  `npm.cmd run gen:manifest -- D:\path\to\Renders` (or `node scripts\gen-render-manifest.cjs D:\path\to\Renders`).
+- Arm gating no longer parses preset display names: built-in presets carry `arm:"L"|"R"`; name parsing remains only as a fallback for user presets.
+- The render-preview conventions are pure exported functions now (`rbCandidateFiles`, `rbMatchManifest`, `presetArmSide`, `armRequiredView`, `armBlocksView`) and `test/sanity.cjs` tests them directly — the old source-regex scraping in the test is gone.

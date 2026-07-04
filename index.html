@@ -572,9 +572,61 @@ function generateT3D(res){
   });
 }
 
+/* ── Render-preview conventions (pure, no DOM) ──────────────────── */
+/* Server files: Renders/<materialDir>/<prefix>[_FH]_<suffix>.png — see ONBOARDING. */
+const RB_VIEW_SUFFIXES = {
+  F: ["F"],
+  FH: ["FH"],
+  TQR: ["RIGHT_ARM", "TQ"],
+  TQL: ["LEFT_ARM", "TQ"],
+};
+const rbPrefixVariants = prefix => [prefix, `${prefix}_FH`];
+
+/* Candidate paths (relative to Renders/) for one material, in probe-priority order. */
+function rbCandidateFiles(prefix, materialDir, view){
+  const out = [];
+  for (const p of rbPrefixVariants(prefix)){
+    for (const suffix of (RB_VIEW_SUFFIXES[view] || [view])){
+      out.push(`${materialDir}/${p}_${suffix}.png`);
+    }
+  }
+  return out;
+}
+
+/* Match a manifest file list against the naming convention.
+   Returns { materialDir: [matching files, priority order] } for every dir with a hit. */
+function rbMatchManifest(files, prefix, view){
+  const set = new Set(files.map(String));
+  const dirs = [...new Set(files.map(f => String(f).split("/")[0]).filter(Boolean))].sort();
+  const out = {};
+  for (const dir of dirs){
+    const hits = rbCandidateFiles(prefix, dir, view).filter(c => set.has(c));
+    if (hits.length) out[dir] = hits;
+  }
+  return out;
+}
+
+/* Arm side of a preset: explicit preset.arm ("L"/"R") wins; else inferred from the name. */
+function presetArmSide(preset, name){
+  const a = String((preset || {}).arm || "").toUpperCase();
+  if (a === "L" || a === "R") return a;
+  const s = String(name || "");
+  const left  = /(^|[\s_.-])left[\s_-]*arm($|[\s_.-])/i.test(s);
+  const right = /(^|[\s_.-])right[\s_-]*arm($|[\s_.-])/i.test(s);
+  return left && !right ? "L" : right && !left ? "R" : "";
+}
+const armRequiredView = arm => arm === "L" ? "TQL" : arm === "R" ? "TQR" : "";
+/* Arm side gates only the opposite TQ view; F/FH stay available. */
+function armBlocksView(arm, view){
+  const req = armRequiredView(arm);
+  return !!req && (view === "TQR" || view === "TQL") && view !== req;
+}
+
 /* Export for node tests (no effect in the browser). */
 if (typeof module !== "undefined" && module.exports){
-  module.exports = { REF_DEFAULT, LIGHT_BASE, VIEWS, viewLights, TEMPLATE, computeAll, generateT3D, fmt, hyp };
+  module.exports = { REF_DEFAULT, LIGHT_BASE, VIEWS, viewLights, TEMPLATE, computeAll, generateT3D, fmt, hyp,
+    RB_VIEW_SUFFIXES, rbPrefixVariants, rbCandidateFiles, rbMatchManifest,
+    presetArmSide, armRequiredView, armBlocksView };
 }
 
 /* ── UI ─────────────────────────────────────────────────────────── */
@@ -586,24 +638,25 @@ if (typeof document !== "undefined"){
   const DEFAULT_PRESET = "KOPER_LEFT_ARM_L_SECTIONAL_prod39250480";
 
   /* Presets: RH sectional models (UPH bounds measured in the UE project) + your own (localStorage). */
+  /* arm:"L"/"R" marks arm-specific models (gates the TQ render board); omitted = both TQ shots. */
   const BUILTIN = {
-    "KOPER_LEFT_ARM_L_SECTIONAL_prod39250480":           { W:384, D:305, H:82, r:"KOPER_LEFT_ARM_L_SECTIONAL_prod39250480" },
+    "KOPER_LEFT_ARM_L_SECTIONAL_prod39250480":           { W:384, D:305, H:82, arm:"L", r:"KOPER_LEFT_ARM_L_SECTIONAL_prod39250480" },
     "Borgo · Double Partial-Back U (39940015)":          { W:423, D:276, H:80, r:"BORGO_DOUBLE_PARTIAL_BACK_U_SECTIONAL_prod39940015" },
     "Borgo · Partial-Back Chaise-End U (39940017)":      { W:390, D:276, H:80, r:"BORGO_PARTIAL_BACK_CHAISE_END_U_SECTIONAL_prod39940017" },
     "Borgo · Partial-Back U (39940016)":                 { W:390, D:307, H:80, r:"BORGO_PARTIAL_BACK_U_SECTIONAL_prod39940016" },
-    "Borgo · Right-Arm Chaise (39250509)":               { W:361, D:210, H:80, r:"BORGO_RIGHT_ARM_CHAISE_SECTIONAL_prod39250509" },
-    "Borgo · Right-Arm L (39250511)":                    { W:381, D:310, H:80, r:"BORGO_RIGHT_ARM_L_SECTIONAL_prod39250511" },
+    "Borgo · Right-Arm Chaise (39250509)":               { W:361, D:210, H:80, arm:"R", r:"BORGO_RIGHT_ARM_CHAISE_SECTIONAL_prod39250509" },
+    "Borgo · Right-Arm L (39250511)":                    { W:381, D:310, H:80, arm:"R", r:"BORGO_RIGHT_ARM_L_SECTIONAL_prod39250511" },
     "Borgo · U (39250513)":                              { W:453, D:280, H:80, r:"BORGO_U_SECTIONAL_prod39250513" },
     "Koper · Chaise-End U (39940020)":                   { W:394, D:276, H:83, r:"KOPER_CHAISE_END_U_SECTIONAL_prod39940020" },
     "Koper · U-Chaise (39250482)":                       { W:403, D:233, H:83, r:"KOPER_U_CHAISE_SECTIONAL_prod39250482" },
     "Koper · U (39250483)":                              { W:459, D:276, H:83, r:"KOPER_U_SECTIONAL_prod39250483" },
-    "Masson · Left-Arm 2-Seat Chaise-End U (40460153)":  { W:453, D:275, H:78, r:"MASSON_LEFT_ARM_TWO_SEAT_CHAISE_END_U_SECTIONAL_prod40460153" },
-    "Masson · Right-Arm Chaise-End (39250417)":          { W:361, D:200, H:78, r:"MASSON_RIGHT_ARM_CHAISE_END_SECTIONAL_prod39250417" },
-    "Masson · Right-Arm L (39250419)":                   { W:312, D:246, H:77, r:"MASSON_RIGHT_ARM_L_SECTIONAL_prod39250419" },
-    "Masson · Right-Arm 2-Seat Chaise-End U (40460154)": { W:453, D:275, H:78, r:"MASSON_RIGHT_ARM_TWO_SEAT_CHAISE_END_U_SECTIONAL_prod40460154" },
+    "Masson · Left-Arm 2-Seat Chaise-End U (40460153)":  { W:453, D:275, H:78, arm:"L", r:"MASSON_LEFT_ARM_TWO_SEAT_CHAISE_END_U_SECTIONAL_prod40460153" },
+    "Masson · Right-Arm Chaise-End (39250417)":          { W:361, D:200, H:78, arm:"R", r:"MASSON_RIGHT_ARM_CHAISE_END_SECTIONAL_prod39250417" },
+    "Masson · Right-Arm L (39250419)":                   { W:312, D:246, H:77, arm:"R", r:"MASSON_RIGHT_ARM_L_SECTIONAL_prod39250419" },
+    "Masson · Right-Arm 2-Seat Chaise-End U (40460154)": { W:453, D:275, H:78, arm:"R", r:"MASSON_RIGHT_ARM_TWO_SEAT_CHAISE_END_U_SECTIONAL_prod40460154" },
     "Masson · U-Chaise (39250420)":                      { W:447, D:200, H:78, r:"MASSON_U_CHAISE_SECTIONAL_prod39250420" },
     "Masson · U (39250421)":                             { W:434, D:275, H:78, r:"MASSON_U_SECTIONAL_prod39250421" },
-    "Onic · Right-Arm L (39250451)":                     { W:343, D:307, H:79, r:"ONIC_RIGHT_ARM_L_SECTIONAL_prod39250451" },
+    "Onic · Right-Arm L (39250451)":                     { W:343, D:307, H:79, arm:"R", r:"ONIC_RIGHT_ARM_L_SECTIONAL_prod39250451" },
   };
   const LS_KEY = "lrs_presets";
   const userPresets = () => { try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch(e){ return {}; } };
@@ -829,38 +882,33 @@ if (typeof document !== "undefined"){
     $("H").value = p.H; $("Hs").value = p.H;
   }
 
-  /* Server render board: Renders/<material>/<preset-render-prefix>_<shot>.png */
-  let lastGroup = null, rbToken = 0;
+  /* Server render board: manifest-first (Renders/manifest.json), per-file probing as fallback. */
+  let lastGroup = null, rbToken = 0, rbManifestPromise = null;
+  /* Label overrides + the material list probed when no manifest is deployed. */
   const RB_MATERIALS = [
     { dir:"PERFORMANCE_LINEN_WEAVE_CAMEL_V1", label:"Performance Linen Weave Camel" },
     { dir:"VELVETY_NATURAL_V1", label:"Velvety Natural" },
   ];
-  const RB_VIEW_SUFFIXES = {
-    F: ["F"],
-    FH: ["FH"],
-    TQR: ["RIGHT_ARM", "TQ"],
-    TQL: ["LEFT_ARM", "TQ"],
-  };
   const rbSafePath = s => String(s || "").split("/").map(encodeURIComponent).join("/");
-  const rbPrefixVariants = prefix => [prefix, `${prefix}_FH`];
+  const rbUrl = rel => "Renders/" + rbSafePath(rel);
+  const rbPrettyDir = dir => String(dir).replace(/_V\d+$/i, "").toLowerCase().split(/_+/)
+    .map(w => w ? w[0].toUpperCase() + w.slice(1) : w).join(" ");
+  const rbLabelOf = dir => { const m = RB_MATERIALS.find(x => x.dir === dir); return m ? m.label : rbPrettyDir(dir); };
   const rbAllPresets = () => ({ ...userPresets(), ...BUILTIN });
   const rbPreset = () => rbAllPresets()[$("preset").value] || {};
-  function rbRequiredViewForPreset(name){
-    const left = /(^|[\s_.-])left[\s_-]*arm($|[\s_.-])/i.test(name || "");
-    const right = /(^|[\s_.-])right[\s_-]*arm($|[\s_.-])/i.test(name || "");
-    return left && !right ? "TQL" : right && !left ? "TQR" : "";
-  }
   const rbCommentKey = url => "lrs_render_comment:" + url;
   const rbLoadComment = url => { try { return localStorage.getItem(rbCommentKey(url)) || ""; } catch(e){ return ""; } };
   const rbSaveComment = (url, value) => { try { localStorage.setItem(rbCommentKey(url), value); } catch(e){} };
-  function rbCandidateUrls(prefix, material, view){
-    const out = [];
-    for (const p of rbPrefixVariants(prefix)){
-      for (const suffix of (RB_VIEW_SUFFIXES[view] || [view])){
-        out.push(`Renders/${rbSafePath(material.dir)}/${rbSafePath(p)}_${rbSafePath(suffix)}.png`);
-      }
+  /* Renders/manifest.json = {files:["<material>/<file>.png", …]} (a bare array is also accepted).
+     Generated at deploy time by scripts/gen-render-manifest.cjs; null (no manifest) → probing mode. */
+  function rbManifest(){
+    if (!rbManifestPromise){
+      rbManifestPromise = fetch("Renders/manifest.json", { cache:"no-cache" })
+        .then(r => r.ok ? r.json() : null)
+        .then(j => Array.isArray(j) ? j : (j && Array.isArray(j.files) ? j.files : null))
+        .catch(() => null);
     }
-    return out;
+    return rbManifestPromise;
   }
 
   function renderBoard(){
@@ -872,54 +920,64 @@ if (typeof document !== "undefined"){
     grid.innerHTML = "";
     if (status){ status.style.display = "block"; status.textContent = prefix ? "Checking server renders..." : "This preset has no server render prefix."; }
     if (!prefix) return;
-    const requiredView = rbRequiredViewForPreset(presetName);
-    if (requiredView && (view === "TQR" || view === "TQL") && view !== requiredView){
-      if (status) status.textContent = `TQ server renders for this preset are available only in ${requiredView}.`;
+    const arm = presetArmSide(preset, presetName);
+    if (armBlocksView(arm, view)){
+      if (status) status.textContent = `TQ server renders for this preset are available only in ${armRequiredView(arm)}.`;
       return;
     }
 
-    let loaded = 0, finished = 0;
-    const done = () => {
+    rbManifest().then(files => {
       if (token !== rbToken) return;
-      finished++;
-      if (finished === RB_MATERIALS.length && status){
-        status.style.display = loaded ? "none" : "block";
-        status.textContent = loaded ? "" : "No matching render files found on the server for this preset and shot.";
-      }
-    };
+      /* With a manifest: only known-good files, materials discovered from it.
+         Without: probe the hardcoded materials, letting img errors advance the chain. */
+      const lists = files
+        ? Object.entries(rbMatchManifest(files, prefix, view)).map(([dir, hits]) => ({ dir, urls: hits.map(rbUrl) }))
+        : RB_MATERIALS.map(m => ({ dir:m.dir, urls: rbCandidateFiles(prefix, m.dir, view).map(rbUrl) }));
+      const noneMsg = "No matching render files found on the server for this preset and shot.";
+      if (!lists.length){ if (status){ status.style.display = "block"; status.textContent = noneMsg; } return; }
 
-    for (const material of RB_MATERIALS){
-      const urls = rbCandidateUrls(prefix, material, view);
-      const card = document.createElement("div"); card.className = "rbcard";
-      const img = document.createElement("img"); img.title = "open full size";
-      const ta = document.createElement("textarea"); ta.placeholder = "comment...";
-      const meta = document.createElement("div"); meta.className = "meta";
-      const nm = document.createElement("span"); nm.textContent = material.label; nm.title = material.dir;
-      const file = document.createElement("span"); file.textContent = "";
-      meta.append(nm, file); card.append(img, ta, meta);
-
-      let idx = 0, activeUrl = "";
-      const tryNext = () => {
-        if (idx >= urls.length){ card.remove(); done(); return; }
-        activeUrl = urls[idx++];
-        img.src = activeUrl;
-      };
-      img.addEventListener("load", () => {
+      let loaded = 0, finished = 0;
+      const done = () => {
         if (token !== rbToken) return;
-        loaded++;
-        $("rbCount").textContent = loaded;
-        if (status) status.style.display = "none";
-        file.textContent = activeUrl.split("/").pop();
-        file.title = activeUrl;
-        ta.value = rbLoadComment(activeUrl);
-        ta.oninput = () => rbSaveComment(activeUrl, ta.value);
-        img.onclick = () => window.open(activeUrl, "_blank");
-        grid.appendChild(card);
-        done();
-      });
-      img.addEventListener("error", tryNext);
-      tryNext();
-    }
+        finished++;
+        if (finished === lists.length && status){
+          status.style.display = loaded ? "none" : "block";
+          status.textContent = loaded ? "" : noneMsg;
+        }
+      };
+
+      for (const {dir, urls} of lists){
+        const card = document.createElement("div"); card.className = "rbcard";
+        const img = document.createElement("img"); img.title = "open full size";
+        const ta = document.createElement("textarea"); ta.placeholder = "comment...";
+        const meta = document.createElement("div"); meta.className = "meta";
+        const nm = document.createElement("span"); nm.textContent = rbLabelOf(dir); nm.title = dir;
+        const file = document.createElement("span"); file.textContent = "";
+        meta.append(nm, file); card.append(img, ta, meta);
+
+        let idx = 0, activeUrl = "";
+        const tryNext = () => {
+          if (idx >= urls.length){ card.remove(); done(); return; }
+          activeUrl = urls[idx++];
+          img.src = activeUrl;
+        };
+        img.addEventListener("load", () => {
+          if (token !== rbToken) return;
+          loaded++;
+          $("rbCount").textContent = loaded;
+          if (status) status.style.display = "none";
+          file.textContent = activeUrl.split("/").pop();
+          file.title = activeUrl;
+          ta.value = rbLoadComment(activeUrl);
+          ta.oninput = () => rbSaveComment(activeUrl, ta.value);
+          img.onclick = () => window.open(activeUrl, "_blank");
+          grid.appendChild(card);
+          done();
+        });
+        img.addEventListener("error", tryNext);
+        tryNext();
+      }
+    });
   }
 
   /* wiring */

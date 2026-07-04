@@ -5,7 +5,8 @@
   "private": true,
   "scripts": {
     "test": "node test/sanity.cjs",
-    "start": "npx serve . -l 5500"
+    "start": "npx serve . -l 5500",
+    "gen:manifest": "node scripts/gen-render-manifest.cjs"
   },
   "license": "UNLICENSED"
 }

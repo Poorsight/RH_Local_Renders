@@ -92,3 +92,14 @@ The render board is now manifest-first:
 - Deploy scripts must NEVER overwrite or delete `render-comments.json`.
 - Client behavior: the board GETs the whole comment map, POSTs `{key, text}` debounced; empty text deletes the key. Old local notes migrate to the shared store automatically the first time their card renders in shared mode. Save-state mark per card: `✓` shared / `…` saving / `local` fallback / `!` save failed.
 - Verified on macOS against a Python shim implementing the same GET/POST contract (shared save, cross-browser reload, migration, deletion, fallback). The PHP file itself was NOT executed locally (no PHP on this machine) — eyeball it or test after the first upload.
+
+## Deployed 2026-07-04 (from the macOS session)
+
+Uploaded via FTP (exile.dreamsoft.us, creds from the local FileZilla site manager) to `dmitriy.derevyanko/light-rig/`:
+- `index.html` (manifest-first board + shared comments + UI polish)
+- `comments.php` — verified live: GET returns `{}` (PHP executes), POST/delete roundtrip OK
+- `Renders/manifest.json` — generated from the actual server listing (18 files, 2 materials)
+
+The previous deployed `index.html` is NOT lost: a backup was taken before overwriting (session scratchpad) and the old version is commit `9c24b13`-era content anyway.
+
+Still pending: `git push origin main` — the Mac has no GitHub credentials (its SSH key is Bitbucket-only). Push from wherever GitHub auth exists; local `main` is 5 commits ahead (272716e, f56c939, df0ef58, e8742ee + this doc commit).

@@ -959,7 +959,7 @@ if (typeof document !== "undefined"){
   function cmtFetchAll(){
     return fetch(CMT_ENDPOINT, { cache:"no-store" })
       .then(r => { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
-      .then(j => { cmtShared = true; return (j && typeof j === "object") ? j : {}; })
+      .then(j => { cmtShared = true; return (j && typeof j === "object" && !Array.isArray(j)) ? j : {}; })
       .catch(() => { cmtShared = false; return null; });
   }
   function cmtPost(rel, text){

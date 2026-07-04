@@ -45,7 +45,8 @@ if ($method === 'POST') {
   else { $data[$key] = array('text' => $text, 'updated' => gmdate('Y-m-d\TH:i:s\Z')); }
   ftruncate($fp, 0);
   rewind($fp);
-  fwrite($fp, json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+  /* (object) cast keeps an empty store encoded as {} rather than [] */
+  fwrite($fp, json_encode((object)$data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
   fflush($fp);
   flock($fp, LOCK_UN);
   fclose($fp);

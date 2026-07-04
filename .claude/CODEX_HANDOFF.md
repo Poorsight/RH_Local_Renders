@@ -83,3 +83,12 @@ The render board is now manifest-first:
   `npm.cmd run gen:manifest -- D:\path\to\Renders` (or `node scripts\gen-render-manifest.cjs D:\path\to\Renders`).
 - Arm gating no longer parses preset display names: built-in presets carry `arm:"L"|"R"`; name parsing remains only as a fallback for user presets.
 - The render-preview conventions are pure exported functions now (`rbCandidateFiles`, `rbMatchManifest`, `presetArmSide`, `armRequiredView`, `armBlocksView`) and `test/sanity.cjs` tests them directly — the old source-regex scraping in the test is gone.
+
+## Update 2026-07-04, part 2: shared render comments
+
+- New file `comments.php` must be uploaded next to `index.html` (one-time). It stores one shared note per render in `render-comments.json` (created on first save, keyed by `<material>/<file>.png`).
+- After uploading, verify from a browser or curl: `GET https://preview.3dsource.com/dmitriy.derevyanko/light-rig/comments.php` must return JSON (`{}` initially), NOT the PHP source. If it returns source, PHP is not enabled for that directory and comments silently stay per-browser (localStorage fallback) — then we need a different endpoint host.
+- The deploy directory must be writable by the web server user so `render-comments.json` can be created.
+- Deploy scripts must NEVER overwrite or delete `render-comments.json`.
+- Client behavior: the board GETs the whole comment map, POSTs `{key, text}` debounced; empty text deletes the key. Old local notes migrate to the shared store automatically the first time their card renders in shared mode. Save-state mark per card: `✓` shared / `…` saving / `local` fallback / `!` save failed.
+- Verified on macOS against a Python shim implementing the same GET/POST contract (shared save, cross-browser reload, migration, deletion, fallback). The PHP file itself was NOT executed locally (no PHP on this machine) — eyeball it or test after the first upload.

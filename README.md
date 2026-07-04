@@ -19,7 +19,10 @@ The board reads `Renders/manifest.json` when present (regenerate it with
 `npm run gen:manifest -- path/to/Renders` after changing render files) and shows
 exactly the listed files; without a manifest it falls back to probing the known
 material folders. There is no browser drag-drop upload; missing render files are
-simply hidden.
+simply hidden. Per-image comments are shared for everyone through `comments.php`
+next to `index.html` (stored in `render-comments.json` on the server); if the
+endpoint is unavailable, comments quietly fall back to this browser's
+`localStorage`.
 For TQ shots, left-arm presets show server renders only in `TQ-L`;
 right-arm presets only in `TQ-R`. `F` and `FH` renders stay available.
 The bundled default preset is `KOPER_LEFT_ARM_L_SECTIONAL_prod39250480`

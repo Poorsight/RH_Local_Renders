@@ -124,6 +124,7 @@
   .rbcard textarea:focus{outline:none;background:#0f1115}
   .rbcard .meta{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 8px;font-size:11px;color:var(--muted);border-top:1px solid var(--line)}
   .rbcard .meta span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .rbcard .meta .cst{flex:0 0 auto;cursor:default}
   .rbempty{border:1px solid var(--line);border-radius:8px;padding:14px;color:var(--muted);font-size:13px;background:#0f1115;margin-top:12px}
 </style>
 </head>
@@ -896,9 +897,50 @@ if (typeof document !== "undefined"){
   const rbLabelOf = dir => { const m = RB_MATERIALS.find(x => x.dir === dir); return m ? m.label : rbPrettyDir(dir); };
   const rbAllPresets = () => ({ ...userPresets(), ...BUILTIN });
   const rbPreset = () => rbAllPresets()[$("preset").value] || {};
-  const rbCommentKey = url => "lrs_render_comment:" + url;
-  const rbLoadComment = url => { try { return localStorage.getItem(rbCommentKey(url)) || ""; } catch(e){ return ""; } };
-  const rbSaveComment = (url, value) => { try { localStorage.setItem(rbCommentKey(url), value); } catch(e){} };
+  /* Comments: shared via comments.php beside index.html (keyed by "<material>/<file>.png");
+     when the endpoint is unavailable (GitHub Pages, file://) they fall back to this
+     browser's localStorage under the legacy URL-based key. */
+  const CMT_ENDPOINT = "comments.php";
+  let cmtShared = null;                     // null = unknown yet, true = endpoint alive, false = local mode
+  const cmtLocalKey = url => "lrs_render_comment:" + url;
+  const cmtLocalLoad = url => { try { return localStorage.getItem(cmtLocalKey(url)) || ""; } catch(e){ return ""; } };
+  const cmtLocalSave = (url, v) => { try { localStorage.setItem(cmtLocalKey(url), v); } catch(e){} };
+  const cmtText = v => typeof v === "string" ? v : (v && typeof v.text === "string" ? v.text : "");
+  function cmtFetchAll(){
+    return fetch(CMT_ENDPOINT, { cache:"no-store" })
+      .then(r => { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
+      .then(j => { cmtShared = true; return (j && typeof j === "object") ? j : {}; })
+      .catch(() => { cmtShared = false; return null; });
+  }
+  function cmtPost(rel, text){
+    return fetch(CMT_ENDPOINT, { method:"POST", headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ key: rel, text }) })
+      .then(r => { if (!r.ok) throw new Error(String(r.status)); });
+  }
+  /* Textarea wiring: debounced save, shared/local state dot, one-time legacy migration. */
+  function cmtWire(ta, state, rel, url, comments){
+    const setState = (t, title) => { state.textContent = t; state.title = title; };
+    const idle = () => setState(cmtShared ? "✓" : "local",
+      cmtShared ? "Shared comment — visible to everyone" : "Saved only in this browser (comments endpoint unavailable)");
+    let text = cmtShared ? cmtText(comments && comments[rel]) : cmtLocalLoad(url);
+    if (cmtShared && !text){
+      const legacy = cmtLocalLoad(url);   // push an old local note up once if the server has none
+      if (legacy){ text = legacy; cmtPost(rel, legacy).catch(() => {}); }
+    }
+    ta.value = text;
+    idle();
+    let timer = null;
+    const save = () => {
+      timer = null;
+      const v = ta.value;
+      if (!cmtShared){ cmtLocalSave(url, v); idle(); return; }
+      cmtPost(rel, v)
+        .then(() => { if (ta.value === v) idle(); })
+        .catch(() => { cmtLocalSave(url, v); setState("!", "Save failed — kept only in this browser"); });
+    };
+    ta.oninput = () => { setState("…", "Saving..."); clearTimeout(timer); timer = setTimeout(save, 600); };
+    ta.onblur  = () => { if (timer){ clearTimeout(timer); save(); } };
+  }
   /* Renders/manifest.json = {files:["<material>/<file>.png", …]} (a bare array is also accepted).
      Generated at deploy time by scripts/gen-render-manifest.cjs; null (no manifest) → probing mode. */
   function rbManifest(){
@@ -926,13 +968,13 @@ if (typeof document !== "undefined"){
       return;
     }
 
-    rbManifest().then(files => {
+    Promise.all([rbManifest(), cmtFetchAll()]).then(([files, comments]) => {
       if (token !== rbToken) return;
       /* With a manifest: only known-good files, materials discovered from it.
          Without: probe the hardcoded materials, letting img errors advance the chain. */
       const lists = files
-        ? Object.entries(rbMatchManifest(files, prefix, view)).map(([dir, hits]) => ({ dir, urls: hits.map(rbUrl) }))
-        : RB_MATERIALS.map(m => ({ dir:m.dir, urls: rbCandidateFiles(prefix, m.dir, view).map(rbUrl) }));
+        ? Object.entries(rbMatchManifest(files, prefix, view)).map(([dir, hits]) => ({ dir, rels: hits }))
+        : RB_MATERIALS.map(m => ({ dir:m.dir, rels: rbCandidateFiles(prefix, m.dir, view) }));
       const noneMsg = "No matching render files found on the server for this preset and shot.";
       if (!lists.length){ if (status){ status.style.display = "block"; status.textContent = noneMsg; } return; }
 
@@ -946,19 +988,21 @@ if (typeof document !== "undefined"){
         }
       };
 
-      for (const {dir, urls} of lists){
+      for (const {dir, rels} of lists){
         const card = document.createElement("div"); card.className = "rbcard";
         const img = document.createElement("img"); img.title = "open full size";
         const ta = document.createElement("textarea"); ta.placeholder = "comment...";
         const meta = document.createElement("div"); meta.className = "meta";
         const nm = document.createElement("span"); nm.textContent = rbLabelOf(dir); nm.title = dir;
         const file = document.createElement("span"); file.textContent = "";
-        meta.append(nm, file); card.append(img, ta, meta);
+        const state = document.createElement("span"); state.className = "cst";
+        meta.append(nm, file, state); card.append(img, ta, meta);
 
-        let idx = 0, activeUrl = "";
+        let idx = 0, activeRel = "", activeUrl = "";
         const tryNext = () => {
-          if (idx >= urls.length){ card.remove(); done(); return; }
-          activeUrl = urls[idx++];
+          if (idx >= rels.length){ card.remove(); done(); return; }
+          activeRel = rels[idx++];
+          activeUrl = rbUrl(activeRel);
           img.src = activeUrl;
         };
         img.addEventListener("load", () => {
@@ -966,10 +1010,9 @@ if (typeof document !== "undefined"){
           loaded++;
           $("rbCount").textContent = loaded;
           if (status) status.style.display = "none";
-          file.textContent = activeUrl.split("/").pop();
-          file.title = activeUrl;
-          ta.value = rbLoadComment(activeUrl);
-          ta.oninput = () => rbSaveComment(activeUrl, ta.value);
+          file.textContent = activeRel.split("/").pop();
+          file.title = activeRel;
+          cmtWire(ta, state, activeRel, activeUrl, comments);
           img.onclick = () => window.open(activeUrl, "_blank");
           grid.appendChild(card);
           done();

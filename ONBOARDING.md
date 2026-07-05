@@ -10,7 +10,8 @@ get the **Unreal Engine T3D** of the 5-light rig, ready to paste into the UE vie
 All logic is in a single `index.html` — no build, no dependencies.
 
 - Repository: https://github.com/Poorsight/light-rig-scaler  (branch `main`)
-- Online (GitHub Pages): https://poorsight.github.io/light-rig-scaler/
+- Online (production preview): https://preview.3dsource.com/dmitriy.derevyanko/light-rig/
+  (GitHub Pages is **not** enabled for this repo; the old `poorsight.github.io/light-rig-scaler` link serves GitHub's "Site not found" page)
 - Locally: open `index.html` by double-clicking **or** `npx serve . -l 5500`
 - Tests: `npm test`  (Node 18+)
 

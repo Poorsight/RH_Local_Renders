@@ -43,7 +43,7 @@ with dimensions `384 x 305 x 82`.
 | Rotations, color, temperature | unchanged |
 
 - **Axes:** world X ↔ width (453), Y ↔ depth (274), Z ↔ height (77). Determined by
-  the fill: `SourceWidth = 500 ≈ 453`. The "rotated 90°" checkbox swaps X↔Y.
+  the fill: `SourceWidth = 500 ≈ 453`. (`computeAll`'s `swap` flag swaps X↔Y; the UI checkbox for it was removed.)
 - **Mode A** — recommended: preserves the character of the shadows, with predictable `k²`.
 - **Mode B** — explains why "inverse square doesn't work": for large soft
   lights (fill, left_rim), `R` is comparable to the distance → softer falloff (`~k^1.7`),

@@ -17,7 +17,7 @@ All logic is in a single `index.html` — no build, no dependencies.
 
 ## Features
 - **Camera shots / views:** `F` (front), `FH` (front-high), `TQ-R` (¾, sofa +30°, right-arm sectionals), `TQ-L` (¾, sofa −60°, left-arm). Each shot is its own light rig.
-- **Size scaling** of the rig by sofa W/D/H, with a 90° rotate (swap) toggle.
+- **Size scaling** of the rig by sofa W/D/H. (The 90° rotate/swap flag survives in the `computeAll` API only — its UI checkbox was removed.)
 - **Two intensity models:** A (scale source sizes, `I·k²`, closest to the original — default) / B (fixed sizes, `I·k^p`).
 - **Sofa presets:** 17 RH sectional models (UPH bounds measured in the UE project), plus user presets in `localStorage`. The default preset is `KOPER_LEFT_ARM_L_SECTIONAL_prod39250480` at `384 x 305 x 82` so it can load server renders immediately.
 - **Diagrams:** top view (X·Y, TQ sofa drawn rotated by its shot angle) and side view (X·Z, heights & pitch). Major/minor cm grid with zero axes and axis captions, engineering-style sofa dimensions, camera marker on the +Y side, scale bar, per-light labels (intensity in cd, z, distance to origin, pitch) with collision-avoiding placement, and a role|temperature color toggle.
@@ -75,7 +75,7 @@ Naming convention (shared by both modes; pure helpers `rbCandidateFiles` / `rbMa
 const res = computeAll(W, D, H, mode, swap, ref, view);
 //   W, D, H — sofa dimensions, cm
 //   mode    — "A" (scale sizes → I·k²) | "B" (fixed sizes → I·k^p)
-//   swap    — bool: sofa rotated 90° (swaps the X↔Y axis mapping)
+//   swap    — bool: sofa rotated 90° (swaps the X↔Y axis mapping; API-only, the UI always passes false)
 //   ref     — {W,D,H} rig reference (usually REF_DEFAULT)
 //   view    — "F" | "FH" | "TQR" | "TQL"  (defaults to F)
 //
@@ -94,7 +94,7 @@ const t3d = generateT3D(res);   // string → clipboard → Ctrl+V in UE
 rewrites only numeric fields — so the output is always valid for pasting and the structure is byte-stable.
 
 ## Formula (full version is in the on-site "Calculation formula" panel)
-- Scale: `sX = W/453`, `sY = D/274`, `sZ = H/77` (with `swap`, X↔Y swap).
+- Scale: `sX = W/453`, `sY = D/274`, `sZ = H/77` (the API-only `swap` flag swaps X↔Y).
 - Position: `pos · s` per coordinate. `k = |new_pos| / |old_pos|` (per light).
 - Effective radius `R`: spot → `SourceRadius`; rect → `√(SourceWidth·SourceHeight / π)`.
 - Mode **A**: sizes `· k`, `Intensity · k²`. Mode **B**: `Intensity · (k²·d² + R²)/(d² + R²) ≈ Intensity · k^p`, `p = 2d²/(d²+R²)`.

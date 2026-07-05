@@ -121,7 +121,9 @@
   .rb .ctx b{color:var(--txt)}
   .rbgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-top:12px}
   .rbcard{background:var(--panel2);border:1px solid var(--line);border-radius:10px;overflow:hidden;display:flex;flex-direction:column}
-  .rbcard img{width:100%;height:150px;object-fit:cover;background:#0f1115;cursor:zoom-in;display:block}
+  /* Photoshop-style checkerboard behind previews so PNG alpha reads as transparency, not black */
+  .rbcard img{width:100%;height:150px;object-fit:cover;cursor:zoom-in;display:block;
+    background:repeating-conic-gradient(#c8ccd2 0% 25%, #f2f3f5 0% 50%) 0 0 / 12px 12px}
   .rbcard textarea{border:none;border-top:1px solid var(--line);background:transparent;color:var(--txt);font-family:inherit;font-size:12px;line-height:1.25;padding:5px 8px;resize:none;height:26px;min-height:0;width:100%;box-sizing:border-box;overflow:hidden}
   .rbcard textarea:focus{outline:none;background:#0f1115}
   .rbcard .meta{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 8px;font-size:11px;color:var(--muted);border-top:1px solid var(--line)}
@@ -172,7 +174,8 @@
     padding:28px;z-index:50;cursor:zoom-out}
   .lb.open{display:flex}
   .lb img{max-width:min(94vw,1600px);max-height:80vh;border-radius:10px;border:1px solid var(--line);
-    box-shadow:0 18px 60px rgba(0,0,0,.5);background:#0f1115;cursor:default}
+    box-shadow:0 18px 60px rgba(0,0,0,.5);cursor:default;
+    background:repeating-conic-gradient(#c8ccd2 0% 25%, #f2f3f5 0% 50%) 0 0 / 16px 16px}
   .lb .cap{font-size:13px;color:var(--txt);display:flex;gap:12px;align-items:baseline;
     flex-wrap:wrap;justify-content:center;max-width:94vw}
   .lb .cap .fn{color:var(--muted);font-family:var(--mono);font-size:12px;overflow:hidden;text-overflow:ellipsis}
@@ -218,11 +221,6 @@
       <div class="top"><label>Height · Z</label><input id="H" class="num" type="number" value="77" step="1" min="1" /></div>
       <input id="Hs" type="range" min="30" max="160" step="1" value="77" />
     </div>
-
-    <label class="check">
-      <input id="swap" type="checkbox" />
-      Sofa rotated 90° (long side along Y)
-    </label>
 
     <h2 style="margin-top:18px">Intensity model</h2>
     <label class="opt">
@@ -332,7 +330,6 @@
     <div class="fml">
       <div class="lbl">1. Scale factors (reference rig <span id="fREF">453 × 274 × 77</span>):</div>
       <div class="eq"><span class="v">s<sub>X</sub></span> = W / <span id="fW1">453</span>&nbsp;&nbsp;&nbsp;&nbsp;<span class="v">s<sub>Y</sub></span> = D / <span id="fD1">274</span>&nbsp;&nbsp;&nbsp;&nbsp;<span class="v">s<sub>Z</sub></span> = H / <span id="fH1">77</span></div>
-      <div class="eq">rotated 90°:&nbsp;&nbsp;s<sub>X</sub> = D / <span id="fW2">453</span>,&nbsp;&nbsp;s<sub>Y</sub> = W / <span id="fD2">274</span></div>
 
       <div class="lbl">2. New light position:</div>
       <div class="eq">X′ = X · s<sub>X</sub>&nbsp;&nbsp;&nbsp;&nbsp;Y′ = Y · s<sub>Y</sub>&nbsp;&nbsp;&nbsp;&nbsp;Z′ = Z · s<sub>Z</sub></div>
@@ -949,12 +946,12 @@ if (typeof document !== "undefined"){
     svg.innerHTML = dgDefs("dg-side") + grid + g + marks + bar;
   }
 
-  function renderWarnings(W, D, H, mode, swap, ref, res){
+  function renderWarnings(W, D, H, mode, ref, res){
     const box = $("warn"); if (!box) return;
-    const sX = (swap?D:W)/ref.W, sY = (swap?W:D)/ref.D, sZ = H/ref.H, ws = [];
+    const sX = W/ref.W, sY = D/ref.D, sZ = H/ref.H, ws = [];
     const sMax = Math.max(Math.abs(sX-1), Math.abs(sY-1), Math.abs(sZ-1));
     if (sMax > 0.5) ws.push(`Rig scaled to ~${Math.round((1+sMax)*100)}% of the reference — verify the look${mode==="B"?" (Mode B drifts more from the original)":""}.`);
-    const inAsp = (swap?D:W)/(swap?W:D), refAsp = ref.W/ref.D;
+    const inAsp = W/D, refAsp = ref.W/ref.D;
     if (Math.abs(inAsp/refAsp - 1) > 0.25)
       ws.push(`Footprint aspect ${inAsp.toFixed(2)}:1 differs from the reference ${refAsp.toFixed(2)}:1 — coverage was tuned for the reference shape; check framing.`);
     const maxI = Math.max(...Object.values(res).map(r => r.intensity));
@@ -966,7 +963,7 @@ if (typeof document !== "undefined"){
 
   function setRefLabels(ref){
     const set = (id, v) => { const e = $(id); if (e) e.textContent = v; };
-    set("fW1", ref.W); set("fW2", ref.W); set("fD1", ref.D); set("fD2", ref.D); set("fH1", ref.H);
+    set("fW1", ref.W); set("fD1", ref.D); set("fH1", ref.H);
     set("fREF", `${ref.W} × ${ref.D} × ${ref.H}`);
   }
 
@@ -975,18 +972,16 @@ if (typeof document !== "undefined"){
     setRefLabels(ref);
     const W = num("W", ref.W), D = num("D", ref.D), H = num("H", ref.H);
     const mode = document.querySelector('input[name=mode]:checked').value;
-    const swap = $("swap").checked;
     const view = currentView();
     const vd = $("viewdesc"); if (vd) vd.textContent = (VIEWS[view] || VIEWS.F).desc;
 
-    const res = computeAll(W, D, H, mode, swap, ref, view);
+    const res = computeAll(W, D, H, mode, false, ref, view);
     $("out").value = generateT3D(res);
 
-    const sofaX = swap ? D : W, sofaY = swap ? W : D;
-    renderDiagram(res, sofaX, sofaY, H, (VIEWS[view] || VIEWS.F).rot || 0, (VIEWS[view] || VIEWS.F).label ? view : "");
-    renderSideView(res, sofaX, H);
-    renderWarnings(W, D, H, mode, swap, ref, res);
-    writeURL(W, D, H, mode, swap, ref);
+    renderDiagram(res, W, D, H, (VIEWS[view] || VIEWS.F).rot || 0, (VIEWS[view] || VIEWS.F).label ? view : "");
+    renderSideView(res, W, H);
+    renderWarnings(W, D, H, mode, ref, res);
+    writeURL(W, D, H, mode, ref);
 
     const body = $("tbl").querySelector("tbody");
     body.innerHTML = "";
@@ -1015,8 +1010,8 @@ if (typeof document !== "undefined"){
   }
 
   /* state → URL hash (shareable link) */
-  function writeURL(W, D, H, mode, swap, ref){
-    const p = new URLSearchParams({ v:currentView(), W, D, H, m:mode, sw:swap?1:0, rW:ref.W, rD:ref.D, rH:ref.H, cb:$("cbTemp").checked?"temp":"role" });
+  function writeURL(W, D, H, mode, ref){
+    const p = new URLSearchParams({ v:currentView(), W, D, H, m:mode, rW:ref.W, rD:ref.D, rH:ref.H, cb:$("cbTemp").checked?"temp":"role" });
     history.replaceState(null, "", "#" + p.toString());
   }
   function readURL(){
@@ -1026,7 +1021,6 @@ if (typeof document !== "undefined"){
     ["W","D","H"].forEach(n => { $(n+"s").value = $(n).value; });
     if (h.has("v")){ const vr = document.querySelector(`input[name=view][value="${h.get("v")}"]`); if (vr) vr.checked = true; }
     if (h.get("m") === "B"){ const b = document.querySelector('input[name=mode][value=B]'); if (b) b.checked = true; }
-    if (h.get("sw") === "1") $("swap").checked = true;
     if (h.get("cb") === "temp") $("cbTemp").checked = true;
   }
 
@@ -1222,7 +1216,7 @@ if (typeof document !== "undefined"){
     $(n).addEventListener("input", () => { $(s).value = $(n).value; render(); });
     $(s).addEventListener("input", () => { $(n).value = $(s).value; render(); });
   });
-  ["rW","rD","rH","swap"].forEach(id => $(id).addEventListener("input", render));
+  ["rW","rD","rH"].forEach(id => $(id).addEventListener("input", render));
   document.querySelectorAll('input[name=mode], input[name=colorby], input[name=view]').forEach(el => el.addEventListener("change", render));
 
   $("copy").addEventListener("click", () => copyText($("out").value).then(() => flash("Copied — Ctrl+V in the UE viewport")));
@@ -1231,7 +1225,6 @@ if (typeof document !== "undefined"){
     $("preset").value = DEFAULT_PRESET;
     applyDims(BUILTIN[DEFAULT_PRESET]);
     $("rW").value=453; $("rD").value=274; $("rH").value=77;
-    $("swap").checked = false;
     document.querySelector('input[name=mode][value=A]').checked = true;
     $("cbRole").checked = true;
     $("vF").checked = true;

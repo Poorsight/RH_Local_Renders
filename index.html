@@ -54,10 +54,12 @@
   details{margin-top:10px}
   summary{cursor:pointer;font-size:12px;color:var(--accent2)}
   code{font-family:var(--mono);color:var(--accent)}
-  .formula{grid-column:1 / -1;order:5}
-  .io{grid-column:1 / -1;order:4}
+  /* Column 1 is reserved for the sticky controls (grid-row span below), so the
+     following panel never covers other sections' data; everything else stacks in column 2. */
+  .formula{grid-column:2;order:5;min-width:0}
+  .io{grid-column:2;order:4;min-width:0}
   .col2{grid-column:2;order:2;display:flex;flex-direction:column;gap:18px;min-width:0}
-  .bd{grid-column:1 / -1;order:3}
+  .bd{grid-column:2;order:3;min-width:0}
   main{align-items:start}
   .fml{background:#0f1115;border:1px solid var(--line);border-radius:8px;padding:14px 16px;
     font-family:var(--mono);font-size:13px;color:#cdd3db;overflow-x:auto}
@@ -132,7 +134,7 @@
      the media query above, leaking a second column onto narrow screens) */
   main > *{min-width:0}
   .rb .ctx{overflow-wrap:anywhere}
-  @media (max-width:880px){.col2{grid-column:1 / -1}}
+  @media (max-width:880px){.col2,.bd,.io,.formula{grid-column:1 / -1}}
   header h1::before{content:"";display:inline-block;width:9px;height:9px;border-radius:50%;
     background:linear-gradient(135deg,var(--accent),var(--accent2));margin-right:9px}
   html{scrollbar-color:#2e323b transparent}
@@ -140,8 +142,9 @@
   ::-webkit-scrollbar-thumb{background:#2e323b;border-radius:5px;border:2px solid var(--bg)}
   ::-webkit-scrollbar-thumb:hover{background:#3a3f4a}
   ::-webkit-scrollbar-track{background:transparent}
-  .controls{position:sticky;top:18px;max-height:calc(100vh - 36px);overflow-y:auto;scrollbar-width:thin}
-  @media (max-width:880px){.controls{position:static;max-height:none;overflow:visible}}
+  .controls{grid-column:1;grid-row:1 / span 4;align-self:start;position:sticky;top:18px;
+    max-height:calc(100vh - 36px);overflow-y:auto;scrollbar-width:thin}
+  @media (max-width:880px){.controls{grid-column:auto;grid-row:auto;position:static;max-height:none;overflow:visible}}
   .btn:not(.sec){background:linear-gradient(180deg,#3fd0d6,var(--accent));box-shadow:0 1px 2px rgba(0,0,0,.3)}
   .btn:focus-visible,.ibtn:focus-visible,select:focus-visible,input:focus-visible,
   textarea:focus-visible,summary:focus-visible{outline:2px solid var(--accent2);outline-offset:2px}

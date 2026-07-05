@@ -72,7 +72,7 @@
   .views{display:grid;grid-template-columns:1fr 1fr;gap:14px}
   @media (max-width:760px){.views{grid-template-columns:1fr}}
   .view h3{margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
-  .view svg{width:100%;height:320px;background:#0f1115;border:1px solid var(--line);border-radius:8px;display:block}
+  .view svg{width:100%;height:400px;background:#0f1115;border:1px solid var(--line);border-radius:8px;display:block}
   .legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:10px;font-size:12px;color:var(--muted);align-items:center}
   .legend .it{display:flex;align-items:center;gap:6px}
   .legend .sw{width:12px;height:12px;border-radius:3px;display:inline-block}
@@ -297,7 +297,7 @@
       <span class="it"><span class="sw" style="background:#c98bff"></span>left rim (spot)</span>
       <span class="it"><span class="sw" style="background:#4fd1c5"></span>right rim (rect)</span>
       <span class="it"><span class="sw" style="background:#7bd88f"></span>right bounce (rect)</span>
-      <span class="it" style="margin-left:auto">grid = cm · ● spot cone · ▬ rect panel · arrow = aim · brighter glow = higher intensity</span>
+      <span class="it" style="margin-left:auto">grid = cm · ● spot · ▬ rect panel · → aim · d = distance to origin (cm) · ∠ = pitch · glow ∝ intensity</span>
     </div>
   </section>
 
@@ -732,9 +732,51 @@ if (typeof document !== "undefined"){
     return (m < 1.5 ? 1 : m < 3.5 ? 2 : m < 7.5 ? 5 : 10) * pow;
   }
 
+  /* Shared diagram drawing bits (colors, fonts, dimension lines, label collision). */
+  const DIAG = { grid:"#1b1e25", minor:"#15181d", axis:"#39404d", tick:"#4b515c",
+                 cap:"#6b7280", dim:"#8a93a3", sofaFill:"#2a2f3a", sofaLine:"#566173" };
+  const DGF = 'font-family="system-ui"';                       // names / captions
+  const DGM = 'font-family="ui-monospace,Consolas,monospace"'; // numbers
+  /* Greedy placer: shifts a light's two-line label up/down until it stops overlapping
+     previously placed ones. Returns the y for the label's first line. */
+  function labelPlacer(fs){
+    const boxes = [];
+    return (x, y, text) => {
+      const w = text.length*fs*0.58, h = fs*2.2;
+      for (const dy of [0, -h*0.8, h*0.8, -h*1.6, h*1.6, -h*2.4, h*2.4]){
+        const b = { x1:x-w/2, x2:x+w/2, y1:y+dy-fs*1.1, y2:y+dy-fs*1.1+h };
+        if (!boxes.some(o => b.x1 < o.x2 && b.x2 > o.x1 && b.y1 < o.y2 && b.y2 > o.y1)){
+          boxes.push(b); return y+dy;
+        }
+      }
+      return y;
+    };
+  }
+  /* Engineering-style dimension line with arrowheads and a centered value. */
+  function dimLine(id, x1, y1, x2, y2, label, fs, sw){
+    const mx = (x1+x2)/2, my = (y1+y2)/2, vert = Math.abs(x2-x1) < Math.abs(y2-y1);
+    const t = vert
+      ? `<text x="${mx-fs*0.5}" y="${my}" fill="${DIAG.dim}" font-size="${fs*0.82}" text-anchor="middle" ${DGM} transform="rotate(-90 ${mx-fs*0.5} ${my})">${label}</text>`
+      : `<text x="${mx}" y="${my-fs*0.45}" fill="${DIAG.dim}" font-size="${fs*0.82}" text-anchor="middle" ${DGM}>${label}</text>`;
+    return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${DIAG.dim}" stroke-width="${sw*0.9}" marker-start="url(#${id}-ar)" marker-end="url(#${id}-ar)"/>` + t;
+  }
+  const dgDefs = id =>
+    `<defs><marker id="${id}-ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="${DIAG.dim}"/></marker></defs>`;
+  /* Small filled arrowhead at (tx,ty) pointing along unit vector (ux,uy), in the light's color. */
+  const dgArrow = (tx, ty, ux, uy, s, col) =>
+    `<path d="M ${tx} ${ty} L ${tx-ux*s+uy*s*0.45} ${ty-uy*s-ux*s*0.45} L ${tx-ux*s-uy*s*0.45} ${ty-uy*s+ux*s*0.45} Z" fill="${col}"/>`;
+  /* Scale bar with end ticks. */
+  function scaleBar(x2, y, step, fs, sw){
+    const x1 = x2 - step;
+    return `<line x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" stroke="${DIAG.dim}" stroke-width="${sw}"/>` +
+      `<line x1="${x1}" y1="${y-fs*0.35}" x2="${x1}" y2="${y+fs*0.35}" stroke="${DIAG.dim}" stroke-width="${sw}"/>` +
+      `<line x1="${x2}" y1="${y-fs*0.35}" x2="${x2}" y2="${y+fs*0.35}" stroke="${DIAG.dim}" stroke-width="${sw}"/>` +
+      `<text x="${(x1+x2)/2}" y="${y-fs*0.55}" fill="${DIAG.dim}" font-size="${fs*0.8}" text-anchor="middle" ${DGM}>${step} cm</text>`;
+  }
+
   // Top-down schematic (X·Y). World coords map straight to the viewBox; +Y points
   // down (toward the camera/front). Sizes are in world units so it scales with the view.
-  function renderDiagram(res, sofaX, sofaY, H, sofaRot){
+  function renderDiagram(res, sofaX, sofaY, H, sofaRot, viewKey){
     const svg = $("diagram"); if (!svg) return;
     const names = Object.keys(res);
     const rr = (sofaRot || 0) * Math.PI/180;   // sofa yaw for this shot (TQ views)
@@ -743,25 +785,33 @@ if (typeof document !== "undefined"){
     let minX = -ahx, maxX = ahx, minY = -ahy, maxY = ahy;
     for (const n of names){ const [x,y] = res[n].pos;
       minX=Math.min(minX,x); maxX=Math.max(maxX,x); minY=Math.min(minY,y); maxY=Math.max(maxY,y); }
-    const pad = (Math.max(maxX-minX, maxY-minY) || 1)*0.10 + 60;
+    const pad = (Math.max(maxX-minX, maxY-minY) || 1)*0.12 + 80;
     minX-=pad; maxX+=pad; minY-=pad; maxY+=pad;
     const vbW = maxX-minX, vbH = maxY-minY, u = Math.max(vbW, vbH);
     svg.setAttribute("viewBox", `${minX} ${minY} ${vbW} ${vbH}`);
-    const fs = u*0.022, sw = u*0.0036, dot = u*0.013, step = niceStep(u);
+    const fs = u*0.0245, sw = u*0.0036, dot = u*0.013, step = niceStep(u);
     const maxI = Math.max(...names.map(n => res[n].intensity), 1e-6);
     const hx = sofaX/2, hy = sofaY/2, rx = Math.min(sofaX,sofaY)*0.08;
 
+    /* grid: minor (half-step) + major lines, dashed zero axes, mono tick labels, axis captions */
     let grid = "";
-    for (let x = Math.ceil(minX/step)*step; x <= maxX; x += step){
-      grid += `<line x1="${x}" y1="${minY}" x2="${x}" y2="${maxY}" stroke="#1b1e25" stroke-width="${sw*0.6}"/>`;
-      grid += `<text x="${x}" y="${maxY-fs*0.3}" fill="#4b515c" font-size="${fs*0.78}" text-anchor="middle" font-family="system-ui">${Math.round(x)}</text>`;
+    for (let x = Math.ceil(minX/(step/2))*(step/2); x <= maxX; x += step/2){
+      const major = Math.abs(x/step - Math.round(x/step)) < 1e-6;
+      grid += `<line x1="${x}" y1="${minY}" x2="${x}" y2="${maxY}" stroke="${major?DIAG.grid:DIAG.minor}" stroke-width="${sw*(major?0.7:0.45)}"/>`;
+      if (major) grid += `<text x="${x}" y="${maxY-fs*0.35}" fill="${DIAG.tick}" font-size="${fs*0.75}" text-anchor="middle" ${DGM}>${Math.round(x)}</text>`;
     }
-    for (let y = Math.ceil(minY/step)*step; y <= maxY; y += step){
-      grid += `<line x1="${minX}" y1="${y}" x2="${maxX}" y2="${y}" stroke="#1b1e25" stroke-width="${sw*0.6}"/>`;
-      grid += `<text x="${minX+fs*0.3}" y="${y-fs*0.2}" fill="#4b515c" font-size="${fs*0.78}" text-anchor="start" font-family="system-ui">${Math.round(y)}</text>`;
+    for (let y = Math.ceil(minY/(step/2))*(step/2); y <= maxY; y += step/2){
+      const major = Math.abs(y/step - Math.round(y/step)) < 1e-6;
+      grid += `<line x1="${minX}" y1="${y}" x2="${maxX}" y2="${y}" stroke="${major?DIAG.grid:DIAG.minor}" stroke-width="${sw*(major?0.7:0.45)}"/>`;
+      if (major) grid += `<text x="${minX+fs*0.35}" y="${y-fs*0.25}" fill="${DIAG.tick}" font-size="${fs*0.75}" text-anchor="start" ${DGM}>${Math.round(y)}</text>`;
     }
+    grid += `<line x1="0" y1="${minY}" x2="0" y2="${maxY}" stroke="${DIAG.axis}" stroke-width="${sw*0.7}" stroke-dasharray="${u*0.008} ${u*0.008}"/>` +
+            `<line x1="${minX}" y1="0" x2="${maxX}" y2="0" stroke="${DIAG.axis}" stroke-width="${sw*0.7}" stroke-dasharray="${u*0.008} ${u*0.008}"/>` +
+            `<text x="${maxX-fs*0.6}" y="${-fs*0.5}" fill="${DIAG.cap}" font-size="${fs*0.8}" text-anchor="end" ${DGF}>X, cm</text>` +
+            `<text x="${fs*0.6}" y="${minY+fs*1.5}" fill="${DIAG.cap}" font-size="${fs*0.8}" text-anchor="start" ${DGF}>Y, cm</text>`;
 
     let cones = "", marks = "";
+    const place = labelPlacer(fs);
     for (const n of names){
       const r = res[n], col = colorOf(r);
       const [x,y] = r.pos;
@@ -773,21 +823,55 @@ if (typeof document !== "undefined"){
       const e1x = fx*Math.cos(half)-fy*Math.sin(half), e1y = fx*Math.sin(half)+fy*Math.cos(half);
       const e2x = fx*Math.cos(-half)-fy*Math.sin(-half), e2y = fx*Math.sin(-half)+fy*Math.cos(-half);
       cones += `<path d="M ${x} ${y} L ${x+e1x*cl} ${y+e1y*cl} L ${x+e2x*cl} ${y+e2y*cl} Z" fill="${col}" opacity="${op}"/>`;
-      marks += `<line x1="${x}" y1="${y}" x2="${x+fx*len*0.45}" y2="${y+fy*len*0.45}" stroke="${col}" stroke-width="${sw}"/>`;
+      const tx = x+fx*len*0.45, ty = y+fy*len*0.45;
+      marks += `<line x1="${x}" y1="${y}" x2="${tx}" y2="${ty}" stroke="${col}" stroke-width="${sw}"/>` +
+               dgArrow(tx, ty, fx, fy, dot*1.5, col);
       if (r.type==="spot") marks += `<circle cx="${x}" cy="${y}" r="${dot}" fill="${col}" stroke="#0f1115" stroke-width="${sw*0.6}"/>`;
       else { const pw = Math.min(r.w||100, u*0.20)/2, px=-fy, py=fx;
         marks += `<line x1="${x-px*pw}" y1="${y-py*pw}" x2="${x+px*pw}" y2="${y+py*pw}" stroke="${col}" stroke-width="${sw*2.6}" stroke-linecap="round"/>`; }
-      marks += `<text x="${x}" y="${y-dot*1.7}" fill="${col}" font-size="${fs}" text-anchor="middle" font-family="system-ui">${r.label||n} · ${r.intensity.toFixed(1)}</text>`;
-      marks += `<text x="${x}" y="${y+dot*2.6}" fill="#7c8493" font-size="${fs*0.78}" text-anchor="middle" font-family="system-ui">z ${Math.round(r.pos[2])}</text>`;
+      /* two-line label (name · cd / z · d), shifted by the placer if it would collide */
+      const main = `${r.label||n} · ${r.intensity.toFixed(r.intensity < 10 ? 1 : 0)} cd`;
+      const sub = `z ${Math.round(r.pos[2])} · d ${Math.round(Math.hypot(x, y, r.pos[2]))}`;
+      const defY = y - dot*2.4;
+      const yy = place(x, defY, main.length > sub.length ? main : sub);
+      if (Math.abs(yy - defY) > fs*0.6){
+        const edge = yy > y ? yy - fs*1.05 : yy + fs*1.15;
+        marks += `<line x1="${x}" y1="${edge}" x2="${x}" y2="${y + (yy > y ? dot*1.4 : -dot*1.4)}" stroke="${col}" stroke-width="${sw*0.5}" opacity="0.4"/>`;
+      }
+      marks += `<text x="${x}" y="${yy}" fill="${col}" font-size="${fs}" text-anchor="middle" ${DGF}>${main}</text>` +
+               `<text x="${x}" y="${yy+fs*0.95}" fill="#7c8493" font-size="${fs*0.75}" text-anchor="middle" ${DGM}>${sub}</text>`;
     }
-    const sofa =
+
+    /* sofa footprint + engineering dimensions (dimensions only when the sofa isn't rotated) */
+    let sofa =
       `<g transform="rotate(${sofaRot||0})">` +
-        `<rect x="${-hx}" y="${-hy}" width="${sofaX}" height="${sofaY}" rx="${rx}" fill="#2a2f3a" stroke="#566173" stroke-width="${sw*1.4}"/>` +
+        `<rect x="${-hx}" y="${-hy}" width="${sofaX}" height="${sofaY}" rx="${rx}" fill="${DIAG.sofaFill}" stroke="${DIAG.sofaLine}" stroke-width="${sw*1.4}"/>` +
         `<rect x="${-hx}" y="${-hy}" width="${sofaX}" height="${Math.min(sofaY*0.24, u*0.05)}" rx="${rx*0.6}" fill="#3a4150"/>` +
+      `</g>`;
+    if (!sofaRot){
+      const dy = hy + fs*1.6, dx = hx + fs*1.6;
+      sofa += `<line x1="${-hx}" y1="${hy}" x2="${-hx}" y2="${dy+fs*0.4}" stroke="${DIAG.dim}" stroke-width="${sw*0.5}" opacity="0.6"/>` +
+              `<line x1="${hx}" y1="${hy}" x2="${hx}" y2="${dy+fs*0.4}" stroke="${DIAG.dim}" stroke-width="${sw*0.5}" opacity="0.6"/>` +
+              dimLine("dg-top", -hx, dy, hx, dy, `${Math.round(sofaX)} cm`, fs, sw) +
+              `<line x1="${hx}" y1="${-hy}" x2="${dx+fs*0.4}" y2="${-hy}" stroke="${DIAG.dim}" stroke-width="${sw*0.5}" opacity="0.6"/>` +
+              `<line x1="${hx}" y1="${hy}" x2="${dx+fs*0.4}" y2="${hy}" stroke="${DIAG.dim}" stroke-width="${sw*0.5}" opacity="0.6"/>` +
+              dimLine("dg-top", dx, -hy, dx, hy, `${Math.round(sofaY)} cm`, fs, sw);
+    } else {
+      sofa += `<text x="0" y="${ahy+fs*1.5}" fill="#9aa1ad" font-size="${fs}" text-anchor="middle" ${DGF}>sofa ${Math.round(sofaX)}×${Math.round(sofaY)} · ⟳ ${sofaRot}°</text>`;
+    }
+
+    /* camera glyph on the +Y (front) side + scale bar */
+    const cy = maxY - fs*4.4;
+    const cam =
+      `<g opacity="0.9">` +
+        `<path d="M ${-fs*0.55} ${cy} L ${fs*0.55} ${cy} L ${fs*1.05} ${cy-fs*0.95} L ${-fs*1.05} ${cy-fs*0.95} Z" fill="#242a34" stroke="${DIAG.sofaLine}" stroke-width="${sw*0.9}"/>` +
+        `<rect x="${-fs*1.15}" y="${cy}" width="${fs*2.3}" height="${fs*1.4}" rx="${fs*0.3}" fill="#242a34" stroke="${DIAG.sofaLine}" stroke-width="${sw*0.9}"/>` +
+        `<circle cx="0" cy="${cy+fs*0.7}" r="${fs*0.42}" fill="none" stroke="${DIAG.dim}" stroke-width="${sw*0.8}"/>` +
       `</g>` +
-      `<text x="0" y="${ahy+fs*1.5}" fill="#9aa1ad" font-size="${fs}" text-anchor="middle" font-family="system-ui">sofa ${Math.round(sofaX)}×${Math.round(sofaY)}${sofaRot ? "  ·  ⟳ "+sofaRot+"°" : ""}</text>`;
-    const hints = `<text x="0" y="${maxY-fs*0.4}" fill="#6b7280" font-size="${fs*0.85}" text-anchor="middle" font-family="system-ui">▼ front / camera (+Y) · grid ${step}cm</text>`;
-    svg.innerHTML = grid + cones + sofa + marks + hints;
+      `<text x="0" y="${cy+fs*2.6}" fill="${DIAG.cap}" font-size="${fs*0.85}" text-anchor="middle" ${DGF}>camera${viewKey ? " · " + viewKey : ""} · front (+Y)</text>`;
+    const bar = scaleBar(maxX - fs*1.5, maxY - fs*1.9, step, fs, sw*0.8);
+
+    svg.innerHTML = dgDefs("dg-top") + grid + cones + sofa + cam + marks + bar;
   }
 
   // Side schematic (X·Z). Screen y = -Z so up is up; floor at Z=0.
@@ -797,36 +881,72 @@ if (typeof document !== "undefined"){
     let minX = -sofaX/2, maxX = sofaX/2, maxZ = H;
     for (const n of names){ const x = res[n].pos[0], z = res[n].pos[2];
       minX=Math.min(minX,x); maxX=Math.max(maxX,x); maxZ=Math.max(maxZ,z); }
-    const pad = (Math.max(maxX-minX, maxZ) || 1)*0.12 + 50;
+    const pad = (Math.max(maxX-minX, maxZ) || 1)*0.14 + 60;
     const vbMinX = minX-pad, vbMaxX = maxX+pad, vbMinY = -(maxZ+pad), vbMaxY = pad;
     const vbW = vbMaxX-vbMinX, vbH = vbMaxY-vbMinY, u = Math.max(vbW, vbH);
     svg.setAttribute("viewBox", `${vbMinX} ${vbMinY} ${vbW} ${vbH}`);
     const fs = u*0.024, sw = u*0.0038, dot = u*0.013, step = niceStep(u);
+    const maxI = Math.max(...names.map(n => res[n].intensity), 1e-6);
 
+    /* grid: minor + major, dashed X=0 axis, mono tick labels, axis captions */
     let grid = "";
-    for (let x = Math.ceil(vbMinX/step)*step; x <= vbMaxX; x += step){
-      grid += `<line x1="${x}" y1="${vbMinY}" x2="${x}" y2="${vbMaxY}" stroke="#1b1e25" stroke-width="${sw*0.6}"/>`;
-      grid += `<text x="${x}" y="${pad*0.55}" fill="#4b515c" font-size="${fs*0.78}" text-anchor="middle" font-family="system-ui">${Math.round(x)}</text>`;
+    for (let x = Math.ceil(vbMinX/(step/2))*(step/2); x <= vbMaxX; x += step/2){
+      const major = Math.abs(x/step - Math.round(x/step)) < 1e-6;
+      grid += `<line x1="${x}" y1="${vbMinY}" x2="${x}" y2="${vbMaxY}" stroke="${major?DIAG.grid:DIAG.minor}" stroke-width="${sw*(major?0.7:0.45)}"/>`;
+      if (major) grid += `<text x="${x}" y="${pad*0.72}" fill="${DIAG.tick}" font-size="${fs*0.75}" text-anchor="middle" ${DGM}>${Math.round(x)}</text>`;
     }
-    for (let z = 0; z <= maxZ+pad; z += step){
-      grid += `<line x1="${vbMinX}" y1="${-z}" x2="${vbMaxX}" y2="${-z}" stroke="#1b1e25" stroke-width="${sw*0.6}"/>`;
-      grid += `<text x="${vbMinX+fs*0.3}" y="${-z-fs*0.2}" fill="#4b515c" font-size="${fs*0.78}" text-anchor="start" font-family="system-ui">${Math.round(z)}</text>`;
+    for (let z = 0; z <= maxZ+pad; z += step/2){
+      const major = Math.abs(z/step - Math.round(z/step)) < 1e-6;
+      grid += `<line x1="${vbMinX}" y1="${-z}" x2="${vbMaxX}" y2="${-z}" stroke="${major?DIAG.grid:DIAG.minor}" stroke-width="${sw*(major?0.7:0.45)}"/>`;
+      if (major && z > 0) grid += `<text x="${vbMinX+fs*0.35}" y="${-z-fs*0.25}" fill="${DIAG.tick}" font-size="${fs*0.75}" text-anchor="start" ${DGM}>${Math.round(z)}</text>`;
     }
+    grid += `<line x1="0" y1="${vbMinY}" x2="0" y2="${vbMaxY}" stroke="${DIAG.axis}" stroke-width="${sw*0.7}" stroke-dasharray="${u*0.008} ${u*0.008}"/>` +
+            `<text x="${vbMaxX-fs*0.6}" y="${-fs*0.5}" fill="${DIAG.cap}" font-size="${fs*0.8}" text-anchor="end" ${DGF}>X, cm</text>` +
+            `<text x="${vbMinX+fs*0.6}" y="${vbMinY+fs*1.5}" fill="${DIAG.cap}" font-size="${fs*0.8}" text-anchor="start" ${DGF}>Z, cm</text>`;
+
+    /* floor with hatching, sofa elevation, height + width dimensions */
+    let hatch = "";
+    for (let x = Math.ceil(vbMinX/(u*0.03))*(u*0.03); x <= vbMaxX; x += u*0.03){
+      hatch += `<line x1="${x}" y1="0" x2="${x-u*0.014}" y2="${u*0.014}" stroke="${DIAG.sofaLine}" stroke-width="${sw*0.5}" opacity="0.45"/>`;
+    }
+    const hdx = -sofaX/2 - fs*1.8;
     let g =
-      `<line x1="${vbMinX}" y1="0" x2="${vbMaxX}" y2="0" stroke="#566173" stroke-width="${sw*1.2}"/>` +
-      `<rect x="${-sofaX/2}" y="${-H}" width="${sofaX}" height="${H}" rx="${Math.min(sofaX,H)*0.06}" fill="#2a2f3a" stroke="#566173" stroke-width="${sw*1.2}"/>` +
-      `<text x="0" y="${fs*1.4}" fill="#9aa1ad" font-size="${fs}" text-anchor="middle" font-family="system-ui">floor · sofa H=${Math.round(H)}</text>`;
+      `<line x1="${vbMinX}" y1="0" x2="${vbMaxX}" y2="0" stroke="${DIAG.sofaLine}" stroke-width="${sw*1.2}"/>` + hatch +
+      `<rect x="${-sofaX/2}" y="${-H}" width="${sofaX}" height="${H}" rx="${Math.min(sofaX,H)*0.06}" fill="${DIAG.sofaFill}" stroke="${DIAG.sofaLine}" stroke-width="${sw*1.2}"/>` +
+      `<line x1="${-sofaX/2}" y1="${-H}" x2="${hdx-fs*0.4}" y2="${-H}" stroke="${DIAG.dim}" stroke-width="${sw*0.5}" opacity="0.6"/>` +
+      dimLine("dg-side", hdx, -H, hdx, 0, `${Math.round(H)} cm`, fs, sw) +
+      dimLine("dg-side", -sofaX/2, pad*0.34, sofaX/2, pad*0.34, `${Math.round(sofaX)} cm`, fs, sw);
+
     let marks = "";
+    const place = labelPlacer(fs);
     for (const n of names){
       const r = res[n], col = colorOf(r);
       const x = r.pos[0], z = r.pos[2], y = -z;
       const a = (r.yaw||0)*Math.PI/180, pa = (r.pitch||0)*Math.PI/180;
-      const dx = Math.cos(pa)*Math.cos(a), dy = -Math.sin(pa), L = u*0.10;
-      marks += `<line x1="${x}" y1="${y}" x2="${x+dx*L}" y2="${y+dy*L}" stroke="${col}" stroke-width="${sw}"/>`;
-      marks += `<circle cx="${x}" cy="${y}" r="${dot}" fill="${col}" stroke="#0f1115" stroke-width="${sw*0.6}"/>`;
-      marks += `<text x="${x}" y="${y-dot*1.6}" fill="${col}" font-size="${fs}" text-anchor="middle" font-family="system-ui">${r.label||n} · z${Math.round(z)}</text>`;
+      let dx = Math.cos(pa)*Math.cos(a), dy = -Math.sin(pa);
+      const nrm = Math.hypot(dx, dy) || 1; dx /= nrm; dy /= nrm;   // unit vector in the X·Z plane
+      const L = u*0.11;
+      const op = (0.08 + 0.22*Math.sqrt(r.intensity/maxI)).toFixed(3);
+      const half = (r.type==="spot" ? (r.cone||30)/2 : 16)*Math.PI/180;
+      const e1x = dx*Math.cos(half)-dy*Math.sin(half), e1y = dx*Math.sin(half)+dy*Math.cos(half);
+      const e2x = dx*Math.cos(-half)-dy*Math.sin(-half), e2y = dx*Math.sin(-half)+dy*Math.cos(-half);
+      marks += `<path d="M ${x} ${y} L ${x+e1x*L*1.4} ${y+e1y*L*1.4} L ${x+e2x*L*1.4} ${y+e2y*L*1.4} Z" fill="${col}" opacity="${op}"/>` +
+               `<line x1="${x}" y1="${y}" x2="${x+dx*L}" y2="${y+dy*L}" stroke="${col}" stroke-width="${sw}"/>` +
+               dgArrow(x+dx*L, y+dy*L, dx, dy, dot*1.5, col) +
+               `<circle cx="${x}" cy="${y}" r="${dot}" fill="${col}" stroke="#0f1115" stroke-width="${sw*0.6}"/>`;
+      const main = `${r.label||n} · ${r.intensity.toFixed(r.intensity < 10 ? 1 : 0)} cd`;
+      const sub = `z ${Math.round(z)} · ∠ ${Math.round(r.pitch||0)}°`;
+      const defY = y - dot*2.4;
+      const yy = place(x, defY, main.length > sub.length ? main : sub);
+      if (Math.abs(yy - defY) > fs*0.6){
+        const edge = yy > y ? yy - fs*1.05 : yy + fs*1.15;
+        marks += `<line x1="${x}" y1="${edge}" x2="${x}" y2="${y + (yy > y ? dot*1.4 : -dot*1.4)}" stroke="${col}" stroke-width="${sw*0.5}" opacity="0.4"/>`;
+      }
+      marks += `<text x="${x}" y="${yy}" fill="${col}" font-size="${fs}" text-anchor="middle" ${DGF}>${main}</text>` +
+               `<text x="${x}" y="${yy+fs*0.95}" fill="#7c8493" font-size="${fs*0.75}" text-anchor="middle" ${DGM}>${sub}</text>`;
     }
-    svg.innerHTML = grid + g + marks;
+    const bar = scaleBar(vbMaxX - fs*1.5, vbMinY + fs*1.9, step, fs, sw*0.8);
+    svg.innerHTML = dgDefs("dg-side") + grid + g + marks + bar;
   }
 
   function renderWarnings(W, D, H, mode, swap, ref, res){
@@ -863,7 +983,7 @@ if (typeof document !== "undefined"){
     $("out").value = generateT3D(res);
 
     const sofaX = swap ? D : W, sofaY = swap ? W : D;
-    renderDiagram(res, sofaX, sofaY, H, (VIEWS[view] || VIEWS.F).rot || 0);
+    renderDiagram(res, sofaX, sofaY, H, (VIEWS[view] || VIEWS.F).rot || 0, (VIEWS[view] || VIEWS.F).label ? view : "");
     renderSideView(res, sofaX, H);
     renderWarnings(W, D, H, mode, swap, ref, res);
     writeURL(W, D, H, mode, swap, ref);

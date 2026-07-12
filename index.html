@@ -13,25 +13,26 @@
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--txt);
     font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;line-height:1.45}
-  header{padding:20px 24px;border-bottom:1px solid var(--line);background:var(--panel)}
+  header{padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel)}
   header h1{margin:0;font-size:18px;letter-spacing:.2px}
-  header p{margin:6px 0 0;color:var(--muted);font-size:13px}
-  main{display:grid;grid-template-columns:380px 1fr;gap:18px;padding:18px 24px;max-width:min(96vw, 1840px)}
+  header p{margin:3px 0 0;color:var(--muted);font-size:12px}
+  main{display:grid;grid-template-columns:340px 1fr;gap:12px;padding:12px 16px;max-width:min(98vw, 1840px)}
   @media (max-width:880px){main{grid-template-columns:1fr}.col2{grid-column:1 / -1}}
-  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}
-  .panel h2{margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}
+  .panel h2{margin:0 0 9px;font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)}
   .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
   label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}
   input[type=number]{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);
     border-radius:8px;padding:9px 10px;font-size:15px;font-family:var(--mono)}
   input[type=number]:focus{outline:none;border-color:var(--accent)}
-  .row{margin-bottom:14px}
-  .opt{display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid var(--line);
-    border-radius:8px;margin-bottom:8px;cursor:pointer;background:var(--panel2)}
+  .row{margin-bottom:10px}
+  .opt{display:flex;gap:8px;align-items:flex-start;padding:8px;border:1px solid var(--line);
+    border-radius:8px;margin-bottom:6px;cursor:pointer;background:var(--panel2)}
   .opt:hover{border-color:var(--accent)}
   .opt input{margin-top:2px}
-  .opt .t{font-size:13px}
-  .opt .d{font-size:12px;color:var(--muted);margin-top:2px}
+  .opt>span{min-width:0}
+  .opt .t{display:block;font-size:13px}
+  .opt .d{display:block;font-size:12px;color:var(--muted);margin-top:2px}
   .check{display:flex;gap:9px;align-items:center;font-size:13px;color:var(--txt);margin-top:6px;cursor:pointer}
   .btn{appearance:none;border:none;border-radius:8px;padding:11px 16px;font-size:14px;font-weight:600;
     cursor:pointer;background:var(--accent);color:#04201f}
@@ -40,7 +41,7 @@
   .bar{display:flex;gap:10px;align-items:center;margin-bottom:10px}
   .flash{font-size:13px;color:var(--ok);opacity:0;transition:opacity .2s}
   .flash.show{opacity:1}
-  textarea{width:100%;height:300px;background:#0f1115;border:1px solid var(--line);color:#cdd3db;
+  textarea{width:100%;height:220px;background:#0f1115;border:1px solid var(--line);color:#cdd3db;
     border-radius:8px;padding:12px;font-family:var(--mono);font-size:12px;resize:vertical;white-space:pre}
   table{width:100%;border-collapse:collapse;font-size:12px;margin-top:6px}
   th,td{text-align:right;padding:6px 8px;border-bottom:1px solid var(--line);font-family:var(--mono);white-space:nowrap}
@@ -57,8 +58,8 @@
   /* Column 1 is reserved for the sticky controls (grid-row span below), so the
      following panel never covers other sections' data; everything else stacks in column 2. */
   .formula{grid-column:2;order:5;min-width:0}
-  .io{grid-column:2;order:4;min-width:0}
-  .col2{grid-column:2;order:2;display:flex;flex-direction:column;gap:18px;min-width:0}
+  .io{min-width:0}
+  .col2{grid-column:2;order:2;display:flex;flex-direction:column;gap:12px;min-width:0}
   .bd{grid-column:2;order:3;min-width:0}
   main{align-items:start}
   .fml{background:#0f1115;border:1px solid var(--line);border-radius:8px;padding:14px 16px;
@@ -69,24 +70,40 @@
   .fml .v{color:var(--accent)}
   .fml sub,.fml sup{font-size:10px}
   .diagram{order:2}
-  .views{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .views{display:grid;grid-template-columns:1fr 1fr;gap:10px}
   @media (max-width:760px){.views{grid-template-columns:1fr}}
   .view h3{margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
-  .view svg{width:100%;height:400px;background:#0f1115;border:1px solid var(--line);border-radius:8px;display:block}
+  .view svg{width:100%;height:320px;background:#0f1115;border:1px solid var(--line);border-radius:8px;display:block}
+  .views[data-layout="top"]{grid-template-columns:1fr}.views[data-layout="top"] .sideviewcard{display:none}
+  .views[data-layout="side"]{grid-template-columns:1fr}.views[data-layout="side"] .topviewcard{display:none}
+  .views[data-layout="top"] svg,.views[data-layout="side"] svg{height:500px}
+  .diagramtools{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:start;margin-top:10px}
+  .lightpicker{display:flex;gap:6px;flex-wrap:wrap}
+  .lightchip{appearance:none;border:1px solid var(--line);background:var(--panel2);color:var(--muted);border-radius:7px;padding:6px 8px;font-size:11px;cursor:pointer}
+  .lightchip::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;background:var(--lc)}
+  .lightchip:hover,.lightchip.active{border-color:var(--lc);color:var(--txt);background:#292d36}
+  .lightinspector{grid-column:1/-1;display:grid;grid-template-columns:1.1fr .8fr 1.4fr 1fr 1fr 1fr;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .lightstat{background:#171a20;padding:7px 9px;min-width:0}
+  .lightstat .k{display:block;color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}
+  .lightstat .v{display:block;color:var(--txt);font:11px var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .lightstat.primary{border-left:3px solid var(--lc)}
+  .view svg [data-light]{cursor:pointer;transition:opacity .12s,filter .12s}
+  .view svg .selring{opacity:0;transition:opacity .12s}
+  .view svg [data-light].selected .selring{opacity:1;filter:drop-shadow(0 0 5px var(--lc))}
   .legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:10px;font-size:12px;color:var(--muted);align-items:center}
   .legend .it{display:flex;align-items:center;gap:6px}
   .legend .sw{width:12px;height:12px;border-radius:3px;display:inline-block}
-  .field{margin-bottom:10px}
+  .field{margin-bottom:7px}
   .field .top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
   .field .top label{margin:0}
   .field .num{width:88px;text-align:right}
-  .field input[type=range]{width:100%;margin-top:6px;accent-color:var(--accent)}
-  .presetbar{display:flex;gap:8px;margin-bottom:14px;align-items:stretch}
-  .presetbar select{flex:1 1 auto;min-width:0;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:8px;font-size:13px}
+  .field input[type=range]{width:100%;margin-top:3px;accent-color:var(--accent)}
+  .presetbar{display:flex;gap:6px;margin-bottom:10px;align-items:stretch}
+  .presetbar select{flex:1 1 auto;width:0;min-width:0;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:8px;font-size:13px}
   .ibtn{flex:0 0 auto;white-space:nowrap;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:8px 11px;font-size:13px;cursor:pointer}
   .ibtn:hover{border-color:var(--accent)}
-  .warn{margin-top:12px;display:flex;flex-direction:column;gap:6px}
-  .warn .w{font-size:12px;padding:8px 10px;border-radius:8px;border:1px solid #5c4a16;background:#241f10;color:#e7c66b}
+  .warn{margin-top:9px;display:flex;flex-direction:column;gap:5px}
+  .warn .w{font-size:11px;padding:6px 8px;border-radius:7px;border:1px solid #5c4a16;background:#241f10;color:#e7c66b}
   .warn .w.ok{background:#15241a;border-color:#264d33;color:#7fd69a}
   .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
   .seg input{display:none}
@@ -144,8 +161,8 @@
   ::-webkit-scrollbar-thumb{background:#2e323b;border-radius:5px;border:2px solid var(--bg)}
   ::-webkit-scrollbar-thumb:hover{background:#3a3f4a}
   ::-webkit-scrollbar-track{background:transparent}
-  .controls{grid-column:1;grid-row:1 / span 4;align-self:start;position:sticky;top:18px;
-    max-height:calc(100vh - 36px);overflow-y:auto;scrollbar-width:thin}
+  .controls{grid-column:1;grid-row:1 / span 4;align-self:start;position:sticky;top:12px;
+    max-height:calc(100vh - 24px);overflow-y:auto;scrollbar-width:thin}
   @media (max-width:880px){.controls{grid-column:auto;grid-row:auto;position:static;max-height:none;overflow:visible}}
   .btn:not(.sec){background:linear-gradient(180deg,#3fd0d6,var(--accent));box-shadow:0 1px 2px rgba(0,0,0,.3)}
   .btn:focus-visible,.ibtn:focus-visible,select:focus-visible,input:focus-visible,
@@ -168,6 +185,34 @@
   .rbcard img:hover{opacity:.9}
   .rbcard textarea{transition:height .15s,background .12s}
   .rbcard textarea:focus{height:64px}
+  .sectionhead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:14px;margin-bottom:8px}
+  .sectionhead h2{margin:0}
+  .modehelp{font-size:11px;color:var(--muted);margin:2px 0 8px;line-height:1.35}
+  .modehelp b{color:var(--txt)}
+  .io{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .io h2{margin:0;flex:0 0 auto}
+  .io .bar{margin:0;flex:0 0 auto}
+  .io .summary{font-size:12px;color:var(--muted);flex:1 1 230px;text-align:right}
+  .io details{flex:1 0 100%;margin-top:0;border-top:1px solid var(--line);padding-top:8px}
+  .io details textarea{margin-top:8px;height:180px}
+  @media (max-width:620px){
+    main{padding:10px}.io .summary{text-align:left}.view svg{height:280px}
+    .presetbar .ibtn{padding-left:9px;padding-right:9px}
+    #delPreset{font-size:0;width:36px}
+    #delPreset::after{content:"🗑";font-size:13px}
+  }
+  @media (max-width:760px){
+    .diagramtools{grid-template-columns:1fr}.diagramtools>.seg{justify-self:start}
+    .lightinspector{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .views[data-layout="top"] svg,.views[data-layout="side"] svg{height:400px}
+  }
+  @media (max-width:880px){
+    html,body{max-width:100%;overflow-x:hidden}
+    main{display:block;width:100%;max-width:100%;margin:0}
+    main>.controls,main>.col2,main>.bd,main>.formula{width:100%;margin-bottom:12px}
+    .presetbar{display:grid;grid-template-columns:minmax(0,1fr) auto auto}
+    .presetbar select{width:100%}
+  }
   /* lightbox for render previews */
   .lb{position:fixed;inset:0;background:rgba(10,12,16,.86);backdrop-filter:blur(6px);
     display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px;
@@ -187,7 +232,7 @@
 <body>
 <header>
   <h1>Sectional — Light Rig Scaler</h1>
-  <p>Enter the sofa dimensions → get ready-to-paste T3D for the five lights. Hit <b>Copy</b>, then press <b>Ctrl + V</b> in the Unreal viewport.</p>
+  <p>Choose the shot, enter the sectional size, copy the adapted five-light rig into Unreal.</p>
 </header>
 
 <main>
@@ -202,11 +247,11 @@
     </span>
     <p class="note" id="viewdesc" style="margin-top:8px"></p>
 
-    <h2 style="margin-top:18px">Sofa dimensions (cm)</h2>
+    <div class="sectionhead"><h2>Sofa dimensions</h2><span class="tag">cm</span></div>
     <div class="presetbar">
       <select id="preset" title="Presets"></select>
-      <button id="savePreset" class="ibtn" title="Save current as a preset">＋ Save</button>
-      <button id="delPreset" class="ibtn" title="Delete the selected preset">🗑</button>
+      <button id="savePreset" class="ibtn" title="Save current dimensions as a preset">＋</button>
+      <button id="delPreset" class="ibtn" title="Delete the selected custom preset">Delete</button>
     </div>
 
     <div class="field">
@@ -222,24 +267,25 @@
       <input id="Hs" type="range" min="30" max="160" step="1" value="77" />
     </div>
 
-    <h2 style="margin-top:18px">Intensity model</h2>
+    <div class="sectionhead"><h2>Light behavior</h2><span class="tag">adaptive aim</span></div>
     <label class="opt">
       <input type="radio" name="mode" value="A" checked />
       <span>
-        <span class="t">Scale source sizes — <code>×k²</code></span>
-        <span class="d">Sizes grow with the rig; shadows keep their look. Closest to the original — recommended.</span>
+        <span class="t">Proportional rig <span class="tag">recommended</span></span>
+        <span class="d">Moves, aims and sizes every light with the sofa; preserves the original lighting character.</span>
       </span>
     </label>
     <label class="opt">
       <input type="radio" name="mode" value="B" />
       <span>
-        <span class="t">Keep source sizes — <code>×k^p</code></span>
-        <span class="d">Sizes stay fixed; large soft fills fall off gentler than k² (near field).</span>
+        <span class="t">Fixed physical sources</span>
+        <span class="d">Moves and aims the rig, but keeps panel and emitter sizes unchanged.</span>
       </span>
     </label>
+    <p class="modehelp"><b>Aim follows proportions:</b> when width, depth or height changes differently, each light keeps pointing at the same relative area of the sectional.</p>
     <details class="mini">
       <summary>When to use which?</summary>
-      <p class="note">At the reference size both modes are identical. <b>Mode A</b> keeps the rig proportional to the sofa — the closest match to the original look at any size. <b>Mode B</b> treats the lights as fixed physical fixtures, so big soft sources stay relatively soft as the sofa grows.</p>
+      <p class="note">Both modes are identical at the reference size. <b>Proportional</b> is the safe default for an unknown sectional size. Use <b>fixed sources</b> only when the studio fixtures must keep their real dimensions.</p>
     </details>
 
     <details class="mini">
@@ -258,36 +304,51 @@
       <summary>How axes &amp; scaling work</summary>
       <p class="note">
         <b>Axes:</b> world&nbsp;X↔width(453), Y↔depth(274), Z↔height(77) — inferred from the fill (SourceWidth&nbsp;500&nbsp;≈&nbsp;453).
-        Positions scale per-axis; <b>AttenuationRadius</b> follows the distance; rotations stay fixed.
+        Positions and aim directions scale per axis; <b>AttenuationRadius</b> follows the distance. Uniform scaling keeps rotations unchanged.
       </p>
     </details>
   </section>
 
+  <div class="col2">
   <!-- ── Output ─────────────────────────────── -->
   <section class="panel io">
-    <h2>T3D to paste into Unreal</h2>
+    <h2>Ready for Unreal</h2>
     <div class="bar">
-      <button id="copy" class="btn">📋 Copy</button>
-      <button id="copyLink" class="btn sec">🔗 Link</button>
+      <button id="copy" class="btn">Copy T3D</button>
+      <button id="copyLink" class="btn sec">Copy link</button>
       <button id="reset" class="btn sec">Reset</button>
       <span id="flash" class="flash"></span>
     </div>
-    <textarea id="out" spellcheck="false" readonly></textarea>
+    <div id="rigSummary" class="summary">—</div>
+    <details class="mini">
+      <summary>Preview generated T3D</summary>
+      <textarea id="out" spellcheck="false" readonly></textarea>
+    </details>
   </section>
 
-  <div class="col2">
   <!-- ── Diagrams (top + side) ──────────────── -->
   <section class="panel diagram">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-      <h2 style="margin:0">Diagrams — top &amp; side view</h2>
-      <span class="seg">
-        <input type="radio" name="colorby" id="cbRole" value="role" checked /><label for="cbRole">color: role</label>
-        <input type="radio" name="colorby" id="cbTemp" value="temp" /><label for="cbTemp">color: temperature</label>
-      </span>
+      <h2 style="margin:0">Scene schematic</h2>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <span class="seg">
+          <input type="radio" name="diagramview" id="dvTop" value="top" checked /><label for="dvTop">Top</label>
+          <input type="radio" name="diagramview" id="dvSide" value="side" /><label for="dvSide">Side</label>
+          <input type="radio" name="diagramview" id="dvBoth" value="both" /><label for="dvBoth">Both</label>
+        </span>
+        <span class="seg">
+          <input type="radio" name="colorby" id="cbRole" value="role" checked /><label for="cbRole">Role</label>
+          <input type="radio" name="colorby" id="cbTemp" value="temp" /><label for="cbTemp">Kelvin</label>
+        </span>
+      </div>
     </div>
-    <div class="views" style="margin-top:12px">
-      <div class="view"><h3>Top view (X · Y)</h3><svg id="diagram" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg"></svg></div>
-      <div class="view"><h3>Side view (X · Z) — height &amp; pitch</h3><svg id="sideview" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg"></svg></div>
+    <div class="diagramtools">
+      <div id="lightPicker" class="lightpicker" aria-label="Select a light"></div>
+      <div id="lightInspector" class="lightinspector"></div>
+    </div>
+    <div id="sceneViews" class="views" data-layout="top" style="margin-top:10px">
+      <div class="view topviewcard"><h3>Top · position, footprint &amp; horizontal aim</h3><svg id="diagram" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg"></svg></div>
+      <div class="view sideviewcard"><h3>Side · height, floor &amp; vertical aim</h3><svg id="sideview" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg"></svg></div>
     </div>
     <div class="legend">
       <span class="it"><span class="sw" style="background:#ffcf5a"></span>key (spot)</span>
@@ -310,7 +371,7 @@
 
   <!-- ── Per-light breakdown ─────────────────── -->
   <section class="panel bd">
-    <details class="sub" open>
+    <details class="sub">
       <summary>Per-light breakdown</summary>
       <div class="tblwrap">
       <table id="tbl">
@@ -320,7 +381,7 @@
         <tbody></tbody>
       </table>
       </div>
-      <p class="note">Every field <code>generateT3D</code> writes. <b>Size</b>: rect = W×H (·b BarnDoorLength), spot = r SourceRadius (·s SoftSourceRadius). <b>Atten</b> = AttenuationRadius. <b>Rot</b> = Pitch·Yaw·Roll (per shot, not scaled). The grey tag next to Intensity is the source value. <b>p</b> = falloff exponent (mode B); mode A uses k² (p = 2).</p>
+      <p class="note">Every field <code>generateT3D</code> writes. <b>Size</b>: rect = W×H (·b BarnDoorLength), spot = r SourceRadius (·s SoftSourceRadius). <b>Atten</b> = AttenuationRadius. <b>Rot</b> = adaptive Pitch·Yaw plus the original Roll. The grey tag next to Intensity is the source value. <b>p</b> = falloff exponent (mode B); mode A uses k² (p = 2).</p>
     </details>
   </section>
 
@@ -331,8 +392,9 @@
       <div class="lbl">1. Scale factors (reference rig <span id="fREF">453 × 274 × 77</span>):</div>
       <div class="eq"><span class="v">s<sub>X</sub></span> = W / <span id="fW1">453</span>&nbsp;&nbsp;&nbsp;&nbsp;<span class="v">s<sub>Y</sub></span> = D / <span id="fD1">274</span>&nbsp;&nbsp;&nbsp;&nbsp;<span class="v">s<sub>Z</sub></span> = H / <span id="fH1">77</span></div>
 
-      <div class="lbl">2. New light position:</div>
+      <div class="lbl">2. New light position and aim:</div>
       <div class="eq">X′ = X · s<sub>X</sub>&nbsp;&nbsp;&nbsp;&nbsp;Y′ = Y · s<sub>Y</sub>&nbsp;&nbsp;&nbsp;&nbsp;Z′ = Z · s<sub>Z</sub></div>
+      <div class="eq">aim′ = normalize(aim<sub>X</sub>·s<sub>X</sub>, aim<sub>Y</sub>·s<sub>Y</sub>, aim<sub>Z</sub>·s<sub>Z</sub>)</div>
 
       <div class="lbl">3. Change in distance to the sofa (per light):</div>
       <div class="eq">d<sub>0</sub> = √(X² + Y² + Z²)&nbsp;&nbsp;&nbsp;&nbsp;d<sub>1</sub> = √(X′² + Y′² + Z′²)&nbsp;&nbsp;&nbsp;&nbsp;<span class="v">k</span> = d<sub>1</sub> / d<sub>0</sub></div>
@@ -349,7 +411,7 @@
 
       <div class="lbl">6. Attenuation &amp; unchanged params:</div>
       <div class="eq">AttenuationRadius′ = AttenuationRadius · k</div>
-      <div class="eq">rotations, color, temperature — unchanged</div>
+      <div class="eq">roll, color, temperature — unchanged; pitch/yaw follow the scaled aim vector</div>
     </div>
     <p class="note">
       <b>Why not a "pure" inverse square:</b> for large soft sources (fill, left_rim)
@@ -559,6 +621,20 @@ function viewLights(view){
 /* ── Logic ──────────────────────────────────────────────────────── */
 const fmt = x => Number(x).toFixed(6);
 const hyp = (a,b,c) => Math.sqrt(a*a + b*b + c*c);
+const rad = deg => deg * Math.PI / 180;
+const deg = angle => angle * 180 / Math.PI;
+
+/* Preserve a light's aim under non-uniform sofa scaling. Unreal lights point along
+   their local X axis, so pitch/yaw define a direction vector. Scaling that vector
+   by the sofa's X/Y/Z factors keeps it aimed at the same relative area. */
+function scaleAim(pitch, yaw, sX, sY, sZ){
+  if (Math.abs(sX-sY) < 1e-12 && Math.abs(sY-sZ) < 1e-12) return { pitch, yaw };
+  const p = rad(pitch), y = rad(yaw);
+  const x = Math.cos(p) * Math.cos(y) * sX;
+  const yy = Math.cos(p) * Math.sin(y) * sY;
+  const z = Math.sin(p) * sZ;
+  return { pitch:deg(Math.atan2(z, Math.hypot(x, yy))), yaw:deg(Math.atan2(yy, x)) };
+}
 
 function computeAll(W, D, H, mode, swap, ref, view){
   const sX = (swap ? D : W) / ref.W;   // scale on world X (rig: 453 along X)
@@ -574,6 +650,7 @@ function computeAll(W, D, H, mode, swap, ref, view){
     const k  = d1 / d0;                                   // distance growth for this light
     const R  = L.type === "spot" ? L.radius : Math.sqrt(L.w * L.h / Math.PI); // effective source radius
     const p  = 2 * d0 * d0 / (d0 * d0 + R * R);           // effective falloff exponent (info)
+    const aim = scaleAim(L.pitch, L.yaw, sX, sY, sZ);
 
     let I_new, sizeK;
     if (mode === "A"){            // scale sizes → strict k²
@@ -586,7 +663,8 @@ function computeAll(W, D, H, mode, swap, ref, view){
 
     const r = { type:L.type, pos:npos, intensity:I_new, k, p, I0:L.I,
                 atten: L.atten != null ? L.atten * k : null,
-                pitch:L.pitch, yaw:L.yaw, roll:L.roll || 0,   // rotation: per-view, not scaled
+                pitch:aim.pitch, yaw:aim.yaw, roll:L.roll || 0,
+                sourcePitch:L.pitch, sourceYaw:L.yaw,
                 cone:L.cone, color:L.color, label:L.label, temp:L.temp };
     if (L.type === "rect"){
       r.w = L.w * sizeK; r.h = L.h * sizeK; r.barn = (L.barn || 0) * sizeK;
@@ -675,7 +753,7 @@ function armBlocksView(arm, view){
 
 /* Export for node tests (no effect in the browser). */
 if (typeof module !== "undefined" && module.exports){
-  module.exports = { REF_DEFAULT, LIGHT_BASE, VIEWS, viewLights, TEMPLATE, computeAll, generateT3D, fmt, hyp,
+  module.exports = { REF_DEFAULT, LIGHT_BASE, VIEWS, viewLights, TEMPLATE, computeAll, generateT3D, fmt, hyp, scaleAim,
     RB_VIEW_SUFFIXES, rbPrefixVariants, rbCandidateFiles, rbMatchManifest,
     presetArmSide, armRequiredView, armBlocksView };
 }
@@ -732,6 +810,7 @@ if (typeof document !== "undefined"){
   /* Shared diagram drawing bits (colors, fonts, dimension lines, label collision). */
   const DIAG = { grid:"#1b1e25", minor:"#15181d", axis:"#39404d", tick:"#4b515c",
                  cap:"#6b7280", dim:"#8a93a3", sofaFill:"#2a2f3a", sofaLine:"#566173" };
+  let selectedLight = "main_key_lgt";
   const DGF = 'font-family="system-ui"';                       // names / captions
   const DGM = 'font-family="ui-monospace,Consolas,monospace"'; // numbers
   /* Greedy placer: shifts a light's two-line label up/down until it stops overlapping
@@ -769,6 +848,35 @@ if (typeof document !== "undefined"){
       `<line x1="${x1}" y1="${y-fs*0.35}" x2="${x1}" y2="${y+fs*0.35}" stroke="${DIAG.dim}" stroke-width="${sw}"/>` +
       `<line x1="${x2}" y1="${y-fs*0.35}" x2="${x2}" y2="${y+fs*0.35}" stroke="${DIAG.dim}" stroke-width="${sw}"/>` +
       `<text x="${(x1+x2)/2}" y="${y-fs*0.55}" fill="${DIAG.dim}" font-size="${fs*0.8}" text-anchor="middle" ${DGM}>${step} cm</text>`;
+  }
+
+  function selectLight(name){ selectedLight = name; render(); }
+  function wireLightHits(svg){
+    if (!svg) return;
+    svg.querySelectorAll("[data-light]").forEach(hit => {
+      const name = hit.getAttribute("data-light");
+      hit.classList.toggle("selected", name === selectedLight);
+      hit.addEventListener("click", () => selectLight(name));
+    });
+  }
+  function renderLightTools(res){
+    if (!res[selectedLight]) selectedLight = Object.keys(res)[0];
+    const picker = $("lightPicker"), inspector = $("lightInspector"), r = res[selectedLight];
+    if (!picker || !inspector || !r) return;
+    picker.innerHTML = Object.entries(res).map(([name, light]) =>
+      `<button type="button" class="lightchip${name===selectedLight?" active":""}" data-pick="${name}" style="--lc:${colorOf(light)}">${light.label||name.replace(/_lgt$/,"")}</button>`).join("");
+    picker.querySelectorAll("[data-pick]").forEach(btn => btn.addEventListener("click", () => selectLight(btn.dataset.pick)));
+    const size = r.type === "rect" ? `${Math.round(r.w)} × ${Math.round(r.h)} cm` : `r ${r.radius.toFixed(1)} cm`;
+    const aimChange = Math.max(Math.abs(r.pitch-r.sourcePitch), Math.abs(((r.yaw-r.sourceYaw+180)%360+360)%360-180));
+    const stat = (k,v,extra="") => `<div class="lightstat ${extra}"><span class="k">${k}</span><span class="v" title="${v}">${v}</span></div>`;
+    inspector.style.setProperty("--lc", colorOf(r));
+    inspector.innerHTML =
+      stat(r.label||selectedLight, `${r.type} · ${Math.round(r.temp||6500)} K`, "primary") +
+      stat("Intensity", `${r.intensity.toFixed(2)} cd`) +
+      stat("Position X · Y · Z", `${r.pos.map(v=>v.toFixed(1)).join(" · ")} cm`) +
+      stat("Pitch · Yaw", `${r.pitch.toFixed(1)}° · ${r.yaw.toFixed(1)}°`) +
+      stat("Source size", size) +
+      stat("Adaptation", `${r.k.toFixed(2)}× · aim ${aimChange.toFixed(1)}°`);
   }
 
   // Top-down schematic (X·Y). World coords map straight to the viewBox; +Y points
@@ -837,6 +945,7 @@ if (typeof document !== "undefined"){
       }
       marks += `<text x="${x}" y="${yy}" fill="${col}" font-size="${fs}" text-anchor="middle" ${DGF}>${main}</text>` +
                `<text x="${x}" y="${yy+fs*0.95}" fill="#7c8493" font-size="${fs*0.75}" text-anchor="middle" ${DGM}>${sub}</text>`;
+      marks += `<g data-light="${n}" style="--lc:${col}"><circle class="selring" cx="${x}" cy="${y}" r="${dot*2.2}" fill="none" stroke="${col}" stroke-width="${sw*0.9}"/><circle cx="${x}" cy="${y}" r="${dot*3.2}" fill="transparent"/></g>`;
     }
 
     /* sofa footprint + engineering dimensions (dimensions only when the sofa isn't rotated) */
@@ -869,6 +978,7 @@ if (typeof document !== "undefined"){
     const bar = scaleBar(maxX - fs*1.5, maxY - fs*1.9, step, fs, sw*0.8);
 
     svg.innerHTML = dgDefs("dg-top") + grid + cones + sofa + cam + marks + bar;
+    wireLightHits(svg);
   }
 
   // Side schematic (X·Z). Screen y = -Z so up is up; floor at Z=0.
@@ -941,24 +1051,28 @@ if (typeof document !== "undefined"){
       }
       marks += `<text x="${x}" y="${yy}" fill="${col}" font-size="${fs}" text-anchor="middle" ${DGF}>${main}</text>` +
                `<text x="${x}" y="${yy+fs*0.95}" fill="#7c8493" font-size="${fs*0.75}" text-anchor="middle" ${DGM}>${sub}</text>`;
+      marks += `<g data-light="${n}" style="--lc:${col}"><circle class="selring" cx="${x}" cy="${y}" r="${dot*2.2}" fill="none" stroke="${col}" stroke-width="${sw*0.9}"/><circle cx="${x}" cy="${y}" r="${dot*3.2}" fill="transparent"/></g>`;
     }
     const bar = scaleBar(vbMaxX - fs*1.5, vbMinY + fs*1.9, step, fs, sw*0.8);
     svg.innerHTML = dgDefs("dg-side") + grid + g + marks + bar;
+    wireLightHits(svg);
   }
 
   function renderWarnings(W, D, H, mode, ref, res){
     const box = $("warn"); if (!box) return;
     const sX = W/ref.W, sY = D/ref.D, sZ = H/ref.H, ws = [];
-    const sMax = Math.max(Math.abs(sX-1), Math.abs(sY-1), Math.abs(sZ-1));
-    if (sMax > 0.5) ws.push(`Rig scaled to ~${Math.round((1+sMax)*100)}% of the reference — verify the look${mode==="B"?" (Mode B drifts more from the original)":""}.`);
+    const scales = [sX,sY,sZ], lo = Math.min(...scales), hi = Math.max(...scales);
+    if (lo < .5 || hi > 1.5) ws.push(`Extreme scale (${lo.toFixed(2)}–${hi.toFixed(2)}×) — use this as a starting point and verify coverage in the render.`);
     const inAsp = W/D, refAsp = ref.W/ref.D;
     if (Math.abs(inAsp/refAsp - 1) > 0.25)
-      ws.push(`Footprint aspect ${inAsp.toFixed(2)}:1 differs from the reference ${refAsp.toFixed(2)}:1 — coverage was tuned for the reference shape; check framing.`);
+      ws.push(`Unusual footprint (${inAsp.toFixed(2)}:1 vs ${refAsp.toFixed(2)}:1 reference) — adaptive aim is compensating, but check the chaise and outer corners.`);
+    if (W < 150 || D < 120 || H < 45 || H > 130)
+      ws.push(`These dimensions are outside a typical sectional range — confirm that the values are in centimetres.`);
     const maxI = Math.max(...Object.values(res).map(r => r.intensity));
     if (maxI > 250) ws.push(`Peak intensity ≈ ${Math.round(maxI)} cd (well above the source) — re-check camera exposure.`);
     box.innerHTML = ws.length
       ? ws.map(w => `<div class="w">⚠ ${w}</div>`).join("")
-      : `<div class="w ok">✓ Proportional to the reference rig.</div>`;
+      : `<div class="w ok">✓ Within calibrated range · adaptive aim active.</div>`;
   }
 
   function setRefLabels(ref){
@@ -978,8 +1092,16 @@ if (typeof document !== "undefined"){
     const res = computeAll(W, D, H, mode, false, ref, view);
     $("out").value = generateT3D(res);
 
+    const ks = Object.values(res).map(r => r.k);
+    const angleDiff = (a,b) => Math.abs(((a-b+180)%360+360)%360-180);
+    const aimDelta = Math.max(...Object.values(res).map(r =>
+      Math.max(Math.abs(r.pitch-r.sourcePitch), angleDiff(r.yaw,r.sourceYaw))));
+    const summary = $("rigSummary");
+    if (summary) summary.textContent = `${W} × ${D} × ${H} cm · 5 lights · ${Math.min(...ks).toFixed(2)}–${Math.max(...ks).toFixed(2)}× distance${aimDelta>.05 ? ` · aim corrected up to ${aimDelta.toFixed(1)}°` : ""}`;
+
     renderDiagram(res, W, D, H, (VIEWS[view] || VIEWS.F).rot || 0, (VIEWS[view] || VIEWS.F).label ? view : "");
     renderSideView(res, W, H);
+    renderLightTools(res);
     renderWarnings(W, D, H, mode, ref, res);
     writeURL(W, D, H, mode, ref);
 
@@ -1218,6 +1340,9 @@ if (typeof document !== "undefined"){
   });
   ["rW","rD","rH"].forEach(id => $(id).addEventListener("input", render));
   document.querySelectorAll('input[name=mode], input[name=colorby], input[name=view]').forEach(el => el.addEventListener("change", render));
+  document.querySelectorAll('input[name=diagramview]').forEach(el => el.addEventListener("change", () => {
+    const views = $("sceneViews"); if (views) views.dataset.layout = el.value;
+  }));
 
   $("copy").addEventListener("click", () => copyText($("out").value).then(() => flash("Copied — Ctrl+V in the UE viewport")));
   $("copyLink").addEventListener("click", () => copyText(location.href).then(() => flash("Link copied")));

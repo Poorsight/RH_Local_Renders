@@ -24,7 +24,7 @@ try {
 }
 
 const { REF_DEFAULT, TEMPLATE, VIEWS, computeAll, generateT3D,
-        rbCandidateFiles, rbMatchManifest, presetArmSide, armRequiredView, armBlocksView } = L;
+        scaleAim, rbCandidateFiles, rbMatchManifest, presetArmSide, armRequiredView, armBlocksView } = L;
 
 let failed = 0;
 function check(name, cond) {
@@ -89,6 +89,30 @@ const big = generateT3D(computeAll(600, 300, 80, "A", false, REF_DEFAULT, "F"));
 check("scaled F (600x300x80) differs from reference", big !== scaled);
 check("scaled F keeps 5 actors + line count",
   (big.match(/Begin Actor/g) || []).length === 5 && big.split("\n").length === tmplLines);
+
+// 5. Aim follows non-uniform sofa proportions, but uniform scaling is rotation-stable.
+const uniformAim = scaleAim(-25, -11, 2, 2, 2);
+const wideAim = scaleAim(0, 45, 2, 1, 1);
+const tallAim = scaleAim(45, 0, 1, 1, 2);
+check("uniform scaling preserves pitch/yaw exactly",
+  uniformAim.pitch === -25 && uniformAim.yaw === -11);
+check("non-uniform XY scaling adapts yaw",
+  Math.abs(wideAim.pitch) < 1e-12 && Math.abs(wideAim.yaw - 26.565051) < 1e-5);
+check("non-uniform Z scaling adapts pitch",
+  Math.abs(tallAim.pitch - 63.434949) < 1e-5 && Math.abs(tallAim.yaw) < 1e-12);
+const adapted = computeAll(600, 300, 80, "A", false, REF_DEFAULT, "F");
+check("scaled rig exposes source aim and corrects the main key",
+  adapted.main_key_lgt.sourceYaw === -11 && adapted.main_key_lgt.sourcePitch === -25 &&
+  adapted.main_key_lgt.yaw !== -11 && adapted.main_key_lgt.pitch !== -25);
+for (const mode of ["A", "B"]) {
+  const extreme = computeAll(1000, 80, 30, mode, false, REF_DEFAULT, "TQL");
+  check(`extreme valid dimensions stay finite in mode ${mode}`,
+    Object.values(extreme).every(r => [
+      ...r.pos, r.intensity, r.k, r.p, r.pitch, r.yaw,
+      ...(r.atten == null ? [] : [r.atten]),
+      r.type === "rect" ? r.w : r.radius,
+    ].every(Number.isFinite)));
+}
 
 if (failed) {
   console.error(`\n${failed} check(s) FAILED`);

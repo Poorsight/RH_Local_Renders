@@ -13,6 +13,10 @@ into Unreal via `Ctrl + V`.
    (`front_fill_lgt`, `main_key_lgt`, `left_rim_lgt`, `right_bounce_lgt`, `right_rim_lgt`)
    in the `Lights` folder.
 
+Use the **Scene schematic** to validate the result before copying: switch between Top,
+Side, and Both, then click a light (or its colored chip) to inspect its position, aim,
+intensity, source size, and how much the unknown sofa dimensions changed it.
+
 Render previews are loaded from the server when matching files exist under
 `Renders/<material>/<render-prefix>_<shot-suffix>.png` next to `index.html`.
 The board reads `Renders/manifest.json` when present (regenerate it with
@@ -36,11 +40,12 @@ with dimensions `384 x 305 x 82`.
 | What | Rule |
 |---|---|
 | Positions | per-coordinate: `X·(W/453)`, `Y·(D/274)`, `Z·(H/77)` |
+| Aim | pitch/yaw follow the same non-uniform X/Y/Z scaling, keeping each light aimed at the same relative sofa area |
 | Light distance | `k = |new_pos| / |old_pos|` (individual to each light) |
 | Intensity, mode **A** | light sizes `×k`, intensity `×k²` (inverse square holds strictly) |
 | Intensity, mode **B** | sizes unchanged, `I·(k²·d² + R²)/(d² + R²) ≈ I·k^p`, where `p = 2d²/(d²+R²)` |
 | AttenuationRadius | `×k` (follows the distance) |
-| Rotations, color, temperature | unchanged |
+| Roll, color, temperature | unchanged (pitch/yaw change only when the axis scales differ) |
 
 - **Axes:** world X ↔ width (453), Y ↔ depth (274), Z ↔ height (77). Determined by
   the fill: `SourceWidth = 500 ≈ 453`. (`computeAll`'s `swap` flag swaps X↔Y; the UI checkbox for it was removed.)
@@ -48,6 +53,9 @@ with dimensions `384 x 305 x 82`.
 - **Mode B** — explains why "inverse square doesn't work": for large soft
   lights (fill, left_rim), `R` is comparable to the distance → softer falloff (`~k^1.7`),
   while for the sharp `main_key` → almost `k²`.
+- **Non-uniform sectionals:** the tool scales each light's direction vector and derives new
+  pitch/yaw, preventing aim drift on unusually wide or deep layouts. At the reference size
+  and under uniform scaling the original rotations remain byte-identical.
 
 ## Deploy to GitHub Pages
 

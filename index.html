@@ -671,6 +671,16 @@ function scaleAim(pitch, yaw, sX, sY, sZ){
   return { pitch:deg(Math.atan2(z, Math.hypot(x, yy))), yaw:deg(Math.atan2(yy, x)) };
 }
 
+/* Expand scene bounds to the viewport aspect without cropping or distorting geometry.
+   This prevents preserveAspectRatio letterboxing, so the engineering grid fills the canvas. */
+function fitAspectBounds(minX, maxX, minY, maxY, aspect){
+  let w = Math.max(maxX-minX, 1e-9), h = Math.max(maxY-minY, 1e-9);
+  const a = Number.isFinite(aspect) && aspect > 0 ? aspect : w/h;
+  const cx = (minX+maxX)/2, cy = (minY+maxY)/2;
+  if (w/h < a) w = h*a; else h = w/a;
+  return { minX:cx-w/2, maxX:cx+w/2, minY:cy-h/2, maxY:cy+h/2 };
+}
+
 function computeAll(W, D, H, mode, swap, ref, view){
   const sX = (swap ? D : W) / ref.W;   // scale on world X (rig: 453 along X)
   const sY = (swap ? W : D) / ref.D;   // scale on world Y (rig: 274 along Y)
@@ -788,7 +798,7 @@ function armBlocksView(arm, view){
 
 /* Export for node tests (no effect in the browser). */
 if (typeof module !== "undefined" && module.exports){
-  module.exports = { REF_DEFAULT, LIGHT_BASE, VIEWS, viewLights, TEMPLATE, computeAll, generateT3D, fmt, hyp, scaleAim,
+  module.exports = { REF_DEFAULT, LIGHT_BASE, VIEWS, viewLights, TEMPLATE, computeAll, generateT3D, fmt, hyp, scaleAim, fitAspectBounds,
     RB_VIEW_SUFFIXES, rbPrefixVariants, rbCandidateFiles, rbMatchManifest,
     presetArmSide, armRequiredView, armBlocksView };
 }
@@ -843,7 +853,7 @@ if (typeof document !== "undefined"){
   }
 
   /* Shared diagram drawing bits (colors, fonts, dimension lines, label collision). */
-  const DIAG = { grid:"#31414f", minor:"#23323e", axis:"#607485", tick:"#718594",
+  const DIAG = { grid:"#293945", minor:"#1d2a34", axis:"#526675", tick:"#657986",
                  cap:"#8295a3", dim:"#9aabb7", sofaFill:"#293641", sofaLine:"#687b89" };
   let selectedLight = "main_key_lgt";
   const DGF = 'font-family="system-ui"';                       // names / captions
@@ -884,6 +894,10 @@ if (typeof document !== "undefined"){
       `<line x1="${x2}" y1="${y-fs*0.35}" x2="${x2}" y2="${y+fs*0.35}" stroke="${DIAG.dim}" stroke-width="${sw}"/>` +
       `<text x="${(x1+x2)/2}" y="${y-fs*0.55}" fill="${DIAG.dim}" font-size="${fs*0.8}" text-anchor="middle" ${DGM}>${step} cm</text>`;
   }
+  const svgAspect = svg => {
+    const r = svg.getBoundingClientRect();
+    return r.width > 0 && r.height > 0 ? r.width/r.height : 1.5;
+  };
 
   function selectLight(name){ selectedLight = name; render(); }
   function wireLightHits(svg){
@@ -927,6 +941,7 @@ if (typeof document !== "undefined"){
       minX=Math.min(minX,x); maxX=Math.max(maxX,x); minY=Math.min(minY,y); maxY=Math.max(maxY,y); }
     const pad = (Math.max(maxX-minX, maxY-minY) || 1)*0.12 + 80;
     minX-=pad; maxX+=pad; minY-=pad; maxY+=pad;
+    ({minX,maxX,minY,maxY} = fitAspectBounds(minX,maxX,minY,maxY,svgAspect(svg)));
     const vbW = maxX-minX, vbH = maxY-minY, u = Math.max(vbW, vbH);
     svg.setAttribute("viewBox", `${minX} ${minY} ${vbW} ${vbH}`);
     const fs = u*0.0245, sw = u*0.0036, dot = u*0.013, step = niceStep(u);
@@ -937,12 +952,12 @@ if (typeof document !== "undefined"){
     let grid = "";
     for (let x = Math.ceil(minX/(step/2))*(step/2); x <= maxX; x += step/2){
       const major = Math.abs(x/step - Math.round(x/step)) < 1e-6;
-      grid += `<line x1="${x}" y1="${minY}" x2="${x}" y2="${maxY}" stroke="${major?DIAG.grid:DIAG.minor}" stroke-width="${sw*(major?1.05:0.62)}"/>`;
+      grid += `<line x1="${x}" y1="${minY}" x2="${x}" y2="${maxY}" stroke="${major?DIAG.grid:DIAG.minor}" stroke-width="${sw*(major?0.82:0.42)}"/>`;
       if (major) grid += `<text x="${x}" y="${maxY-fs*0.35}" fill="${DIAG.tick}" font-size="${fs*0.75}" text-anchor="middle" ${DGM}>${Math.round(x)}</text>`;
     }
     for (let y = Math.ceil(minY/(step/2))*(step/2); y <= maxY; y += step/2){
       const major = Math.abs(y/step - Math.round(y/step)) < 1e-6;
-      grid += `<line x1="${minX}" y1="${y}" x2="${maxX}" y2="${y}" stroke="${major?DIAG.grid:DIAG.minor}" stroke-width="${sw*(major?1.05:0.62)}"/>`;
+      grid += `<line x1="${minX}" y1="${y}" x2="${maxX}" y2="${y}" stroke="${major?DIAG.grid:DIAG.minor}" stroke-width="${sw*(major?0.82:0.42)}"/>`;
       if (major) grid += `<text x="${minX+fs*0.35}" y="${y-fs*0.25}" fill="${DIAG.tick}" font-size="${fs*0.75}" text-anchor="start" ${DGM}>${Math.round(y)}</text>`;
     }
     grid += `<line x1="0" y1="${minY}" x2="0" y2="${maxY}" stroke="${DIAG.axis}" stroke-width="${sw*1.15}" stroke-dasharray="${u*0.008} ${u*0.008}"/>` +
@@ -1024,7 +1039,9 @@ if (typeof document !== "undefined"){
     for (const n of names){ const x = res[n].pos[0], z = res[n].pos[2];
       minX=Math.min(minX,x); maxX=Math.max(maxX,x); maxZ=Math.max(maxZ,z); }
     const pad = (Math.max(maxX-minX, maxZ) || 1)*0.14 + 60;
-    const vbMinX = minX-pad, vbMaxX = maxX+pad, vbMinY = -(maxZ+pad), vbMaxY = pad;
+    let vbMinX = minX-pad, vbMaxX = maxX+pad, vbMinY = -(maxZ+pad), vbMaxY = pad;
+    const fitted = fitAspectBounds(vbMinX,vbMaxX,vbMinY,vbMaxY,svgAspect(svg));
+    vbMinX=fitted.minX; vbMaxX=fitted.maxX; vbMinY=fitted.minY; vbMaxY=fitted.maxY;
     const vbW = vbMaxX-vbMinX, vbH = vbMaxY-vbMinY, u = Math.max(vbW, vbH);
     svg.setAttribute("viewBox", `${vbMinX} ${vbMinY} ${vbW} ${vbH}`);
     const fs = u*0.024, sw = u*0.0038, dot = u*0.013, step = niceStep(u);
@@ -1034,12 +1051,12 @@ if (typeof document !== "undefined"){
     let grid = "";
     for (let x = Math.ceil(vbMinX/(step/2))*(step/2); x <= vbMaxX; x += step/2){
       const major = Math.abs(x/step - Math.round(x/step)) < 1e-6;
-      grid += `<line x1="${x}" y1="${vbMinY}" x2="${x}" y2="${vbMaxY}" stroke="${major?DIAG.grid:DIAG.minor}" stroke-width="${sw*(major?1.05:0.62)}"/>`;
-      if (major) grid += `<text x="${x}" y="${pad*0.72}" fill="${DIAG.tick}" font-size="${fs*0.75}" text-anchor="middle" ${DGM}>${Math.round(x)}</text>`;
+      grid += `<line x1="${x}" y1="${vbMinY}" x2="${x}" y2="${vbMaxY}" stroke="${major?DIAG.grid:DIAG.minor}" stroke-width="${sw*(major?0.82:0.42)}"/>`;
+      if (major) grid += `<text x="${x}" y="${vbMaxY-fs*0.45}" fill="${DIAG.tick}" font-size="${fs*0.75}" text-anchor="middle" ${DGM}>${Math.round(x)}</text>`;
     }
-    for (let z = 0; z <= maxZ+pad; z += step/2){
+    for (let z = Math.ceil((-vbMaxY)/(step/2))*(step/2); z <= -vbMinY; z += step/2){
       const major = Math.abs(z/step - Math.round(z/step)) < 1e-6;
-      grid += `<line x1="${vbMinX}" y1="${-z}" x2="${vbMaxX}" y2="${-z}" stroke="${major?DIAG.grid:DIAG.minor}" stroke-width="${sw*(major?1.05:0.62)}"/>`;
+      grid += `<line x1="${vbMinX}" y1="${-z}" x2="${vbMaxX}" y2="${-z}" stroke="${major?DIAG.grid:DIAG.minor}" stroke-width="${sw*(major?0.82:0.42)}"/>`;
       if (major && z > 0) grid += `<text x="${vbMinX+fs*0.35}" y="${-z-fs*0.25}" fill="${DIAG.tick}" font-size="${fs*0.75}" text-anchor="start" ${DGM}>${Math.round(z)}</text>`;
     }
     grid += `<line x1="0" y1="${vbMinY}" x2="0" y2="${vbMaxY}" stroke="${DIAG.axis}" stroke-width="${sw*1.15}" stroke-dasharray="${u*0.008} ${u*0.008}"/>` +
@@ -1377,7 +1394,13 @@ if (typeof document !== "undefined"){
   document.querySelectorAll('input[name=mode], input[name=colorby], input[name=view]').forEach(el => el.addEventListener("change", render));
   document.querySelectorAll('input[name=diagramview]').forEach(el => el.addEventListener("change", () => {
     const views = $("sceneViews"); if (views) views.dataset.layout = el.value;
+    requestAnimationFrame(render); // recompute viewBox for the newly visible canvas aspect
   }));
+  let sceneResizeFrame = 0;
+  window.addEventListener("resize", () => {
+    cancelAnimationFrame(sceneResizeFrame);
+    sceneResizeFrame = requestAnimationFrame(render);
+  });
 
   $("copy").addEventListener("click", () => copyText($("out").value).then(() => flash("Copied — Ctrl+V in the UE viewport")));
   $("copyLink").addEventListener("click", () => copyText(location.href).then(() => flash("Link copied")));

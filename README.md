@@ -18,6 +18,8 @@ with Plan and Elevation visible together; either view can be expanded. Click a l
 its colored chip) to inspect its position, aim, intensity, source size, and how much the
 unknown sofa dimensions changed it. The calm role palette, stronger engineering grid,
 animated aim vectors, light cones, and selection pulse make changes easier to track.
+The schematic expands its world-space bounds to match each viewport aspect, so the
+dimension grid always fills the canvas without stretching or cropping the scene.
 
 Render previews are loaded from the server when matching files exist under
 `Renders/<material>/<render-prefix>_<shot-suffix>.png` next to `index.html`.

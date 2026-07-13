@@ -24,7 +24,7 @@ try {
 }
 
 const { REF_DEFAULT, TEMPLATE, VIEWS, computeAll, generateT3D,
-        scaleAim, rbCandidateFiles, rbMatchManifest, presetArmSide, armRequiredView, armBlocksView } = L;
+        scaleAim, fitAspectBounds, rbCandidateFiles, rbMatchManifest, presetArmSide, armRequiredView, armBlocksView } = L;
 
 let failed = 0;
 function check(name, cond) {
@@ -45,6 +45,11 @@ check("VIEWS = [F, FH, TQR, TQL]", views.join(",") === "F,FH,TQR,TQL");
 check("scene schematic defaults to the two-screen split view",
   /name="diagramview" id="dvBoth" value="both" checked/.test(html) &&
   /id="sceneViews" class="views" data-layout="both"/.test(html));
+const fittedWide = fitAspectBounds(-100, 100, -100, 100, 2);
+const fittedTall = fitAspectBounds(-200, 200, -50, 50, 1);
+check("diagram bounds expand to fill wide/tall viewports without cropping",
+  fittedWide.minX === -200 && fittedWide.maxX === 200 && fittedWide.minY === -100 && fittedWide.maxY === 100 &&
+  fittedTall.minX === -200 && fittedTall.maxX === 200 && fittedTall.minY === -200 && fittedTall.maxY === 200);
 check("default Koper preset is 384x305x82, arm L",
   /"KOPER_LEFT_ARM_L_SECTIONAL_prod39250480":\s*\{\s*W:384,\s*D:305,\s*H:82,\s*arm:"L",/.test(html));
 check("arm side: explicit preset.arm wins over the name",

@@ -69,30 +69,57 @@
   .fml .eq{margin:4px 0;white-space:nowrap}
   .fml .v{color:var(--accent)}
   .fml sub,.fml sup{font-size:10px}
-  .diagram{order:2}
-  .views{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .diagram{order:2;padding:0;overflow:hidden;border-color:#34414d;background:#1b222a}
+  .diagramhero{padding:14px 16px 12px;background:linear-gradient(135deg,rgba(125,164,199,.09),transparent 52%),#1d252e;border-bottom:1px solid #34414d}
+  .diagramhero h2{color:#d7dfe6;letter-spacing:.8px}
+  .diagramhero .eyebrow{font-size:10px;text-transform:uppercase;letter-spacing:1.2px;color:#778896;margin-bottom:3px}
+  .diagrambody{padding:12px}
+  .views{display:grid;grid-template-columns:1fr 1fr;gap:12px}
   @media (max-width:760px){.views{grid-template-columns:1fr}}
-  .view h3{margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
-  .view svg{width:100%;height:320px;background:#0f1115;border:1px solid var(--line);border-radius:8px;display:block}
+  .view{position:relative;background:#141b22;border:1px solid #34414d;border-radius:12px;overflow:hidden;box-shadow:0 12px 34px rgba(4,8,12,.22)}
+  .viewhead{height:38px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 11px;border-bottom:1px solid #2d3944;background:linear-gradient(180deg,#202a34,#1a232c)}
+  .view h3{margin:0;font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:#9aaab7}
+  .viewbadge{font:9px var(--mono);letter-spacing:.6px;color:#8296a5;border:1px solid #3b4a57;background:#151d24;border-radius:5px;padding:3px 6px}
+  .viewcanvas{position:relative;isolation:isolate;background:radial-gradient(circle at 50% 48%,rgba(69,91,108,.13),transparent 48%),#10171d}
+  .viewcanvas::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:2;box-shadow:inset 0 0 42px rgba(2,6,10,.42);border-radius:0 0 11px 11px}
+  .view svg{position:relative;z-index:1;width:100%;height:360px;background:transparent;display:block}
   .views[data-layout="top"]{grid-template-columns:1fr}.views[data-layout="top"] .sideviewcard{display:none}
   .views[data-layout="side"]{grid-template-columns:1fr}.views[data-layout="side"] .topviewcard{display:none}
   .views[data-layout="top"] svg,.views[data-layout="side"] svg{height:500px}
-  .diagramtools{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:start;margin-top:10px}
+  .diagramtools{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:start;margin-bottom:12px}
   .lightpicker{display:flex;gap:6px;flex-wrap:wrap}
-  .lightchip{appearance:none;border:1px solid var(--line);background:var(--panel2);color:var(--muted);border-radius:7px;padding:6px 8px;font-size:11px;cursor:pointer}
+  .lightchip{appearance:none;border:1px solid #34414d;background:#18212a;color:#93a2ae;border-radius:999px;padding:6px 10px;font-size:11px;cursor:pointer;transition:color .16s,border-color .16s,background .16s,transform .16s,box-shadow .16s}
   .lightchip::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;background:var(--lc)}
-  .lightchip:hover,.lightchip.active{border-color:var(--lc);color:var(--txt);background:#292d36}
-  .lightinspector{grid-column:1/-1;display:grid;grid-template-columns:1.1fr .8fr 1.4fr 1fr 1fr 1fr;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden}
-  .lightstat{background:#171a20;padding:7px 9px;min-width:0}
+  .lightchip:hover{transform:translateY(-1px);border-color:#607382;color:#dce4ea}
+  .lightchip.active{border-color:var(--lc);color:#edf2f5;background:#222c35;box-shadow:0 0 0 1px color-mix(in srgb,var(--lc) 24%,transparent),0 5px 16px rgba(3,7,10,.25)}
+  .lightinspector{grid-column:1/-1;display:grid;grid-template-columns:1.1fr .8fr 1.4fr 1fr 1fr 1fr;gap:1px;background:#34414d;border:1px solid #34414d;border-radius:10px;overflow:hidden;box-shadow:0 8px 24px rgba(4,8,12,.18)}
+  .lightstat{background:#151d24;padding:8px 10px;min-width:0}
   .lightstat .k{display:block;color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}
   .lightstat .v{display:block;color:var(--txt);font:11px var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .lightstat.primary{border-left:3px solid var(--lc)}
+  .lightstat.primary{border-left:3px solid var(--lc);background:linear-gradient(90deg,color-mix(in srgb,var(--lc) 9%,#151d24),#151d24)}
   .view svg [data-light]{cursor:pointer;transition:opacity .12s,filter .12s}
   .view svg .selring{opacity:0;transition:opacity .12s}
-  .view svg [data-light].selected .selring{opacity:1;filter:drop-shadow(0 0 5px var(--lc))}
-  .legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:10px;font-size:12px;color:var(--muted);align-items:center}
+  .view svg [data-light].selected .selring{opacity:1;filter:drop-shadow(0 0 5px var(--lc));animation:selectPulse 1.8s ease-in-out infinite}
+  .view svg .beam{animation:beamBreath 3.6s ease-in-out infinite;transform-box:fill-box;transform-origin:center}
+  .view svg .aimline{stroke-dasharray:10 7;animation:aimFlow 1.4s linear infinite}
+  .view svg .beam.selected{filter:drop-shadow(0 0 6px var(--lc));opacity:.58!important}
+  .view svg .aimvector.selected .aimline{filter:drop-shadow(0 0 4px var(--lc));stroke-width:calc(1px + .45%)}
+  .view svg [data-light]:hover{filter:drop-shadow(0 0 5px var(--lc))}
+  .view:hover{border-color:#465766;box-shadow:0 16px 40px rgba(3,7,10,.3)}
+  .views .view{animation:sceneEnter .42s cubic-bezier(.2,.7,.2,1) both}
+  .views .view:nth-child(2){animation-delay:.07s}
+  .diagram .seg{border-color:#3a4955;background:#151d24}
+  .diagram .seg label{color:#82929f;padding:6px 10px}
+  .diagram .seg input:checked+label{background:#607888;color:#f0f4f6;box-shadow:none}
+  .diagram .seg label:hover{color:#dce4e9;background:#202b34}
+  .view svg .selring{transform-box:fill-box;transform-origin:center}
+  @keyframes selectPulse{0%,100%{stroke-opacity:.55;transform:scale(.92)}50%{stroke-opacity:1;transform:scale(1.16)}}
+  @keyframes beamBreath{0%,100%{fill-opacity:.72}50%{fill-opacity:1}}
+  @keyframes aimFlow{to{stroke-dashoffset:-34}}
+  @keyframes sceneEnter{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
+  .legend{display:flex;flex-wrap:wrap;gap:14px;margin:10px 2px 0;font-size:11px;color:#8495a2;align-items:center}
   .legend .it{display:flex;align-items:center;gap:6px}
-  .legend .sw{width:12px;height:12px;border-radius:3px;display:inline-block}
+  .legend .sw{width:9px;height:9px;border-radius:50%;display:inline-block;box-shadow:0 0 8px color-mix(in srgb,currentColor 35%,transparent)}
   .field{margin-bottom:7px}
   .field .top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
   .field .top label{margin:0}
@@ -328,13 +355,13 @@
 
   <!-- ── Diagrams (top + side) ──────────────── -->
   <section class="panel diagram">
-    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-      <h2 style="margin:0">Scene schematic</h2>
+    <div class="diagramhero" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+      <div><div class="eyebrow">Light rig workspace</div><h2 style="margin:0">Scene schematic</h2></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <span class="seg">
-          <input type="radio" name="diagramview" id="dvTop" value="top" checked /><label for="dvTop">Top</label>
-          <input type="radio" name="diagramview" id="dvSide" value="side" /><label for="dvSide">Side</label>
-          <input type="radio" name="diagramview" id="dvBoth" value="both" /><label for="dvBoth">Both</label>
+          <input type="radio" name="diagramview" id="dvTop" value="top" /><label for="dvTop">Plan</label>
+          <input type="radio" name="diagramview" id="dvSide" value="side" /><label for="dvSide">Elevation</label>
+          <input type="radio" name="diagramview" id="dvBoth" value="both" checked /><label for="dvBoth">Split</label>
         </span>
         <span class="seg">
           <input type="radio" name="colorby" id="cbRole" value="role" checked /><label for="cbRole">Role</label>
@@ -342,21 +369,29 @@
         </span>
       </div>
     </div>
-    <div class="diagramtools">
-      <div id="lightPicker" class="lightpicker" aria-label="Select a light"></div>
-      <div id="lightInspector" class="lightinspector"></div>
-    </div>
-    <div id="sceneViews" class="views" data-layout="top" style="margin-top:10px">
-      <div class="view topviewcard"><h3>Top · position, footprint &amp; horizontal aim</h3><svg id="diagram" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg"></svg></div>
-      <div class="view sideviewcard"><h3>Side · height, floor &amp; vertical aim</h3><svg id="sideview" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg"></svg></div>
-    </div>
-    <div class="legend">
-      <span class="it"><span class="sw" style="background:#ffcf5a"></span>key (spot)</span>
-      <span class="it"><span class="sw" style="background:#6db7ff"></span>fill (rect)</span>
-      <span class="it"><span class="sw" style="background:#c98bff"></span>left rim (spot)</span>
-      <span class="it"><span class="sw" style="background:#4fd1c5"></span>right rim (rect)</span>
-      <span class="it"><span class="sw" style="background:#7bd88f"></span>right bounce (rect)</span>
-      <span class="it" style="margin-left:auto">grid = cm · ● spot · ▬ rect panel · → aim · d = distance to origin (cm) · ∠ = pitch · glow ∝ intensity</span>
+    <div class="diagrambody">
+      <div class="diagramtools">
+        <div id="lightPicker" class="lightpicker" aria-label="Select a light"></div>
+        <div id="lightInspector" class="lightinspector"></div>
+      </div>
+      <div id="sceneViews" class="views" data-layout="both">
+        <div class="view topviewcard">
+          <div class="viewhead"><h3>Plan · footprint &amp; horizontal aim</h3><span class="viewbadge">X · Y</span></div>
+          <div class="viewcanvas"><svg id="diagram" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg"></svg></div>
+        </div>
+        <div class="view sideviewcard">
+          <div class="viewhead"><h3>Elevation · height &amp; vertical aim</h3><span class="viewbadge">X · Z</span></div>
+          <div class="viewcanvas"><svg id="sideview" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg"></svg></div>
+        </div>
+      </div>
+      <div class="legend">
+        <span class="it"><span class="sw" style="background:#d1b477;color:#d1b477"></span>key</span>
+        <span class="it"><span class="sw" style="background:#7f9fb9;color:#7f9fb9"></span>fill</span>
+        <span class="it"><span class="sw" style="background:#a08eae;color:#a08eae"></span>left rim</span>
+        <span class="it"><span class="sw" style="background:#74a5a2;color:#74a5a2"></span>right rim</span>
+        <span class="it"><span class="sw" style="background:#88a98c;color:#88a98c"></span>bounce</span>
+        <span class="it" style="margin-left:auto">major grid = 100/200 cm · minor grid = 50/100 cm · arrows = light direction</span>
+      </div>
     </div>
   </section>
 
@@ -429,11 +464,11 @@ const REF_DEFAULT = { W:453, D:274, H:77 };
 
 /* Per-light constants shared by every view (sizes, attenuation, roll, cone, role color, white-balance K). */
 const LIGHT_BASE = {
-  front_fill_lgt:   { type:"rect", w:500,        h:500,        barn:0,  atten:null, roll:0,        cone:null, label:"fill",   color:"#6db7ff", temp:6500 },
-  left_rim_lgt:     { type:"spot", radius:256.0,               soft:25, atten:null, roll:0.382830, cone:90,   label:"L rim",  color:"#c98bff", temp:6500 },
-  main_key_lgt:     { type:"spot", radius:52.479965,           soft:null, atten:null, roll:0,      cone:37,   label:"key",    color:"#ffcf5a", temp:6500 },
-  right_bounce_lgt: { type:"rect", w:256,        h:256,        barn:25, atten:600,  roll:0,        cone:null, label:"bounce", color:"#7bd88f", temp:6000 },
-  right_rim_lgt:    { type:"rect", w:91.440002,  h:60.900002,  barn:0,  atten:600,  roll:0,        cone:null, label:"R rim",  color:"#4fd1c5", temp:6000 },
+  front_fill_lgt:   { type:"rect", w:500,        h:500,        barn:0,  atten:null, roll:0,        cone:null, label:"fill",   color:"#7f9fb9", temp:6500 },
+  left_rim_lgt:     { type:"spot", radius:256.0,               soft:25, atten:null, roll:0.382830, cone:90,   label:"L rim",  color:"#a08eae", temp:6500 },
+  main_key_lgt:     { type:"spot", radius:52.479965,           soft:null, atten:null, roll:0,      cone:37,   label:"key",    color:"#d1b477", temp:6500 },
+  right_bounce_lgt: { type:"rect", w:256,        h:256,        barn:25, atten:600,  roll:0,        cone:null, label:"bounce", color:"#88a98c", temp:6000 },
+  right_rim_lgt:    { type:"rect", w:91.440002,  h:60.900002,  barn:0,  atten:600,  roll:0,        cone:null, label:"R rim",  color:"#74a5a2", temp:6000 },
 };
 
 /* Source T3D — only numeric fields are mutated; the structure stays 1:1. */
@@ -808,8 +843,8 @@ if (typeof document !== "undefined"){
   }
 
   /* Shared diagram drawing bits (colors, fonts, dimension lines, label collision). */
-  const DIAG = { grid:"#1b1e25", minor:"#15181d", axis:"#39404d", tick:"#4b515c",
-                 cap:"#6b7280", dim:"#8a93a3", sofaFill:"#2a2f3a", sofaLine:"#566173" };
+  const DIAG = { grid:"#31414f", minor:"#23323e", axis:"#607485", tick:"#718594",
+                 cap:"#8295a3", dim:"#9aabb7", sofaFill:"#293641", sofaLine:"#687b89" };
   let selectedLight = "main_key_lgt";
   const DGF = 'font-family="system-ui"';                       // names / captions
   const DGM = 'font-family="ui-monospace,Consolas,monospace"'; // numbers
@@ -902,16 +937,16 @@ if (typeof document !== "undefined"){
     let grid = "";
     for (let x = Math.ceil(minX/(step/2))*(step/2); x <= maxX; x += step/2){
       const major = Math.abs(x/step - Math.round(x/step)) < 1e-6;
-      grid += `<line x1="${x}" y1="${minY}" x2="${x}" y2="${maxY}" stroke="${major?DIAG.grid:DIAG.minor}" stroke-width="${sw*(major?0.7:0.45)}"/>`;
+      grid += `<line x1="${x}" y1="${minY}" x2="${x}" y2="${maxY}" stroke="${major?DIAG.grid:DIAG.minor}" stroke-width="${sw*(major?1.05:0.62)}"/>`;
       if (major) grid += `<text x="${x}" y="${maxY-fs*0.35}" fill="${DIAG.tick}" font-size="${fs*0.75}" text-anchor="middle" ${DGM}>${Math.round(x)}</text>`;
     }
     for (let y = Math.ceil(minY/(step/2))*(step/2); y <= maxY; y += step/2){
       const major = Math.abs(y/step - Math.round(y/step)) < 1e-6;
-      grid += `<line x1="${minX}" y1="${y}" x2="${maxX}" y2="${y}" stroke="${major?DIAG.grid:DIAG.minor}" stroke-width="${sw*(major?0.7:0.45)}"/>`;
+      grid += `<line x1="${minX}" y1="${y}" x2="${maxX}" y2="${y}" stroke="${major?DIAG.grid:DIAG.minor}" stroke-width="${sw*(major?1.05:0.62)}"/>`;
       if (major) grid += `<text x="${minX+fs*0.35}" y="${y-fs*0.25}" fill="${DIAG.tick}" font-size="${fs*0.75}" text-anchor="start" ${DGM}>${Math.round(y)}</text>`;
     }
-    grid += `<line x1="0" y1="${minY}" x2="0" y2="${maxY}" stroke="${DIAG.axis}" stroke-width="${sw*0.7}" stroke-dasharray="${u*0.008} ${u*0.008}"/>` +
-            `<line x1="${minX}" y1="0" x2="${maxX}" y2="0" stroke="${DIAG.axis}" stroke-width="${sw*0.7}" stroke-dasharray="${u*0.008} ${u*0.008}"/>` +
+    grid += `<line x1="0" y1="${minY}" x2="0" y2="${maxY}" stroke="${DIAG.axis}" stroke-width="${sw*1.15}" stroke-dasharray="${u*0.008} ${u*0.008}"/>` +
+            `<line x1="${minX}" y1="0" x2="${maxX}" y2="0" stroke="${DIAG.axis}" stroke-width="${sw*1.15}" stroke-dasharray="${u*0.008} ${u*0.008}"/>` +
             `<text x="${maxX-fs*0.6}" y="${-fs*0.5}" fill="${DIAG.cap}" font-size="${fs*0.8}" text-anchor="end" ${DGF}>X, cm</text>` +
             `<text x="${fs*0.6}" y="${minY+fs*1.5}" fill="${DIAG.cap}" font-size="${fs*0.8}" text-anchor="start" ${DGF}>Y, cm</text>`;
 
@@ -927,10 +962,10 @@ if (typeof document !== "undefined"){
       const cl = (r.type==="spot" ? len : len*0.5);
       const e1x = fx*Math.cos(half)-fy*Math.sin(half), e1y = fx*Math.sin(half)+fy*Math.cos(half);
       const e2x = fx*Math.cos(-half)-fy*Math.sin(-half), e2y = fx*Math.sin(-half)+fy*Math.cos(-half);
-      cones += `<path d="M ${x} ${y} L ${x+e1x*cl} ${y+e1y*cl} L ${x+e2x*cl} ${y+e2y*cl} Z" fill="${col}" opacity="${op}"/>`;
+      cones += `<path class="beam" data-light="${n}" style="--lc:${col}" d="M ${x} ${y} L ${x+e1x*cl} ${y+e1y*cl} L ${x+e2x*cl} ${y+e2y*cl} Z" fill="${col}" opacity="${op}"/>`;
       const tx = x+fx*len*0.45, ty = y+fy*len*0.45;
-      marks += `<line x1="${x}" y1="${y}" x2="${tx}" y2="${ty}" stroke="${col}" stroke-width="${sw}"/>` +
-               dgArrow(tx, ty, fx, fy, dot*1.5, col);
+      marks += `<g class="aimvector" data-light="${n}" style="--lc:${col}"><line class="aimline" x1="${x}" y1="${y}" x2="${tx}" y2="${ty}" stroke="${col}" stroke-width="${sw}"/>` +
+               dgArrow(tx, ty, fx, fy, dot*1.5, col) + `</g>`;
       if (r.type==="spot") marks += `<circle cx="${x}" cy="${y}" r="${dot}" fill="${col}" stroke="#0f1115" stroke-width="${sw*0.6}"/>`;
       else { const pw = Math.min(r.w||100, u*0.20)/2, px=-fy, py=fx;
         marks += `<line x1="${x-px*pw}" y1="${y-py*pw}" x2="${x+px*pw}" y2="${y+py*pw}" stroke="${col}" stroke-width="${sw*2.6}" stroke-linecap="round"/>`; }
@@ -999,15 +1034,15 @@ if (typeof document !== "undefined"){
     let grid = "";
     for (let x = Math.ceil(vbMinX/(step/2))*(step/2); x <= vbMaxX; x += step/2){
       const major = Math.abs(x/step - Math.round(x/step)) < 1e-6;
-      grid += `<line x1="${x}" y1="${vbMinY}" x2="${x}" y2="${vbMaxY}" stroke="${major?DIAG.grid:DIAG.minor}" stroke-width="${sw*(major?0.7:0.45)}"/>`;
+      grid += `<line x1="${x}" y1="${vbMinY}" x2="${x}" y2="${vbMaxY}" stroke="${major?DIAG.grid:DIAG.minor}" stroke-width="${sw*(major?1.05:0.62)}"/>`;
       if (major) grid += `<text x="${x}" y="${pad*0.72}" fill="${DIAG.tick}" font-size="${fs*0.75}" text-anchor="middle" ${DGM}>${Math.round(x)}</text>`;
     }
     for (let z = 0; z <= maxZ+pad; z += step/2){
       const major = Math.abs(z/step - Math.round(z/step)) < 1e-6;
-      grid += `<line x1="${vbMinX}" y1="${-z}" x2="${vbMaxX}" y2="${-z}" stroke="${major?DIAG.grid:DIAG.minor}" stroke-width="${sw*(major?0.7:0.45)}"/>`;
+      grid += `<line x1="${vbMinX}" y1="${-z}" x2="${vbMaxX}" y2="${-z}" stroke="${major?DIAG.grid:DIAG.minor}" stroke-width="${sw*(major?1.05:0.62)}"/>`;
       if (major && z > 0) grid += `<text x="${vbMinX+fs*0.35}" y="${-z-fs*0.25}" fill="${DIAG.tick}" font-size="${fs*0.75}" text-anchor="start" ${DGM}>${Math.round(z)}</text>`;
     }
-    grid += `<line x1="0" y1="${vbMinY}" x2="0" y2="${vbMaxY}" stroke="${DIAG.axis}" stroke-width="${sw*0.7}" stroke-dasharray="${u*0.008} ${u*0.008}"/>` +
+    grid += `<line x1="0" y1="${vbMinY}" x2="0" y2="${vbMaxY}" stroke="${DIAG.axis}" stroke-width="${sw*1.15}" stroke-dasharray="${u*0.008} ${u*0.008}"/>` +
             `<text x="${vbMaxX-fs*0.6}" y="${-fs*0.5}" fill="${DIAG.cap}" font-size="${fs*0.8}" text-anchor="end" ${DGF}>X, cm</text>` +
             `<text x="${vbMinX+fs*0.6}" y="${vbMinY+fs*1.5}" fill="${DIAG.cap}" font-size="${fs*0.8}" text-anchor="start" ${DGF}>Z, cm</text>`;
 
@@ -1037,9 +1072,9 @@ if (typeof document !== "undefined"){
       const half = (r.type==="spot" ? (r.cone||30)/2 : 16)*Math.PI/180;
       const e1x = dx*Math.cos(half)-dy*Math.sin(half), e1y = dx*Math.sin(half)+dy*Math.cos(half);
       const e2x = dx*Math.cos(-half)-dy*Math.sin(-half), e2y = dx*Math.sin(-half)+dy*Math.cos(-half);
-      marks += `<path d="M ${x} ${y} L ${x+e1x*L*1.4} ${y+e1y*L*1.4} L ${x+e2x*L*1.4} ${y+e2y*L*1.4} Z" fill="${col}" opacity="${op}"/>` +
-               `<line x1="${x}" y1="${y}" x2="${x+dx*L}" y2="${y+dy*L}" stroke="${col}" stroke-width="${sw}"/>` +
-               dgArrow(x+dx*L, y+dy*L, dx, dy, dot*1.5, col) +
+      marks += `<path class="beam" data-light="${n}" style="--lc:${col}" d="M ${x} ${y} L ${x+e1x*L*1.4} ${y+e1y*L*1.4} L ${x+e2x*L*1.4} ${y+e2y*L*1.4} Z" fill="${col}" opacity="${op}"/>` +
+               `<g class="aimvector" data-light="${n}" style="--lc:${col}"><line class="aimline" x1="${x}" y1="${y}" x2="${x+dx*L}" y2="${y+dy*L}" stroke="${col}" stroke-width="${sw}"/>` +
+               dgArrow(x+dx*L, y+dy*L, dx, dy, dot*1.5, col) + `</g>` +
                `<circle cx="${x}" cy="${y}" r="${dot}" fill="${col}" stroke="#0f1115" stroke-width="${sw*0.6}"/>`;
       const main = `${r.label||n} · ${r.intensity.toFixed(r.intensity < 10 ? 1 : 0)} cd`;
       const sub = `z ${Math.round(z)} · ∠ ${Math.round(r.pitch||0)}°`;

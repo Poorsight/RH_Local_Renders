@@ -13,9 +13,11 @@ into Unreal via `Ctrl + V`.
    (`front_fill_lgt`, `main_key_lgt`, `left_rim_lgt`, `right_bounce_lgt`, `right_rim_lgt`)
    in the `Lights` folder.
 
-Use the **Scene schematic** to validate the result before copying: switch between Top,
-Side, and Both, then click a light (or its colored chip) to inspect its position, aim,
-intensity, source size, and how much the unknown sofa dimensions changed it.
+Use the **Scene schematic** to validate the result before copying. It opens in **Split**
+with Plan and Elevation visible together; either view can be expanded. Click a light (or
+its colored chip) to inspect its position, aim, intensity, source size, and how much the
+unknown sofa dimensions changed it. The calm role palette, stronger engineering grid,
+animated aim vectors, light cones, and selection pulse make changes easier to track.
 
 Render previews are loaded from the server when matching files exist under
 `Renders/<material>/<render-prefix>_<shot-suffix>.png` next to `index.html`.

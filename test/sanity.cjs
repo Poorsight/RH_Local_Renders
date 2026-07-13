@@ -42,6 +42,9 @@ check("identity F / mode B === TEMPLATE", gen("F", "B") === TEMPLATE);
 // 2. Every view generates valid, structurally-identical, brand-free T3D.
 const views = Object.keys(VIEWS);
 check("VIEWS = [F, FH, TQR, TQL]", views.join(",") === "F,FH,TQR,TQL");
+check("scene schematic defaults to the two-screen split view",
+  /name="diagramview" id="dvBoth" value="both" checked/.test(html) &&
+  /id="sceneViews" class="views" data-layout="both"/.test(html));
 check("default Koper preset is 384x305x82, arm L",
   /"KOPER_LEFT_ARM_L_SECTIONAL_prod39250480":\s*\{\s*W:384,\s*D:305,\s*H:82,\s*arm:"L",/.test(html));
 check("arm side: explicit preset.arm wins over the name",

@@ -61,6 +61,26 @@ with dimensions `384 x 305 x 82`.
   pitch/yaw, preventing aim drift on unusually wide or deep layouts. At the reference size
   and under uniform scaling the original rotations remain byte-identical.
 
+## Automating this
+
+`handoff/` is a self-contained package for reproducing the rig outside the browser:
+[`handoff/HANDOFF_FORMULA.md`](handoff/HANDOFF_FORMULA.md) (formula incl. the aim transform,
+constants, T3D contract, porting gotchas), machine-readable constants, golden acceptance vectors,
+a Python reference implementation, and the UE scene exports the rig is checked against.
+
+```bash
+python handoff/light_rig.py --preset 39250480 --view auto -o rig.t3d
+python handoff/light_rig.py --selftest      # proves it matches the web tool byte for byte
+npm run verify:scene                        # proves the rig still matches the UE scene
+npm run handoff                             # regenerate handoff data after editing the rig
+```
+
+The acceptance vectors are generated from `index.html`, so they prove a *port* matches the
+*tool*. `npm run verify:scene` is the other direction: it compares each shot against
+`handoff/ue_reference/<shot>.t3d` — the rig as exported from Unreal (`Ctrl + C` on the five
+lights) — and is the only check in the repo with an external reference. Re-export and re-run it
+whenever the rig is re-tuned.
+
 ## Deploy to GitHub Pages
 
 **Option 1 — separate repository:**

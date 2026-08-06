@@ -1,0 +1,3 @@
+# The T3D skeleton is byte-compared (identity invariant + SHA-256 acceptance vectors),
+# so it must stay LF in every working copy regardless of core.autocrlf.
+*.t3d text eol=lf

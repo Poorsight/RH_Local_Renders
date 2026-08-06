@@ -6,7 +6,9 @@
   "scripts": {
     "test": "node test/sanity.cjs",
     "start": "npx serve . -l 5500",
-    "gen:manifest": "node scripts/gen-render-manifest.cjs"
+    "gen:manifest": "node scripts/gen-render-manifest.cjs",
+    "handoff": "node handoff/export_from_index.cjs",
+    "verify:scene": "node handoff/verify_scene.cjs"
   },
   "license": "UNLICENSED"
 }

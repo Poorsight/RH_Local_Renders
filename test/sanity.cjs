@@ -122,6 +122,36 @@ for (const mode of ["A", "B"]) {
     ].every(Number.isFinite)));
 }
 
+// 6. The automation handoff package still matches index.html (see handoff/HANDOFF_FORMULA.md).
+{
+  const problems = require("../handoff/export_from_index.cjs").check();
+  check("handoff/ data files in sync (npm run handoff)", problems.length === 0);
+  problems.forEach(p => console.log(`        ${p}`));
+}
+
+// 7. The rig still matches the UE scene it was tuned in. This is the only check whose
+// reference is external: everything else compares index.html against itself, so it cannot
+// catch a rig that drifted from the scene. handoff/ue_reference/<shot>.t3d are verbatim
+// Ctrl+C exports of the five lights (see handoff/verify_scene.cjs).
+{
+  const { checkExport, REF_DIR } = require("../handoff/verify_scene.cjs");
+  for (const v of views) {
+    const file = path.join(REF_DIR, `${v}.t3d`);
+    if (!fs.existsSync(file)) { check(`ue_reference/${v}.t3d present`, false); continue; }
+    const t3d = fs.readFileSync(file, "utf8");
+
+    const forced = checkExport(t3d, v, L);
+    check(`${v}: reproduces the UE scene export (${forced.compared} properties)`, forced.diffs.length === 0);
+    forced.diffs.slice(0, 8).forEach(d =>
+      console.log(`        ${d.label} ${d.field}: scene=${d.scene} package=${d.tool}`));
+
+    // The four shots must stay distinguishable, or verify_scene's auto-detect is meaningless.
+    const auto = checkExport(t3d, null, L);
+    check(`${v}: shot is unambiguous (auto-detect resolves to ${auto.view})`,
+      auto.view === v && auto.diffs.length === 0);
+  }
+}
+
 if (failed) {
   console.error(`\n${failed} check(s) FAILED`);
   process.exit(1);

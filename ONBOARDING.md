@@ -94,6 +94,39 @@ const t3d = generateT3D(res);   // string → clipboard → Ctrl+V in UE
 `generateT3D` takes the single `TEMPLATE` skeleton and, per actor (matched by `ActorLabel`),
 rewrites only numeric fields — so the output is always valid for pasting and the structure is byte-stable.
 
+## Automation handoff (`handoff/`)
+Self-contained package for a colleague porting the rig into an automated pipeline — spec + data + a
+reference implementation. Everything except the spec is **generated from `index.html`**.
+
+| File | Role |
+|---|---|
+| `HANDOFF_FORMULA.md` | the spec: formula (incl. the aim transform), all constants, T3D contract, porting gotchas, acceptance bar |
+| `light_rig.json` | constants (reference sofa, `LIGHT_BASE`, `VIEWS`, `aim` rule, presets with `arm`, field map) |
+| `rig_template.t3d` | the `TEMPLATE` skeleton, LF, no trailing newline |
+| `acceptance_vectors.json` | 13 golden cases: expected per-light strings (incl. `source_rotation`) + SHA-256 of each T3D |
+| `light_rig.py` | Python reference impl (stdlib only) + CLI + `--selftest` |
+| `export_from_index.cjs` | regenerates the three data files (`npm run handoff`) |
+| `ue_reference/<shot>.t3d` | the rig exported from the UE scene (`Ctrl + C` on the five lights), one per shot — the only reference in the repo that is **not** derived from `index.html` |
+| `verify_scene.cjs` | compares a scene export against the rig (`npm run verify:scene`); wired into `npm test` |
+
+- After editing `LIGHT_BASE` / `VIEWS` / `TEMPLATE` / `BUILTIN` / `scaleAim`, run `npm run handoff` —
+  `npm test` fails while the package is stale.
+- ⚠️ **The scene is the only external reference.** `light_rig.json` and the acceptance vectors are
+  generated *from* `index.html`, so they can never contradict it — they prove a port matches the
+  tool, not that the tool matches Unreal. `handoff/ue_reference/<shot>.t3d` closes that gap:
+  `npm run verify:scene` regenerates each shot at the reference sofa and compares all 115
+  property lines per shot (including ones the tool never rewrites — `Temperature`, cone angles,
+  `SamplesPerPixel`). Re-export and re-run it after any re-tune in Unreal. Before this existed,
+  only `F` was pinned externally (through `TEMPLATE`); `FH`/`TQR`/`TQL` were hand-entered.
+- `python handoff/light_rig.py --selftest` proves the Python side is byte-identical to the tool
+  (also cross-checked on a 2 007-case randomized matrix: 4 views × both modes × swap × custom `ref`
+  × uniform and extreme proportions).
+- Two parity details the port depends on: `fmt` reproduces JS `toFixed(6)` (ties away from zero) via
+  `Decimal` — plain `%.6f` rounds ties to even and breaks byte-identity; and `scale_aim` converts
+  degrees as `x*PI/180` / `x*180/PI` in the same operation order as `index.html`.
+- The exporter pulls the arm-side rule from the exported `presetArmSide` / `armRequiredView`, so
+  changing that logic in `index.html` propagates on the next `npm run handoff`.
+
 ## Formula (full version is in the on-site "Calculation formula" panel)
 - Scale: `sX = W/453`, `sY = D/274`, `sZ = H/77` (the API-only `swap` flag swaps X↔Y).
 - Position: `pos · s` per coordinate. Aim direction is scaled by the same axis factors and normalized; pitch/yaw are derived from it. This retains the relative target under non-uniform scaling. `k = |new_pos| / |old_pos|` (per light).
@@ -120,6 +153,8 @@ Each field is on its own line `^(spaces)Field=…` (first match per block, regex
 The numbers live in **`LIGHT_BASE`** (shared constants) + **`VIEWS`** (per-shot pos/I/pitch/yaw); `TEMPLATE` is the shared structural skeleton (the F rig).
 - **Re-tune an existing shot:** edit `VIEWS[shot].lights` (position, intensity, pitch, yaw) and, if a size/atten changed, `LIGHT_BASE`.
 - **Add a new shot:** add a `VIEWS` entry + a radio in the "Shot / view" segmented control (id `v<KEY>`).
+- **Then refresh the handoff package:** `npm run handoff` (see above) so `handoff/` and its golden
+  vectors follow the new numbers.
 - ⚠️ **F must stay in sync with `TEMPLATE`:** F's `VIEWS.F` values + `LIGHT_BASE` must reproduce `TEMPLATE` exactly (that's the identity invariant). If you re-export the skeleton from UE, keep the F numbers matching it and re-run `npm test`.
 - Keep generated T3D asset paths stable unless the UE source rig is intentionally re-exported with new paths.
 
@@ -136,8 +171,14 @@ all four views produce 5 actors, the same line count, and no branding; per-view 
 (key + right-rim) are correct; scaling changes the output while preserving structure; uniform
 scaling preserves aim while non-uniform scaling adapts pitch/yaw;
 render-preview helpers — arm side + TQ gating, candidate order, manifest matching — via the
-exported pure functions. Run it after any edit to `LIGHT_BASE` / `VIEWS` / `TEMPLATE` or the
-render-preview conventions.
+exported pure functions; that the `handoff/` data files are in sync with `index.html`; and that
+all four shots still reproduce the UE scene exports in `handoff/ue_reference/`.
+Run it after any edit to `LIGHT_BASE` / `VIEWS` / `TEMPLATE` or the render-preview conventions.
+
+The Python side of the handoff package has its own check:
+```bash
+python handoff/light_rig.py --selftest
+```
 
 ## Project rules (important)
 - This tool lives **only** in `light-rig-scaler` @ `main`. Do **not** save project changes into the `rh_unreal_2` UE project (a separate repo the session may run from).

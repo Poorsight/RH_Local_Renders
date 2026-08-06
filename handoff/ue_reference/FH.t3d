@@ -1,0 +1,139 @@
+Begin Map
+   Begin Level
+      Begin Actor Class=/Script/Engine.RectLight Name=RectLight_2 Archetype="/Script/Engine.RectLight'/Script/Engine.Default__RectLight'" ExportPath="/Script/Engine.RectLight'/Game/RH/FOR3DS/RH_INDOOR_SECTIONAL_FABRIC_LIGHTING_V1.RH_INDOOR_SECTIONAL_FABRIC_LIGHTING_V1:PersistentLevel.RectLight_2'"
+         Begin Object Class=/Script/Engine.RectLightComponent Name="LightComponent0" Archetype="/Script/Engine.RectLightComponent'/Script/Engine.Default__RectLight:LightComponent0'" ExportPath="/Script/Engine.RectLightComponent'/Game/RH/FOR3DS/RH_INDOOR_SECTIONAL_FABRIC_LIGHTING_V1.RH_INDOOR_SECTIONAL_FABRIC_LIGHTING_V1:PersistentLevel.RectLight_2.LightComponent0'"
+         End Object
+         Begin Object Name="LightComponent0" ExportPath="/Script/Engine.RectLightComponent'/Game/RH/FOR3DS/RH_INDOOR_SECTIONAL_FABRIC_LIGHTING_V1.RH_INDOOR_SECTIONAL_FABRIC_LIGHTING_V1:PersistentLevel.RectLight_2.LightComponent0'"
+            SourceWidth=91.440002
+            SourceHeight=60.900002
+            BarnDoorAngle=0.000000
+            BarnDoorLength=0.000000
+            IntensityUnits=Candelas
+            AttenuationRadius=600.000000
+            Temperature=6000.000000
+            bUseTemperature=True
+            Intensity=1.000000
+            CastRaytracedShadow=Enabled
+            SamplesPerPixel=4
+            RelativeLocation=(X=245.000000,Y=-73.000000,Z=230.000000)
+            RelativeRotation=(Pitch=0.000000,Yaw=157.218750,Roll=0.000000)
+            Mobility=Movable
+         End Object
+         RectLightComponent="LightComponent0"
+         LightComponent="LightComponent0"
+         SpawnCollisionHandlingMethod=AlwaysSpawn
+         RootComponent="LightComponent0"
+         ActorLabel="right_rim_lgt"
+         FolderPath="Lights"
+      End Actor
+      Begin Actor Class=/Script/Engine.RectLight Name=RectLight_5 Archetype="/Script/Engine.RectLight'/Script/Engine.Default__RectLight'" ExportPath="/Script/Engine.RectLight'/Game/RH/FOR3DS/RH_INDOOR_SECTIONAL_FABRIC_LIGHTING_V1.RH_INDOOR_SECTIONAL_FABRIC_LIGHTING_V1:PersistentLevel.RectLight_5'"
+         Begin Object Class=/Script/Engine.RectLightComponent Name="LightComponent0" Archetype="/Script/Engine.RectLightComponent'/Script/Engine.Default__RectLight:LightComponent0'" ExportPath="/Script/Engine.RectLightComponent'/Game/RH/FOR3DS/RH_INDOOR_SECTIONAL_FABRIC_LIGHTING_V1.RH_INDOOR_SECTIONAL_FABRIC_LIGHTING_V1:PersistentLevel.RectLight_5.LightComponent0'"
+         End Object
+         Begin Object Name="LightComponent0" ExportPath="/Script/Engine.RectLightComponent'/Game/RH/FOR3DS/RH_INDOOR_SECTIONAL_FABRIC_LIGHTING_V1.RH_INDOOR_SECTIONAL_FABRIC_LIGHTING_V1:PersistentLevel.RectLight_5.LightComponent0'"
+            SourceWidth=256.000000
+            SourceHeight=256.000000
+            BarnDoorAngle=25.000000
+            BarnDoorLength=25.000000
+            IntensityUnits=Candelas
+            AttenuationRadius=600.000000
+            Temperature=6000.000000
+            bUseTemperature=True
+            Intensity=0.500000
+            CastRaytracedShadow=Enabled
+            SamplesPerPixel=4
+            RelativeLocation=(X=283.000000,Y=323.000000,Z=150.000000)
+            RelativeRotation=(Pitch=0.000000,Yaw=-140.000000,Roll=0.000000)
+            Mobility=Movable
+         End Object
+         RectLightComponent="LightComponent0"
+         LightComponent="LightComponent0"
+         SpawnCollisionHandlingMethod=AlwaysSpawn
+         RootComponent="LightComponent0"
+         ActorLabel="right_bounce_lgt"
+         FolderPath="Lights"
+      End Actor
+      Begin Actor Class=/Script/Engine.SpotLight Name=SpotLight_1 Archetype="/Script/Engine.SpotLight'/Script/Engine.Default__SpotLight'" ExportPath="/Script/Engine.SpotLight'/Game/RH/FOR3DS/RH_INDOOR_SECTIONAL_FABRIC_LIGHTING_V1.RH_INDOOR_SECTIONAL_FABRIC_LIGHTING_V1:PersistentLevel.SpotLight_1'"
+         Begin Object Class=/Script/Engine.SpotLightComponent Name="LightComponent0" Archetype="/Script/Engine.SpotLightComponent'/Script/Engine.Default__SpotLight:LightComponent0'" ExportPath="/Script/Engine.SpotLightComponent'/Game/RH/FOR3DS/RH_INDOOR_SECTIONAL_FABRIC_LIGHTING_V1.RH_INDOOR_SECTIONAL_FABRIC_LIGHTING_V1:PersistentLevel.SpotLight_1.LightComponent0'"
+         End Object
+         Begin Object Class=/Script/Engine.ArrowComponent Name="ArrowComponent0" Archetype="/Script/Engine.ArrowComponent'/Script/Engine.Default__SpotLight:ArrowComponent0'" ExportPath="/Script/Engine.ArrowComponent'/Game/RH/FOR3DS/RH_INDOOR_SECTIONAL_FABRIC_LIGHTING_V1.RH_INDOOR_SECTIONAL_FABRIC_LIGHTING_V1:PersistentLevel.SpotLight_1.ArrowComponent0'"
+         End Object
+         Begin Object Name="LightComponent0" ExportPath="/Script/Engine.SpotLightComponent'/Game/RH/FOR3DS/RH_INDOOR_SECTIONAL_FABRIC_LIGHTING_V1.RH_INDOOR_SECTIONAL_FABRIC_LIGHTING_V1:PersistentLevel.SpotLight_1.LightComponent0'"
+            InnerConeAngle=1.000000
+            OuterConeAngle=37.000000
+            SourceRadius=52.479965
+            IntensityUnits=Candelas
+            bUseTemperature=True
+            LightingChannels=(bChannel1=True)
+            Intensity=45.000000
+            CastRaytracedShadow=Enabled
+            SamplesPerPixel=8
+            RelativeLocation=(X=-414.000000,Y=130.000000,Z=232.610977)
+            RelativeRotation=(Pitch=-25.000000,Yaw=-11.000000,Roll=-0.000000)
+            Mobility=Movable
+         End Object
+         Begin Object Name="ArrowComponent0" ExportPath="/Script/Engine.ArrowComponent'/Game/RH/FOR3DS/RH_INDOOR_SECTIONAL_FABRIC_LIGHTING_V1.RH_INDOOR_SECTIONAL_FABRIC_LIGHTING_V1:PersistentLevel.SpotLight_1.ArrowComponent0'"
+            AttachParent="LightComponent0"
+         End Object
+         SpotLightComponent="LightComponent0"
+         LightComponent="LightComponent0"
+         SpawnCollisionHandlingMethod=AlwaysSpawn
+         RootComponent="LightComponent0"
+         ActorLabel="main_key_lgt"
+         FolderPath="Lights"
+      End Actor
+      Begin Actor Class=/Script/Engine.SpotLight Name=SpotLight_2 Archetype="/Script/Engine.SpotLight'/Script/Engine.Default__SpotLight'" ExportPath="/Script/Engine.SpotLight'/Game/RH/FOR3DS/RH_INDOOR_SECTIONAL_FABRIC_LIGHTING_V1.RH_INDOOR_SECTIONAL_FABRIC_LIGHTING_V1:PersistentLevel.SpotLight_2'"
+         Begin Object Class=/Script/Engine.SpotLightComponent Name="LightComponent0" Archetype="/Script/Engine.SpotLightComponent'/Script/Engine.Default__SpotLight:LightComponent0'" ExportPath="/Script/Engine.SpotLightComponent'/Game/RH/FOR3DS/RH_INDOOR_SECTIONAL_FABRIC_LIGHTING_V1.RH_INDOOR_SECTIONAL_FABRIC_LIGHTING_V1:PersistentLevel.SpotLight_2.LightComponent0'"
+         End Object
+         Begin Object Class=/Script/Engine.ArrowComponent Name="ArrowComponent0" Archetype="/Script/Engine.ArrowComponent'/Script/Engine.Default__SpotLight:ArrowComponent0'" ExportPath="/Script/Engine.ArrowComponent'/Game/RH/FOR3DS/RH_INDOOR_SECTIONAL_FABRIC_LIGHTING_V1.RH_INDOOR_SECTIONAL_FABRIC_LIGHTING_V1:PersistentLevel.SpotLight_2.ArrowComponent0'"
+         End Object
+         Begin Object Name="LightComponent0" ExportPath="/Script/Engine.SpotLightComponent'/Game/RH/FOR3DS/RH_INDOOR_SECTIONAL_FABRIC_LIGHTING_V1.RH_INDOOR_SECTIONAL_FABRIC_LIGHTING_V1:PersistentLevel.SpotLight_2.LightComponent0'"
+            OuterConeAngle=90.000000
+            SourceRadius=256.000000
+            SoftSourceRadius=25.000000
+            IntensityUnits=Candelas
+            bUseTemperature=True
+            LightingChannels=(bChannel1=True)
+            Intensity=60.000000
+            CastRaytracedShadow=Enabled
+            SamplesPerPixel=8
+            RelativeLocation=(X=-508.000000,Y=-200.000000,Z=242.441086)
+            RelativeRotation=(Pitch=-43.000000,Yaw=4.000000,Roll=0.382830)
+            bAbsoluteScale=True
+            Mobility=Movable
+         End Object
+         Begin Object Name="ArrowComponent0" ExportPath="/Script/Engine.ArrowComponent'/Game/RH/FOR3DS/RH_INDOOR_SECTIONAL_FABRIC_LIGHTING_V1.RH_INDOOR_SECTIONAL_FABRIC_LIGHTING_V1:PersistentLevel.SpotLight_2.ArrowComponent0'"
+            AttachParent="LightComponent0"
+         End Object
+         SpotLightComponent="LightComponent0"
+         LightComponent="LightComponent0"
+         SpawnCollisionHandlingMethod=AlwaysSpawn
+         RootComponent="LightComponent0"
+         ActorLabel="left_rim_lgt"
+         FolderPath="Lights"
+      End Actor
+      Begin Actor Class=/Script/Engine.RectLight Name=RectLight_1 Archetype="/Script/Engine.RectLight'/Script/Engine.Default__RectLight'" ExportPath="/Script/Engine.RectLight'/Game/RH/FOR3DS/RH_INDOOR_SECTIONAL_FABRIC_LIGHTING_V1.RH_INDOOR_SECTIONAL_FABRIC_LIGHTING_V1:PersistentLevel.RectLight_1'"
+         Begin Object Class=/Script/Engine.RectLightComponent Name="LightComponent0" Archetype="/Script/Engine.RectLightComponent'/Script/Engine.Default__RectLight:LightComponent0'" ExportPath="/Script/Engine.RectLightComponent'/Game/RH/FOR3DS/RH_INDOOR_SECTIONAL_FABRIC_LIGHTING_V1.RH_INDOOR_SECTIONAL_FABRIC_LIGHTING_V1:PersistentLevel.RectLight_1.LightComponent0'"
+         End Object
+         Begin Object Name="LightComponent0" ExportPath="/Script/Engine.RectLightComponent'/Game/RH/FOR3DS/RH_INDOOR_SECTIONAL_FABRIC_LIGHTING_V1.RH_INDOOR_SECTIONAL_FABRIC_LIGHTING_V1:PersistentLevel.RectLight_1.LightComponent0'"
+            SourceWidth=500.000000
+            SourceHeight=500.000000
+            BarnDoorAngle=0.000000
+            BarnDoorLength=0.000000
+            IntensityUnits=Candelas
+            bUseTemperature=True
+            Intensity=4.000000
+            RelativeLocation=(X=0.000000,Y=696.000000,Z=52.000000)
+            RelativeRotation=(Pitch=4.000000,Yaw=-90.000000,Roll=0.000000)
+            Mobility=Movable
+         End Object
+         RectLightComponent="LightComponent0"
+         LightComponent="LightComponent0"
+         SpawnCollisionHandlingMethod=AlwaysSpawn
+         RootComponent="LightComponent0"
+         ActorLabel="front_fill_lgt"
+         FolderPath="Lights"
+      End Actor
+   End Level
+Begin Surface
+End Surface
+End Map

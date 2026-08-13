@@ -23,8 +23,8 @@ try {
   fs.unlinkSync(tmp);
 }
 
-const { REF_DEFAULT, TEMPLATE, VIEWS, computeAll, generateT3D,
-        scaleAim, fitAspectBounds, rbCandidateFiles, rbMatchManifest, presetArmSide, armRequiredView, armBlocksView } = L;
+const { REF_DEFAULT, TEMPLATE, VIEWS, computeAll, generateT3D, viewLights,
+        scaleAim, rotZ, fitAspectBounds, rbCandidateFiles, rbMatchManifest, presetArmSide, armRequiredView, armBlocksView } = L;
 
 let failed = 0;
 function check(name, cond) {
@@ -125,6 +125,42 @@ for (const mode of ["A", "B"]) {
       ...(r.atten == null ? [] : [r.atten]),
       r.type === "rect" ? r.w : r.radius,
     ].every(Number.isFinite)));
+}
+
+// 5b. Scaling happens in the SOFA's frame, not the world's. On the ¾ shots the sofa is turned
+// by sofa_yaw, so its width is not world X; applying the axis factors to world coordinates
+// there stretches the rig along the wrong direction. The transform must collapse to a plain
+// per-axis multiply everywhere the two frames coincide, or the identity invariant and every
+// F/FH vector would move.
+{
+  const plain = (view, W, D, H) => {
+    const sx = W / REF_DEFAULT.W, sy = D / REF_DEFAULT.D, sz = H / REF_DEFAULT.H;
+    const src = viewLights(view), out = {};
+    for (const n of Object.keys(src)) out[n] = [src[n].pos[0]*sx, src[n].pos[1]*sy, src[n].pos[2]*sz];
+    return out;
+  };
+  const maxDelta = (view, W, D, H) => {
+    const got = computeAll(W, D, H, "A", false, REF_DEFAULT, view), want = plain(view, W, D, H);
+    return Math.max(...Object.keys(want).flatMap(n => [0,1,2].map(i => Math.abs(got[n].pos[i] - want[n][i]))));
+  };
+
+  check("axis-aligned shots are untouched: F/FH stay a plain per-axis multiply",
+    maxDelta("F", 600, 300, 80) === 0 && maxDelta("FH", 312, 246, 77) === 0);
+  check("proportional sofas are untouched on the ¾ shots (a Z rotation commutes with diag(s,s,sZ))",
+    maxDelta("TQR", 453*1.3, 274*1.3, 77*1.3) === 0 && maxDelta("TQL", 453*0.7, 274*0.7, 77*0.7) === 0);
+  check("every shot reproduces its source rig exactly at the reference sofa",
+    ["F","FH","TQR","TQL"].every(v => maxDelta(v, 453, 274, 77) === 0));
+
+  // A sofa that is relatively deeper than the reference, on a shot where it is turned 36°.
+  const turned = maxDelta("TQR", 430.31, 336.30, 83.67);
+  check("a non-proportional sofa on a ¾ shot IS corrected for the sofa's rotation",
+    turned > 50 && Number.isFinite(turned));
+
+  check("rotZ(v, 0) returns the vector untouched; ±t round-trips",
+    JSON.stringify(rotZ([1,2,3], 0)) === JSON.stringify([1,2,3]) &&
+    Math.abs(rotZ(rotZ([10,20,30], 36), -36)[0] - 10) < 1e-12);
+  check("scaleAim without a sofa yaw behaves exactly as before",
+    JSON.stringify(scaleAim(0, 45, 2, 1, 1)) === JSON.stringify(scaleAim(0, 45, 2, 1, 1, 0)));
 }
 
 // 6. The automation handoff package still matches index.html (see handoff/HANDOFF_FORMULA.md).

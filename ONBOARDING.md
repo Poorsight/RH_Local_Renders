@@ -134,8 +134,15 @@ reference implementation. Everything except the spec is **generated from `index.
   changing that logic in `index.html` propagates on the next `npm run handoff`.
 
 ## Formula (full version is in the on-site "Calculation formula" panel)
-- Scale: `sX = W/453`, `sY = D/274`, `sZ = H/77` (the API-only `swap` flag swaps X↔Y).
-- Position: `pos · s` per coordinate. Aim direction is scaled by the same axis factors and normalized; pitch/yaw are derived from it. This retains the relative target under non-uniform scaling. `k = |new_pos| / |old_pos|` (per light).
+- Scale: `sX = W/453`, `sY = D/274`, `sZ = H/77` (the API-only `swap` flag swaps X↔Y). These are
+  factors along the sofa's **width and depth**, which equal world X and Y only while the sofa is
+  not turned.
+- Position: `p₁ = Rz(θ)·diag(sX,sY,sZ)·Rz(−θ)·p₀`, where `θ = VIEWS[view].rot` — the axis factors
+  are applied **in the sofa's own frame**, because on the ¾ shots the sofa is turned ±36° and its
+  width is not world X. `θ` collapses to 0 when `|sX−sY| < 1e-12` (a Z rotation commutes with
+  `diag(s,s,sZ)`), so `F`/`FH`, proportional sofas and the reference stay a plain per-axis multiply,
+  bit for bit. Only a non-proportional sofa on a ¾ shot differs — that is the case the old
+  world-axis multiply got wrong, by up to ~110 cm of light displacement and ~20% of intensity. Aim direction is scaled by the same axis factors and normalized; pitch/yaw are derived from it. This retains the relative target under non-uniform scaling. `k = |new_pos| / |old_pos|` (per light).
 - Effective radius `R`: spot → `SourceRadius`; rect → `√(SourceWidth·SourceHeight / π)`.
 - Mode **A**: sizes `· k`, `Intensity · k²`. Mode **B**: `Intensity · (k²·d² + R²)/(d² + R²) ≈ Intensity · k^p`, `p = 2d²/(d²+R²)`.
 - `AttenuationRadius · k`. **Pitch/yaw adapt only when X/Y/Z scale differs**; uniform scaling and the reference preserve the per-shot rotations exactly. Roll/color/temperature stay unchanged.

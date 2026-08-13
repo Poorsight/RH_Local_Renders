@@ -43,7 +43,7 @@ with dimensions `384 x 305 x 82`.
 
 | What | Rule |
 |---|---|
-| Positions | per-coordinate: `X·(W/453)`, `Y·(D/274)`, `Z·(H/77)` |
+| Positions | per-axis `(W/453, D/274, H/77)`, applied **in the sofa's own frame** — on the ¾ shots the sofa is turned ±36°, so its width is not world X. Reduces to a plain `X·(W/453), Y·(D/274), Z·(H/77)` on `F`/`FH` and whenever width and depth scale equally |
 | Aim | pitch/yaw follow the same non-uniform X/Y/Z scaling, keeping each light aimed at the same relative sofa area |
 | Light distance | `k = |new_pos| / |old_pos|` (individual to each light) |
 | Intensity, mode **A** | light sizes `×k`, intensity `×k²` (inverse square holds strictly) |

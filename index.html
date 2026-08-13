@@ -659,16 +659,25 @@ const hyp = (a,b,c) => Math.sqrt(a*a + b*b + c*c);
 const rad = deg => deg * Math.PI / 180;
 const deg = angle => angle * 180 / Math.PI;
 
+/* Rotate a vector about world Z, Unreal yaw convention. t === 0 returns the input
+   untouched rather than multiplying by cos 0 / sin 0, so the axis-aligned shots stay
+   bit-for-bit what they were before the sofa frame was introduced. */
+function rotZ(v, t){
+  if (!t) return [v[0], v[1], v[2]];
+  const c = Math.cos(rad(t)), s = Math.sin(rad(t));
+  return [v[0]*c - v[1]*s, v[0]*s + v[1]*c, v[2]];
+}
+
 /* Preserve a light's aim under non-uniform sofa scaling. Unreal lights point along
-   their local X axis, so pitch/yaw define a direction vector. Scaling that vector
-   by the sofa's X/Y/Z factors keeps it aimed at the same relative area. */
-function scaleAim(pitch, yaw, sX, sY, sZ){
+   their local X axis, so pitch/yaw define a direction vector. The vector is scaled by
+   the sofa's W/D/H factors *in the sofa's own frame* (see computeAll), which is why
+   sofaYaw is needed: on the ¾ shots the sofa is turned, so its width is not world X. */
+function scaleAim(pitch, yaw, sX, sY, sZ, sofaYaw){
   if (Math.abs(sX-sY) < 1e-12 && Math.abs(sY-sZ) < 1e-12) return { pitch, yaw };
   const p = rad(pitch), y = rad(yaw);
-  const x = Math.cos(p) * Math.cos(y) * sX;
-  const yy = Math.cos(p) * Math.sin(y) * sY;
-  const z = Math.sin(p) * sZ;
-  return { pitch:deg(Math.atan2(z, Math.hypot(x, yy))), yaw:deg(Math.atan2(yy, x)) };
+  const v = rotZ([Math.cos(p) * Math.cos(y), Math.cos(p) * Math.sin(y), Math.sin(p)], -(sofaYaw || 0));
+  const s = rotZ([v[0] * sX, v[1] * sY, v[2] * sZ], sofaYaw || 0);
+  return { pitch:deg(Math.atan2(s[2], Math.hypot(s[0], s[1]))), yaw:deg(Math.atan2(s[1], s[0])) };
 }
 
 /* Expand scene bounds to the viewport aspect without cropping or distorting geometry.
@@ -682,20 +691,29 @@ function fitAspectBounds(minX, maxX, minY, maxY, aspect){
 }
 
 function computeAll(W, D, H, mode, swap, ref, view){
-  const sX = (swap ? D : W) / ref.W;   // scale on world X (rig: 453 along X)
-  const sY = (swap ? W : D) / ref.D;   // scale on world Y (rig: 274 along Y)
+  const sX = (swap ? D : W) / ref.W;   // scale along the sofa's WIDTH  (rig: 453)
+  const sY = (swap ? W : D) / ref.D;   // scale along the sofa's DEPTH  (rig: 274)
   const sZ = H / ref.H;                // scale on world Z (height)
   const LG = viewLights(view);         // merged base + per-view rig for the chosen shot
+
+  /* The sofa is turned by sofa_yaw on the ¾ shots, so its width is NOT world X there and the
+     axis factors must be applied in the sofa's own frame: un-rotate, scale, rotate back.
+     When sX === sY that transform equals a plain multiply (a Z rotation commutes with
+     diag(s,s,sZ)), so we zero the angle and keep the old arithmetic exactly — which is what
+     holds the identity invariant and the F/FH vectors byte-stable. */
+  const sofaYaw = Math.abs(sX - sY) < 1e-12 ? 0 : ((VIEWS[view] || VIEWS.F).rot || 0);
+
   const res = {};
   for (const [name, L] of Object.entries(LG)){
     const [x, y, z] = L.pos;
-    const npos = [x * sX, y * sY, z * sZ];
+    const loc  = rotZ([x, y, z], -sofaYaw);
+    const npos = rotZ([loc[0] * sX, loc[1] * sY, loc[2] * sZ], sofaYaw);
     const d0 = hyp(x, y, z);
     const d1 = hyp(npos[0], npos[1], npos[2]);
     const k  = d1 / d0;                                   // distance growth for this light
     const R  = L.type === "spot" ? L.radius : Math.sqrt(L.w * L.h / Math.PI); // effective source radius
     const p  = 2 * d0 * d0 / (d0 * d0 + R * R);           // effective falloff exponent (info)
-    const aim = scaleAim(L.pitch, L.yaw, sX, sY, sZ);
+    const aim = scaleAim(L.pitch, L.yaw, sX, sY, sZ, sofaYaw);
 
     let I_new, sizeK;
     if (mode === "A"){            // scale sizes → strict k²
@@ -811,7 +829,7 @@ function armBlocksView(arm, view){
 
 /* Export for node tests (no effect in the browser). */
 if (typeof module !== "undefined" && module.exports){
-  module.exports = { REF_DEFAULT, LIGHT_BASE, VIEWS, viewLights, TEMPLATE, computeAll, generateT3D, fmt, hyp, scaleAim, fitAspectBounds,
+  module.exports = { REF_DEFAULT, LIGHT_BASE, VIEWS, viewLights, TEMPLATE, computeAll, generateT3D, fmt, hyp, scaleAim, rotZ, fitAspectBounds,
     RB_VIEW_SUFFIXES, rbPrefixVariants, rbCandidateFiles, rbMatchManifest,
     presetArmSide, armRequiredView, armBlocksView };
 }

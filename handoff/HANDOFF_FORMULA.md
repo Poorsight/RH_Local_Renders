@@ -50,7 +50,10 @@ node handoff/export_from_index.cjs
 
 - Sofa footprint centred on the origin, **floor at `Z = 0`**, so the sofa occupies
   `X ∈ [−W/2, +W/2]`, `Y ∈ [−D/2, +D/2]`, `Z ∈ [0, H]`.
-- World **X ↔ sofa width**, **Y ↔ sofa depth (+Y is the camera / front side)**, **Z ↔ height**.
+- World **X ↔ sofa width**, **Y ↔ sofa depth (+Y is the camera / front side)**, **Z ↔ height** —
+  **but only on the shots where `sofa_yaw` is 0**, i.e. `F` and `FH`. On the ¾ shots the sofa is
+  turned ±36°, so its width axis is 36° away from world X. The axis factors are therefore applied
+  in the **sofa's own frame**, not in world axes (§5.2).
 - Light positions are absolute world coordinates. In the T3D they sit in `RelativeLocation` of an
   unparented light component, so relative == world.
 - Each shot rotates the **sofa**, never the rig. `sofa_yaw`: `F` 0°, `FH` 0°, `TQR` +36° (right-arm),
@@ -85,11 +88,34 @@ sY = (swap ? W : D) / ref.D        # 274
 sZ =  H / ref.H                    #  77
 ```
 
-### 5.2 Position — per-coordinate
+### 5.2 Position — per-axis, in the sofa's frame
+
+`sX` and `sY` are factors along the sofa's **width** and **depth**, which coincide with world X and
+Y only while the sofa is not turned. Un-rotate into the sofa's frame, scale, rotate back:
 
 ```
-p₁ = (x·sX, y·sY, z·sZ)
+θ  = sofa_yaw of the shot          # 0 for F and FH, +36 for TQR, −36 for TQL
+p₁ = Rz(θ) · diag(sX, sY, sZ) · Rz(−θ) · p₀
+
+Rz(t):  x' = x·cos t − y·sin t
+        y' = x·sin t + y·cos t
+        z' = z
 ```
+
+**Collapse to the plain multiply whenever the two frames coincide** — treat `θ` as 0 when
+`|sX − sY| < 1e−12`. A rotation about Z commutes with `diag(s, s, sZ)`, so the result is identical
+either way, and taking the short path keeps it *bit*-identical. Combined with `θ = 0` on `F`/`FH`,
+this is what holds the identity invariant and every `F`/`FH` vector byte-stable.
+
+So the transform reduces to `p₁ = (x·sX, y·sY, z·sZ)` for: any `F` or `FH` shot, any sofa whose
+width and depth scale equally, and the reference sofa itself. It differs only for a
+**non-proportional sofa on a ¾ shot** — which is precisely the case the plain multiply got wrong.
+
+> Applied to the whole rig, including `front_fill`, which sits on the camera axis at `x = 0` and
+> therefore moves off it once the sofa is turned. The five lights were tuned around the sofa as one
+> unit, so they scale with it as one unit. If the fill is ever meant to stay locked to the camera
+> axis instead, that is a deliberate exception and must be written down here — do not introduce it
+> silently.
 
 ### 5.3 Distance ratio `k` — per light, from the origin
 
@@ -144,10 +170,13 @@ axis factors and the angles are read back:
 
 ```
 v      = (cos(pitch)·cos(yaw),  cos(pitch)·sin(yaw),  sin(pitch))
-v′     = (v.x·sX,  v.y·sY,  v.z·sZ)
+v′     = Rz(θ) · diag(sX, sY, sZ) · Rz(−θ) · v    # same sofa frame as §5.2, same θ
 pitch′ = atan2(v′.z, hypot(v′.x, v′.y))          # degrees
 yaw′   = atan2(v′.y, v′.x)                        # degrees
 ```
+
+The aim must be scaled in the same frame as the position, or the correction compensates along the
+wrong axes. With `θ = 0` this is the plain `(v.x·sX, v.y·sY, v.z·sZ)` it has always been.
 
 **Uniform-scale shortcut (required, not an optimisation):** if
 `|sX − sY| < 1e−12` and `|sY − sZ| < 1e−12`, return `pitch`/`yaw` untouched. This is what keeps the
@@ -171,13 +200,15 @@ asset paths, actor labels, folder. (`Pitch`/`Yaw` *are* transformed — §5.6. B
 ### 5.9 Pseudocode
 
 ```
+theta = abs(sX - sY) < 1e-12 ? 0 : VIEWS[view].sofa_yaw          # §5.2
 for name, L in merge(LIGHT_BASE, VIEWS[view].lights):
     x, y, z = L.pos
-    pos  = (x*sX, y*sY, z*sZ)
+    loc  = rotZ((x, y, z), -theta)
+    pos  = rotZ((loc.x*sX, loc.y*sY, loc.z*sZ), theta)
     d0   = hypot3(x, y, z);  d1 = hypot3(pos)
     k    = d1 / d0
     R    = L.type == "spot" ? L.radius : sqrt(L.w * L.h / PI)
-    pitch, yaw = scaleAim(L.pitch, L.yaw, sX, sY, sZ)            # §5.6
+    pitch, yaw = scaleAim(L.pitch, L.yaw, sX, sY, sZ, theta)     # §5.6
     if mode == "A":  I = L.I * k*k;                             sizeK = k
     else:            I = L.I * (k*k*d0*d0 + R*R)/(d0*d0 + R*R);  sizeK = 1
     atten = L.atten == null ? null : L.atten * k
@@ -186,23 +217,25 @@ for name, L in merge(LIGHT_BASE, VIEWS[view].lights):
 
 ### 5.10 Worked example
 
-`main_key_lgt`, sofa `384 × 305 × 82` (Koper 39250480), shot `TQL`, mode `A`:
+`main_key_lgt`, sofa `384 × 305 × 82` (Koper 39250480), shot `TQL`, mode `A`. This sofa is
+relatively deeper than the reference (`sX ≠ sY`) and `TQL` turns it −36°, so the sofa frame is
+live — a good case to test a port against, because a world-axis implementation gets it wrong:
 
 ```
-sX = 384/453 = 0.847682119     sY = 305/274 = 1.113138686     sZ = 82/77 = 1.064935065
-p₀ = (−474, −19, 168)          I₀ = 60      R = 52.479965 (SourceRadius)
-p₁ = (−401.801325, −21.149635, 178.909091)
-d₀ = 503.250435   d₁ = 440.340861   k = 0.874993504
-aim:     pitch −25 → −30.337776      yaw 3 → 3.936864      (roll stays 0)
-mode A:  Intensity = 60 · k²   = 45.936818      SourceRadius = 52.479965 · k = 45.919628
-mode B:  Intensity = 46.088106  (p = 1.978485 → nearly k², this source is small)
+sX = 384/453 = 0.847682119   sY = 305/274 = 1.113138686   sZ = 82/77 = 1.064935065
+θ  = −36  (sofa_yaw of TQL; not collapsed to 0 because sX ≠ sY)
+p₀ = (−474, −19, 168)        I₀ = 60      R = 52.479965 (SourceRadius)
+p₁ = Rz(−36)·diag(sX,sY,sZ)·Rz(36)·p₀ = (−447.671691, −79.241103, 178.909091)
+d₀ = 503.250435   d₁ = 488.566841   k = 0.970822492
+aim:     pitch −25 → −27.312176      yaw 3 → 10.759179      (roll stays 0)
+mode A:  Intensity = 60 · k²   = 56.549779      SourceRadius = 52.479965 · k = 50.948730
+mode B:  Intensity = 56.586895  (p = 1.978485 → nearly k², this source is small)
 ```
 
-The same sofa, `front_fill_lgt` — the opposite case: it moves *away* (depth grew), so
-`k = 1.112876871`, `Intensity = 7.430970`, `SourceWidth = SourceHeight = 556.438435`, aim
-`pitch 4 → 3.827309` with `yaw` unchanged at `−90` (it points straight down −Y, where only `sY`
-acts), and in mode B `p = 1.719154` gives `7.230028` instead. Full expected output for this case:
-`acceptance_vectors.json` → `koper39250480-TQL-A`.
+The same sofa, `front_fill_lgt`: `p₁ = (87.857541, 710.912286, 55.376623)`, `k = 1.029398098`,
+`Intensity = 6.357963`, `SourceWidth = SourceHeight = 514.699049`, aim `pitch 4 → 4.138425`,
+`yaw −90 → −97.045132`. Note the fill no longer stays at `x = 0`: once the sofa is turned it
+travels with it (§5.2). Full expected output: `acceptance_vectors.json` → `koper39250480-TQL-A`.
 
 Aim sanity vectors (independent of the rig): `scaleAim(0, 45, 2, 1, 1) → yaw 26.565051`,
 `scaleAim(45, 0, 1, 1, 2) → pitch 63.434949`, `scaleAim(−25, −11, 2, 2, 2) → (−25, −11)` exactly.

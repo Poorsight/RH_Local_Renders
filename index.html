@@ -630,14 +630,14 @@ const VIEWS = {
     right_bounce_lgt: { pos:[283,323,150],          I:0.5,  pitch:0,   yaw:-140 },
     right_rim_lgt:    { pos:[245,-73,230],          I:1.0,  pitch:0,   yaw:157.21875 },
   }},
-  TQR: { label:"TQ · ¾ left-arm (+36°)", desc:"Three-quarter, sofa +36°. Use for LEFT-arm sectionals — the R in the key is historical and does not mean right-arm.", rot:36, lights:{
+  TQR: { label:"TQ · ¾ right-arm (+36°)", desc:"Three-quarter, sofa +36°. For RIGHT-arm sectionals.", rot:36, lights:{
     front_fill_lgt:   { pos:[0,696,52],             I:8.0,  pitch:4,   yaw:-90 },
     left_rim_lgt:     { pos:[-433,-190,242.441071], I:50.0, pitch:-43, yaw:4 },
     main_key_lgt:     { pos:[-474,-19,168],         I:60.0, pitch:-18, yaw:28 },
     right_bounce_lgt: { pos:[283,323,150],          I:0.5,  pitch:0,   yaw:-140 },
     right_rim_lgt:    { pos:[385,63,56],            I:0.6,  pitch:0,   yaw:153 },
   }},
-  TQL: { label:"TQ · ¾ right-arm (−36°)", desc:"Three-quarter, sofa −36°. Use for RIGHT-arm sectionals — the L in the key is historical and does not mean left-arm.", rot:-36, lights:{
+  TQL: { label:"TQ · ¾ left-arm (−36°)", desc:"Three-quarter, sofa −36°. For LEFT-arm sectionals.", rot:-36, lights:{
     front_fill_lgt:   { pos:[0,696,52],             I:6.0,  pitch:4,   yaw:-90 },
     left_rim_lgt:     { pos:[-433,-190,242.441071], I:50.0, pitch:-43, yaw:4 },
     main_key_lgt:     { pos:[-474,-19,168],         I:60.0, pitch:-25, yaw:3 },
@@ -751,8 +751,8 @@ function generateT3D(res){
 const RB_VIEW_SUFFIXES = {
   F: ["F"],
   FH: ["FH"],
-  TQR: ["LEFT_ARM", "TQ"],
-  TQL: ["RIGHT_ARM", "TQ"],
+  TQR: ["RIGHT_ARM", "TQ"],
+  TQL: ["LEFT_ARM", "TQ"],
 };
 const rbPrefixVariants = prefix => [prefix, `${prefix}_FH`];
 
@@ -789,14 +789,20 @@ function presetArmSide(preset, name){
   const right = /(^|[\s_.-])right[\s_-]*arm($|[\s_.-])/i.test(s);
   return left && !right ? "L" : right && !left ? "R" : "";
 }
-/* Arm side -> the ¾ rig that shot is filmed with. NOTE THE CROSS: a LEFT-arm sectional uses the
-   rig keyed TQR (sofa +36°), a RIGHT-arm one uses TQL (sofa −36°). The letters in the keys are
-   historical labels of the rigs, not of the arm side; they were wired the other way round until
-   2026-08-13 and produced ¾ shots from the wrong side. Confirmed against the production scene
-   exports (right-arm default == the TQL rig, left-arm default == the TQR rig) and against the
-   render pipeline, which maps Sectional_Indoor_R -> negative yaw and Sectional_Indoor_L -> positive.
-   Do not "fix" this back without re-checking both. */
-const armRequiredView = arm => arm === "L" ? "TQR" : arm === "R" ? "TQL" : "";
+/* Arm side -> the ¾ rig that shot is filmed with. R uses TQR (sofa +36°), L uses TQL (sofa −36°);
+   the key letters match the arm side, no cross.
+
+   This was briefly inverted on 2026-08-13 on the strength of a mislabelled pair of scene exports
+   and reverted the same day, so if you find a note claiming the mapping is crossed, it is stale.
+   The rigs are told apart by their numbers, not by their names: TQR is fill I=8, main_key
+   pitch −18 / yaw 28, right_rim yaw 153 / I=0.6; TQL is fill I=6, main_key pitch −25 / yaw 3,
+   right_rim yaw 166.5 / I=1.0. Check any new scene export against those before trusting its label.
+
+   Known conflict, still open: the render pipeline maps Sectional_Indoor_L -> TQR and
+   Sectional_Indoor_R -> TQL, i.e. the opposite of this. Its LUGANO batch of 2026-08-12 therefore
+   shot every arm-specific model from the wrong side. Do not align this file to the pipeline
+   without settling which one is right. */
+const armRequiredView = arm => arm === "L" ? "TQL" : arm === "R" ? "TQR" : "";
 /* Arm side gates only the opposite TQ view; F/FH stay available. */
 function armBlocksView(arm, view){
   const req = armRequiredView(arm);

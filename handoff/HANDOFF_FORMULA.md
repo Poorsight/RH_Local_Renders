@@ -53,7 +53,8 @@ node handoff/export_from_index.cjs
 - World **X ↔ sofa width**, **Y ↔ sofa depth (+Y is the camera / front side)**, **Z ↔ height**.
 - Light positions are absolute world coordinates. In the T3D they sit in `RelativeLocation` of an
   unparented light component, so relative == world.
-- Each shot rotates the **sofa**, never the rig. `sofa_yaw`: `F` 0°, `FH` 0°, `TQR` +36°, `TQL` −36°.
+- Each shot rotates the **sofa**, never the rig. `sofa_yaw`: `F` 0°, `FH` 0°, `TQR` +36° (right-arm),
+  `TQL` −36° (left-arm).
   The two ¾ shots are mirror images of each other. `sofa_yaw` is **not** part of the T3D — the T3D
   describes only the lights, which live in world space — so it never affects generated output; it
   documents the composition and drives the plan diagram. Consumers that place the sofa themselves
@@ -246,7 +247,7 @@ the **source** angles — the values that go through §5.6 before being written.
 | `right_bounce_lgt` | (283, 323, 150) | 0.5 | 0 | −140 |
 | `right_rim_lgt` | (245, −73, 230) | 1.0 | 0 | 157.21875 |
 
-**`TQR` · ¾ for LEFT-arm sectionals** — sofa yaw **+36°** (see §8 on the crossed naming)
+**`TQR` · ¾ right-arm** — sofa yaw **+36°**
 
 | light | position | I₀ | pitch | yaw |
 |---|---|---|---|---|
@@ -256,7 +257,7 @@ the **source** angles — the values that go through §5.6 before being written.
 | `right_bounce_lgt` | (283, 323, 150) | 0.5 | 0 | −140 |
 | `right_rim_lgt` | (385, 63, 56) | 0.6 | 0 | 153 |
 
-**`TQL` · ¾ for RIGHT-arm sectionals** — sofa yaw **−36°** (see §8 on the crossed naming)
+**`TQL` · ¾ left-arm** — sofa yaw **−36°**
 
 | light | position | I₀ | pitch | yaw |
 |---|---|---|---|---|
@@ -329,17 +330,21 @@ else infer from the name:
      /(^|[\s_.-])right[\s_-]*arm($|[\s_.-])/i    → R
      neither / both                              → "" (no arm-specific ¾ shot)
 
-L → TQR  (sofa +36°)        R → TQL  (sofa −36°)
+L → TQL  (sofa −36°)        R → TQR  (sofa +36°)
 ```
 
-> ⚠️ **The mapping is crossed, and this is not a typo.** A **left**-arm sectional is filmed with
-> the rig keyed **`TQR`**; a **right**-arm one with **`TQL`**. The letters in the keys name the
-> rigs, not the arm side. Until 2026-08-13 this was wired the obvious way round and produced ¾
-> shots from the wrong side — the arm the shot is supposed to showcase ended up receding from
-> camera. It was corrected against two independent sources: the production scene's own
-> right-arm / left-arm defaults (right-arm == the `TQL` rig, left-arm == the `TQR` rig) and the
-> render pipeline, which films `Sectional_Indoor_R` at negative yaw and `Sectional_Indoor_L` at positive.
-> Read `tq_view` from `light_rig.json`; never infer the shot from the key's letter.
+The key letter matches the arm side — there is no cross.
+
+> ⚠️ **Identify a rig by its numbers, never by a label written next to an export.** `TQR` is
+> `front_fill I=8`, `main_key pitch −18 / yaw 28`, `right_rim yaw 153 / I=0.6`. `TQL` is
+> `front_fill I=6`, `main_key pitch −25 / yaw 3`, `right_rim yaw 166.5 / I=1.0`. On 2026-08-13 this
+> mapping was inverted on the strength of a mislabelled pair of scene exports and reverted the same
+> day once unambiguous ones arrived; if you find a note claiming the mapping is crossed, it is stale.
+>
+> **Open conflict.** The render pipeline maps `Sectional_Indoor_L → TQR` and
+> `Sectional_Indoor_R → TQL` — the opposite of the rule above — and its `LUGANO SLIPCOVERED` batch
+> of 2026-08-12 therefore filmed every arm-specific model from the wrong side. One of the two sides
+> is wrong; do not align this file to the pipeline until it is settled.
 
 **Do not default an unknown arm side to a side.** `""` means either "symmetric, no arm side" or
 "could not be determined", and guessing silently produces a wrong-side ¾ that still renders and

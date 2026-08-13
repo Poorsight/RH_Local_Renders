@@ -325,8 +325,25 @@ else infer from the name:
      /(^|[\s_.-])right[\s_-]*arm($|[\s_.-])/i    → R
      neither / both                              → "" (no arm-specific ¾ shot)
 
-L → TQL,  R → TQR
+L → TQR  (sofa +30°)        R → TQL  (sofa −60°)
 ```
+
+> ⚠️ **The mapping is crossed, and this is not a typo.** A **left**-arm sectional is filmed with
+> the rig keyed **`TQR`**; a **right**-arm one with **`TQL`**. The letters in the keys name the
+> rigs, not the arm side. Until 2026-08-13 this was wired the obvious way round and produced ¾
+> shots from the wrong side — the arm the shot is supposed to showcase ended up receding from
+> camera. It was corrected against two independent sources: the production scene's own
+> right-arm / left-arm defaults (right-arm == the `TQL` rig, left-arm == the `TQR` rig) and the
+> render pipeline, which films `Sectional_Indoor_R` at −60° and `Sectional_Indoor_L` at +30°.
+> Read `tq_view` from `light_rig.json`; never infer the shot from the key's letter.
+
+**Do not default an unknown arm side to a side.** `""` means either "symmetric, no arm side" or
+"could not be determined", and guessing silently produces a wrong-side ¾ that still renders and
+still looks plausible. Two traps seen in production: names like `6_PIECE_L_SECTIONAL` or
+`8_PIECE_U_SECTIONAL` describe the **shape**, not an arm — the regexes above deliberately do not
+match them; and the component list inside the mesh is no help either, because almost every
+assembly contains both a `LEFT_ARM_CHAIR` and a `RIGHT_ARM_CHAIR` module (they are the two ends).
+If the side is not known, carry it as explicit data or skip the ¾ shot — `F` and `FH` are always safe.
 
 Each preset in `light_rig.json` carries both the resolved `arm` and the resulting `tq_view`.
 In the tool this gates only the **render-preview board** (an `L` model shows ¾ renders in `TQ-L`

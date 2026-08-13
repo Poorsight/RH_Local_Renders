@@ -129,9 +129,11 @@ function buildConstants({ L, BUILTIN }) {
       peak_intensity: "warn when max intensity > 250 cd",
     },
     preset_tq_rule: {
-      left_arm_regex: "/(^|[\\s_.-])left[\\s_-]*arm($|[\\s_.-])/i  -> TQL",
-      right_arm_regex: "/(^|[\\s_.-])right[\\s_-]*arm($|[\\s_.-])/i -> TQR",
-      note: "F and FH apply to every model; an arm-side model only gets the TQ shot on its own side.",
+      left_arm_regex: "/(^|[\\s_.-])left[\\s_-]*arm($|[\\s_.-])/i  -> TQR  (sofa +30 deg)",
+      right_arm_regex: "/(^|[\\s_.-])right[\\s_-]*arm($|[\\s_.-])/i -> TQL  (sofa -60 deg)",
+      note: "F and FH apply to every model; an arm-side model gets exactly one of the two TQ shots.",
+      warning: "The mapping is CROSSED on purpose: a LEFT-arm sectional is filmed with the rig keyed TQR, a RIGHT-arm one with TQL. The letters in the keys name the rigs, not the arm side. Wired the other way round until 2026-08-13, which produced three-quarter shots from the wrong side; confirmed against the production scene defaults and the render pipeline before flipping. Read tq_view, never the key's letter.",
+      unknown_arm: "An empty arm means the model has no arm side (U / symmetric) or it could not be determined. Do NOT default to a side - names like '6_PIECE_L_SECTIONAL' or '..._U_SECTIONAL' describe the SHAPE, not an arm, and component lists carry LEFT_ARM_CHAIR and RIGHT_ARM_CHAIR modules on both ends of almost every assembly. Either carry the side as explicit data or skip the TQ shot.",
     },
     presets,
   };

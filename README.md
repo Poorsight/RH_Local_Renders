@@ -31,8 +31,10 @@ simply hidden. Per-image comments are shared for everyone through `comments.php`
 next to `index.html` (stored in `render-comments.json` on the server); if the
 endpoint is unavailable, comments quietly fall back to this browser's
 `localStorage`.
-For TQ shots, left-arm presets show server renders only in `TQ-L`;
-right-arm presets only in `TQ-R`. `F` and `FH` renders stay available.
+For TQ shots, left-arm presets show server renders only in `TQ-R`;
+right-arm presets only in `TQ-L` — **the arm-side mapping is crossed on purpose**, the letters in
+the shot keys name the rigs and not the arm side (HANDOFF_FORMULA §8). `F` and `FH` renders stay
+available for every model.
 The bundled default preset is `KOPER_LEFT_ARM_L_SECTIONAL_prod39250480`
 with dimensions `384 x 305 x 82`.
 

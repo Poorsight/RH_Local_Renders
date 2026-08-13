@@ -16,7 +16,7 @@ All logic is in a single `index.html` — no build, no dependencies.
 - Tests: `npm test`  (Node 18+)
 
 ## Features
-- **Camera shots / views:** `F` (front), `FH` (front-high), `TQ-R` (¾, sofa +30°, right-arm sectionals), `TQ-L` (¾, sofa −60°, left-arm). Each shot is its own light rig.
+- **Camera shots / views:** `F` (front), `FH` (front-high), `TQ-R` (¾, sofa +30°), `TQ-L` (¾, sofa −60°). Each shot is its own light rig. ⚠️ **The arm-side mapping is crossed:** a **left**-arm sectional uses `TQR`, a **right**-arm one uses `TQL` — the letters in the keys name the rigs, not the arm side (see `armRequiredView` in `index.html` and HANDOFF_FORMULA §8).
 - **Size scaling** of the rig by sofa W/D/H, including adaptive pitch/yaw for non-uniform proportions so lights retain the same relative aim. (The 90° rotate/swap flag survives in the `computeAll` API only — its UI checkbox was removed.)
 - **Two intensity models:** A (scale source sizes, `I·k²`, closest to the original — default) / B (fixed sizes, `I·k^p`).
 - **Sofa presets:** 17 RH sectional models (UPH bounds measured in the UE project), plus user presets in `localStorage`. The default preset is `KOPER_LEFT_ARM_L_SECTIONAL_prod39250480` at `384 x 305 x 82` so it can load server renders immediately.
@@ -57,8 +57,8 @@ Naming convention (shared by both modes; pure helpers `rbCandidateFiles` / `rbMa
 - URL pattern: `Renders/<material>/<prefix-variant>_<suffix>.png`.
 - Built-in presets can include `r`, a render filename prefix, e.g. `BORGO_RIGHT_ARM_L_SECTIONAL_prod39250511`.
 - Prefix variants tried in order: `r`, then `r_FH` (needed for some current Borgo files).
-- Suffix map: `F` -> `F`; `FH` -> `FH`; `TQR` -> `RIGHT_ARM`, fallback `TQ`; `TQL` -> `LEFT_ARM`, fallback `TQ`.
-- Arm side: built-in presets carry an explicit `arm:"L"|"R"` (`presetArmSide` falls back to name parsing for user presets). It gates only the TQ render board: `L` presets can use `F`/`FH` but only search TQ images in `TQ-L`; `R` presets only in `TQ-R`.
+- Suffix map: `F` -> `F`; `FH` -> `FH`; `TQR` -> `LEFT_ARM`, fallback `TQ`; `TQL` -> `RIGHT_ARM`, fallback `TQ` (crossed, matching the arm-side rule).
+- Arm side: built-in presets carry an explicit `arm:"L"|"R"` (`presetArmSide` falls back to name parsing for user presets). It gates only the TQ render board: `L` presets can use `F`/`FH` but only search TQ images in `TQ-R`; `R` presets only in `TQ-L` — the crossed mapping above. Accordingly `RB_VIEW_SUFFIXES` maps `TQR -> LEFT_ARM` and `TQL -> RIGHT_ARM`, so a left-arm model still finds its `..._LEFT_ARM.png` file.
 - Current material folders: `PERFORMANCE_LINEN_WEAVE_CAMEL_V1`, `VELVETY_NATURAL_V1`. Current server folder has renders for SKU prefixes `39250511`, `39250480`, `40460153`.
 - If a preset has no `r` prefix, the board shows a local status message instead of trying to load files.
 

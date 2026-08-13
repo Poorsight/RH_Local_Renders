@@ -215,8 +215,8 @@
       }
     },
     "TQR": {
-      "label": "TQ · ¾ right-arm",
-      "desc": "Three-quarter, sofa +30°. For right-arm sectionals.",
+      "label": "TQ · ¾ left-arm (+30°)",
+      "desc": "Three-quarter, sofa +30°. Use for LEFT-arm sectionals — the R in the key is historical and does not mean right-arm.",
       "sofa_yaw": 30,
       "lights": {
         "front_fill_lgt": {
@@ -272,8 +272,8 @@
       }
     },
     "TQL": {
-      "label": "TQ · ¾ left-arm",
-      "desc": "Three-quarter, sofa −60°. For left-arm sectionals.",
+      "label": "TQ · ¾ right-arm (−60°)",
+      "desc": "Three-quarter, sofa −60°. Use for RIGHT-arm sectionals — the L in the key is historical and does not mean left-arm.",
       "sofa_yaw": -60,
       "lights": {
         "front_fill_lgt": {
@@ -373,9 +373,11 @@
     "peak_intensity": "warn when max intensity > 250 cd"
   },
   "preset_tq_rule": {
-    "left_arm_regex": "/(^|[\\s_.-])left[\\s_-]*arm($|[\\s_.-])/i  -> TQL",
-    "right_arm_regex": "/(^|[\\s_.-])right[\\s_-]*arm($|[\\s_.-])/i -> TQR",
-    "note": "F and FH apply to every model; an arm-side model only gets the TQ shot on its own side."
+    "left_arm_regex": "/(^|[\\s_.-])left[\\s_-]*arm($|[\\s_.-])/i  -> TQR  (sofa +30 deg)",
+    "right_arm_regex": "/(^|[\\s_.-])right[\\s_-]*arm($|[\\s_.-])/i -> TQL  (sofa -60 deg)",
+    "note": "F and FH apply to every model; an arm-side model gets exactly one of the two TQ shots.",
+    "warning": "The mapping is CROSSED on purpose: a LEFT-arm sectional is filmed with the rig keyed TQR, a RIGHT-arm one with TQL. The letters in the keys name the rigs, not the arm side. Wired the other way round until 2026-08-13, which produced three-quarter shots from the wrong side; confirmed against the production scene defaults and the render pipeline before flipping. Read tq_view, never the key's letter.",
+    "unknown_arm": "An empty arm means the model has no arm side (U / symmetric) or it could not be determined. Do NOT default to a side - names like '6_PIECE_L_SECTIONAL' or '..._U_SECTIONAL' describe the SHAPE, not an arm, and component lists carry LEFT_ARM_CHAIR and RIGHT_ARM_CHAIR modules on both ends of almost every assembly. Either carry the side as explicit data or skip the TQ shot."
   },
   "presets": [
     {
@@ -386,7 +388,7 @@
       "H": 82,
       "render_prefix": "KOPER_LEFT_ARM_L_SECTIONAL_prod39250480",
       "arm": "L",
-      "tq_view": "TQL"
+      "tq_view": "TQR"
     },
     {
       "name": "Borgo · Double Partial-Back U (39940015)",
@@ -426,7 +428,7 @@
       "H": 80,
       "render_prefix": "BORGO_RIGHT_ARM_CHAISE_SECTIONAL_prod39250509",
       "arm": "R",
-      "tq_view": "TQR"
+      "tq_view": "TQL"
     },
     {
       "name": "Borgo · Right-Arm L (39250511)",
@@ -436,7 +438,7 @@
       "H": 80,
       "render_prefix": "BORGO_RIGHT_ARM_L_SECTIONAL_prod39250511",
       "arm": "R",
-      "tq_view": "TQR"
+      "tq_view": "TQL"
     },
     {
       "name": "Borgo · U (39250513)",
@@ -486,7 +488,7 @@
       "H": 78,
       "render_prefix": "MASSON_LEFT_ARM_TWO_SEAT_CHAISE_END_U_SECTIONAL_prod40460153",
       "arm": "L",
-      "tq_view": "TQL"
+      "tq_view": "TQR"
     },
     {
       "name": "Masson · Right-Arm Chaise-End (39250417)",
@@ -496,7 +498,7 @@
       "H": 78,
       "render_prefix": "MASSON_RIGHT_ARM_CHAISE_END_SECTIONAL_prod39250417",
       "arm": "R",
-      "tq_view": "TQR"
+      "tq_view": "TQL"
     },
     {
       "name": "Masson · Right-Arm L (39250419)",
@@ -506,7 +508,7 @@
       "H": 77,
       "render_prefix": "MASSON_RIGHT_ARM_L_SECTIONAL_prod39250419",
       "arm": "R",
-      "tq_view": "TQR"
+      "tq_view": "TQL"
     },
     {
       "name": "Masson · Right-Arm 2-Seat Chaise-End U (40460154)",
@@ -516,7 +518,7 @@
       "H": 78,
       "render_prefix": "MASSON_RIGHT_ARM_TWO_SEAT_CHAISE_END_U_SECTIONAL_prod40460154",
       "arm": "R",
-      "tq_view": "TQR"
+      "tq_view": "TQL"
     },
     {
       "name": "Masson · U-Chaise (39250420)",
@@ -546,7 +548,7 @@
       "H": 79,
       "render_prefix": "ONIC_RIGHT_ARM_L_SECTIONAL_prod39250451",
       "arm": "R",
-      "tq_view": "TQR"
+      "tq_view": "TQL"
     }
   ]
 }

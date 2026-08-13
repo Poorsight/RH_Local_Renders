@@ -59,15 +59,20 @@ check("arm side: inferred from the name when preset.arm is absent",
   presetArmSide({}, "KOPER_LEFT_ARM_L_SECTIONAL_prod39250480") === "L" &&
   presetArmSide({}, "Borgo · Right-Arm L (39250511)") === "R" &&
   presetArmSide({}, "Koper · U (39250483)") === "");
-check("armRequiredView: L -> TQL, R -> TQR, none -> ''",
-  armRequiredView("L") === "TQL" && armRequiredView("R") === "TQR" && armRequiredView("") === "");
+// The cross is deliberate: a LEFT-arm sectional is filmed with the rig keyed TQR (sofa +30°),
+// a RIGHT-arm one with TQL (sofa −60°). See the comment on armRequiredView in index.html.
+check("armRequiredView: L -> TQR, R -> TQL, none -> ''",
+  armRequiredView("L") === "TQR" && armRequiredView("R") === "TQL" && armRequiredView("") === "");
 check("arm gating blocks only the opposite TQ view (F/FH stay open)",
-  armBlocksView("L", "TQR") === true  && armBlocksView("L", "TQL") === false &&
-  armBlocksView("R", "TQL") === true  && armBlocksView("R", "TQR") === false &&
+  armBlocksView("L", "TQL") === true  && armBlocksView("L", "TQR") === false &&
+  armBlocksView("R", "TQR") === true  && armBlocksView("R", "TQL") === false &&
   armBlocksView("L", "F")   === false && armBlocksView("L", "FH")  === false &&
   armBlocksView("",  "TQR") === false);
 check("render candidates: prefix variants x view suffixes, probe-priority order",
   JSON.stringify(rbCandidateFiles("P", "DIR", "TQL")) ===
+  JSON.stringify(["DIR/P_RIGHT_ARM.png", "DIR/P_TQ.png", "DIR/P_FH_RIGHT_ARM.png", "DIR/P_FH_TQ.png"]));
+check("render candidates: the TQR rig looks for LEFT_ARM files (the arm-side cross)",
+  JSON.stringify(rbCandidateFiles("P", "DIR", "TQR")) ===
   JSON.stringify(["DIR/P_LEFT_ARM.png", "DIR/P_TQ.png", "DIR/P_FH_LEFT_ARM.png", "DIR/P_FH_TQ.png"]));
 const mf = ["MAT_A/PFX_F.png", "MAT_A/PFX_TQ.png", "MAT_B/PFX_FH_F.png", "MAT_B/OTHER_F.png"];
 check("manifest match: exact + _FH variant, materials discovered from the list",

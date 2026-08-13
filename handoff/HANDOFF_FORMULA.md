@@ -53,7 +53,11 @@ node handoff/export_from_index.cjs
 - World **X ↔ sofa width**, **Y ↔ sofa depth (+Y is the camera / front side)**, **Z ↔ height**.
 - Light positions are absolute world coordinates. In the T3D they sit in `RelativeLocation` of an
   unparented light component, so relative == world.
-- Each shot rotates the **sofa**, never the rig. `sofa_yaw`: `F` 0°, `FH` 0°, `TQR` +30°, `TQL` −60°.
+- Each shot rotates the **sofa**, never the rig. `sofa_yaw`: `F` 0°, `FH` 0°, `TQR` +36°, `TQL` −36°.
+  The two ¾ shots are mirror images of each other. `sofa_yaw` is **not** part of the T3D — the T3D
+  describes only the lights, which live in world space — so it never affects generated output; it
+  documents the composition and drives the plan diagram. Consumers that place the sofa themselves
+  read it from `light_rig.json`.
 
 ## 4. Inputs
 
@@ -242,7 +246,7 @@ the **source** angles — the values that go through §5.6 before being written.
 | `right_bounce_lgt` | (283, 323, 150) | 0.5 | 0 | −140 |
 | `right_rim_lgt` | (245, −73, 230) | 1.0 | 0 | 157.21875 |
 
-**`TQR` · ¾ right-arm** — sofa yaw **+30°**
+**`TQR` · ¾ for LEFT-arm sectionals** — sofa yaw **+36°** (see §8 on the crossed naming)
 
 | light | position | I₀ | pitch | yaw |
 |---|---|---|---|---|
@@ -252,7 +256,7 @@ the **source** angles — the values that go through §5.6 before being written.
 | `right_bounce_lgt` | (283, 323, 150) | 0.5 | 0 | −140 |
 | `right_rim_lgt` | (385, 63, 56) | 0.6 | 0 | 153 |
 
-**`TQL` · ¾ left-arm** — sofa yaw **−60°**
+**`TQL` · ¾ for RIGHT-arm sectionals** — sofa yaw **−36°** (see §8 on the crossed naming)
 
 | light | position | I₀ | pitch | yaw |
 |---|---|---|---|---|
@@ -325,7 +329,7 @@ else infer from the name:
      /(^|[\s_.-])right[\s_-]*arm($|[\s_.-])/i    → R
      neither / both                              → "" (no arm-specific ¾ shot)
 
-L → TQR  (sofa +30°)        R → TQL  (sofa −60°)
+L → TQR  (sofa +36°)        R → TQL  (sofa −36°)
 ```
 
 > ⚠️ **The mapping is crossed, and this is not a typo.** A **left**-arm sectional is filmed with
@@ -334,7 +338,7 @@ L → TQR  (sofa +30°)        R → TQL  (sofa −60°)
 > shots from the wrong side — the arm the shot is supposed to showcase ended up receding from
 > camera. It was corrected against two independent sources: the production scene's own
 > right-arm / left-arm defaults (right-arm == the `TQL` rig, left-arm == the `TQR` rig) and the
-> render pipeline, which films `Sectional_Indoor_R` at −60° and `Sectional_Indoor_L` at +30°.
+> render pipeline, which films `Sectional_Indoor_R` at negative yaw and `Sectional_Indoor_L` at positive.
 > Read `tq_view` from `light_rig.json`; never infer the shot from the key's letter.
 
 **Do not default an unknown arm side to a side.** `""` means either "symmetric, no arm side" or

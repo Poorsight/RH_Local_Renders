@@ -59,8 +59,8 @@ check("arm side: inferred from the name when preset.arm is absent",
   presetArmSide({}, "KOPER_LEFT_ARM_L_SECTIONAL_prod39250480") === "L" &&
   presetArmSide({}, "Borgo · Right-Arm L (39250511)") === "R" &&
   presetArmSide({}, "Koper · U (39250483)") === "");
-// The cross is deliberate: a LEFT-arm sectional is filmed with the rig keyed TQR (sofa +30°),
-// a RIGHT-arm one with TQL (sofa −60°). See the comment on armRequiredView in index.html.
+// The cross is deliberate: a LEFT-arm sectional is filmed with the rig keyed TQR (sofa +36°),
+// a RIGHT-arm one with TQL (sofa −36°). See the comment on armRequiredView in index.html.
 check("armRequiredView: L -> TQR, R -> TQL, none -> ''",
   armRequiredView("L") === "TQR" && armRequiredView("R") === "TQL" && armRequiredView("") === "");
 check("arm gating blocks only the opposite TQ view (F/FH stay open)",

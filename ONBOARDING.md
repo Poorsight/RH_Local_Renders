@@ -16,7 +16,7 @@ All logic is in a single `index.html` — no build, no dependencies.
 - Tests: `npm test`  (Node 18+)
 
 ## Features
-- **Camera shots / views:** `F` (front), `FH` (front-high), `TQ-R` (¾, sofa +30°), `TQ-L` (¾, sofa −60°). Each shot is its own light rig. ⚠️ **The arm-side mapping is crossed:** a **left**-arm sectional uses `TQR`, a **right**-arm one uses `TQL` — the letters in the keys name the rigs, not the arm side (see `armRequiredView` in `index.html` and HANDOFF_FORMULA §8).
+- **Camera shots / views:** `F` (front), `FH` (front-high), `TQ-R` (¾, sofa +36°), `TQ-L` (¾, sofa −36°) — the two ¾ shots are mirrored. Each shot is its own light rig. ⚠️ **The arm-side mapping is crossed:** a **left**-arm sectional uses `TQR`, a **right**-arm one uses `TQL` — the letters in the keys name the rigs, not the arm side (see `armRequiredView` in `index.html` and HANDOFF_FORMULA §8).
 - **Size scaling** of the rig by sofa W/D/H, including adaptive pitch/yaw for non-uniform proportions so lights retain the same relative aim. (The 90° rotate/swap flag survives in the `computeAll` API only — its UI checkbox was removed.)
 - **Two intensity models:** A (scale source sizes, `I·k²`, closest to the original — default) / B (fixed sizes, `I·k^p`).
 - **Sofa presets:** 17 RH sectional models (UPH bounds measured in the UE project), plus user presets in `localStorage`. The default preset is `KOPER_LEFT_ARM_L_SECTIONAL_prod39250480` at `384 x 305 x 82` so it can load server renders immediately.

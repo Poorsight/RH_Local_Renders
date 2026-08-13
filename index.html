@@ -630,14 +630,14 @@ const VIEWS = {
     right_bounce_lgt: { pos:[283,323,150],          I:0.5,  pitch:0,   yaw:-140 },
     right_rim_lgt:    { pos:[245,-73,230],          I:1.0,  pitch:0,   yaw:157.21875 },
   }},
-  TQR: { label:"TQ · ¾ left-arm (+30°)", desc:"Three-quarter, sofa +30°. Use for LEFT-arm sectionals — the R in the key is historical and does not mean right-arm.", rot:30, lights:{
+  TQR: { label:"TQ · ¾ left-arm (+36°)", desc:"Three-quarter, sofa +36°. Use for LEFT-arm sectionals — the R in the key is historical and does not mean right-arm.", rot:36, lights:{
     front_fill_lgt:   { pos:[0,696,52],             I:8.0,  pitch:4,   yaw:-90 },
     left_rim_lgt:     { pos:[-433,-190,242.441071], I:50.0, pitch:-43, yaw:4 },
     main_key_lgt:     { pos:[-474,-19,168],         I:60.0, pitch:-18, yaw:28 },
     right_bounce_lgt: { pos:[283,323,150],          I:0.5,  pitch:0,   yaw:-140 },
     right_rim_lgt:    { pos:[385,63,56],            I:0.6,  pitch:0,   yaw:153 },
   }},
-  TQL: { label:"TQ · ¾ right-arm (−60°)", desc:"Three-quarter, sofa −60°. Use for RIGHT-arm sectionals — the L in the key is historical and does not mean left-arm.", rot:-60, lights:{
+  TQL: { label:"TQ · ¾ right-arm (−36°)", desc:"Three-quarter, sofa −36°. Use for RIGHT-arm sectionals — the L in the key is historical and does not mean left-arm.", rot:-36, lights:{
     front_fill_lgt:   { pos:[0,696,52],             I:6.0,  pitch:4,   yaw:-90 },
     left_rim_lgt:     { pos:[-433,-190,242.441071], I:50.0, pitch:-43, yaw:4 },
     main_key_lgt:     { pos:[-474,-19,168],         I:60.0, pitch:-25, yaw:3 },
@@ -790,11 +790,11 @@ function presetArmSide(preset, name){
   return left && !right ? "L" : right && !left ? "R" : "";
 }
 /* Arm side -> the ¾ rig that shot is filmed with. NOTE THE CROSS: a LEFT-arm sectional uses the
-   rig keyed TQR (sofa +30°), a RIGHT-arm one uses TQL (sofa −60°). The letters in the keys are
+   rig keyed TQR (sofa +36°), a RIGHT-arm one uses TQL (sofa −36°). The letters in the keys are
    historical labels of the rigs, not of the arm side; they were wired the other way round until
    2026-08-13 and produced ¾ shots from the wrong side. Confirmed against the production scene
    exports (right-arm default == the TQL rig, left-arm default == the TQR rig) and against the
-   render pipeline, which maps Sectional_Indoor_R -> −60° and Sectional_Indoor_L -> +30°.
+   render pipeline, which maps Sectional_Indoor_R -> negative yaw and Sectional_Indoor_L -> positive.
    Do not "fix" this back without re-checking both. */
 const armRequiredView = arm => arm === "L" ? "TQR" : arm === "R" ? "TQL" : "";
 /* Arm side gates only the opposite TQ view; F/FH stay available. */

@@ -14,6 +14,12 @@ All logic is in a single `index.html` — no build, no dependencies.
   (GitHub Pages is **not** enabled for this repo; the old `poorsight.github.io/light-rig-scaler` link serves GitHub's "Site not found" page)
 - Locally: open `index.html` by double-clicking **or** `npx serve . -l 5500`
 - Tests: `npm test`  (Node 18+)
+- ⚠️ **`git push` does not update the live tool.** GitHub Pages is off; the preview URL is served
+  from a copy uploaded over FTP, so publishing is a separate manual step — deploy `index.html`
+  with the `preview-deploy` skill (`bash ~/.claude/skills/preview-deploy/upload.sh
+  D:/GitHub/light-rig-scaler/index.html light-rig`). Upload the **file**, not the repo folder:
+  the deploy directory also holds `Renders/`, `comments.php` and `render-comments.json`, and
+  `render-comments.json` must never be overwritten.
 
 ## Features
 - **Camera shots / views:** `F` (front), `FH` (front-high), `TQ-R` (¾, sofa +36°), `TQ-L` (¾, sofa −36°) — the two ¾ shots are mirrored. Each shot is its own light rig. ⚠️ **The arm-side mapping is crossed:** a **left**-arm sectional uses `TQR`, a **right**-arm one uses `TQL` — the letters in the keys name the rigs, not the arm side (see `armRequiredView` in `index.html` and HANDOFF_FORMULA §8).

@@ -104,6 +104,18 @@ test("batch jobs keep per-model geometry and apply shared IDs only where present
   assert.equal(job.tasks[1].sequence.cameras[2].Actor.Rotation.Yaw, -36);
 });
 
+test("normalized UI groups still filter exact source component IDs per task", () => {
+  const first = { ...model, name: "FIRST", materialIds: ["FIRST_123_UPH"] };
+  const second = { ...model, name: "SECOND", path: "D:\\models\\SECOND.fbx", materialIds: ["SECOND_456_UPH1"] };
+  const materials = [{ meshes: ["FIRST_123_UPH", "SECOND_456_UPH1"], material: "FABRIC_A" }];
+  const job = buildBatchJob([
+    { model: first, input: { ...baseInput, materials } },
+    { model: second, input: { ...baseInput, materials } }
+  ], rig, "D:\\renders\\normalized", "normalized_test");
+  assert.deepEqual(job.tasks[0].materials[0].meshes, ["first_123_uph"]);
+  assert.deepEqual(job.tasks[1].materials[0].meshes, ["second_456_uph1"]);
+});
+
 test("legacy light-rig project files stay out of the unified project", () => {
   for (const legacy of ["handoff", "light-rig-reference.html", "comments.php", "ONBOARDING.md", ".claude"]) {
     assert.equal(fs.existsSync(path.join(root, legacy)), false, legacy);
@@ -143,8 +155,8 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(client, /droppedFilePath/);
   assert.match(client, /dropTarget\.addEventListener\("drop"/);
   assert.match(client, /useDroppedModels/);
-  assert.match(client, /const shortMaterialId = id =>/);
-  assert.match(client, /class="material-id-full"/);
+  assert.match(client, /const normalizedMaterialId = id =>/);
+  assert.match(client, /data-material-ids=/);
   assert.match(html, /id="modelBatch"/);
   assert.match(client, /LOCAL_MODELS_ROOT = "D:\\\\GitHub\\\\RH_Local_Renders\\\\local\\\\models"/);
   assert.match(client, /const metadataModel = query =>/);

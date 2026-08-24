@@ -33,12 +33,10 @@
     node.lastChild.textContent = online ? "Local service online" : "Open with npm start for render controls";
   };
   const selected = (name) => [...document.querySelectorAll(`input[name=${name}]:checked`)].map(node => node.value);
-  const materialRows = () => [...document.querySelectorAll("[data-material-id]")].map(node => ({ meshes: [node.dataset.materialId], material: node.value.trim() }));
-  const shortMaterialId = id => {
-    const value = String(id || ""); if (value.length <= 32) return value;
-    const semantic = value.match(/(?:^|_)(\d{5,})_(UPH|STITCHES|FEET)(\d*)$/i);
-    if (semantic) return `…${semantic[1]}_${semantic[2]}${semantic[3]}`;
-    return `…${value.split("_").slice(-4).join("_")}`;
+  const materialRows = () => [...document.querySelectorAll("[data-material-ids]")].map(node => ({ meshes: JSON.parse(node.dataset.materialIds), material: node.value.trim() }));
+  const normalizedMaterialId = id => {
+    const value = String(id || ""), last = value.split(/[:_]/).filter(Boolean).pop() || value;
+    return last.replace(/\d/g, "") || last;
   };
   const sideFromModel = () => {
     const value = $("sceneSide").value;
@@ -63,20 +61,21 @@
     $("launchRender").disabled = !state.jobPath;
   };
   const renderMaterials = () => {
-    const previous = new Map(materialRows().map(row => [row.meshes[0].toLowerCase(), row.material]));
+    const previous = new Map([...document.querySelectorAll("[data-material-key]")].map(node => [node.dataset.materialKey, node.value]));
     const grouped = new Map();
     state.batch.forEach(model => model.materialIds.forEach(id => {
-      const key = id.toLowerCase();
-      if (!grouped.has(key)) grouped.set(key, { id, models: 0 });
-      grouped.get(key).models++;
+      const label = normalizedMaterialId(id), key = label.toLowerCase();
+      if (!grouped.has(key)) grouped.set(key, { key, label, ids: new Set(), models: new Set() });
+      grouped.get(key).ids.add(id); grouped.get(key).models.add(model.path);
     }));
-    const ids = [...grouped.values()];
+    const rank = { uph: 0, stitches: 1, feet: 2 };
+    const ids = [...grouped.values()].sort((left, right) => (rank[left.key] ?? 9) - (rank[right.key] ?? 9) || left.label.localeCompare(right.label));
     $("materialsEmpty").hidden = !!ids.length;
     $("materialsList").innerHTML = ids.map(item => {
-      const shortId = shortMaterialId(item.id), fullId = shortId === item.id ? "" : `<code class="material-id-full">${escapeHtml(item.id)}</code>`;
-      return `<label class="material-row"><span class="material-id" title="${escapeHtml(item.id)}"><b>${escapeHtml(shortId)}</b><small>${item.models} model${item.models === 1 ? "" : "s"}</small>${fullId}</span><input data-material-id="${escapeHtml(item.id)}" value="${escapeHtml(previous.get(item.id.toLowerCase()) || "")}" placeholder="Replace with RH material name" autocomplete="off"></label>`;
+      const sourceIds = [...item.ids], modelCount = item.models.size;
+      return `<label class="material-row"><span class="material-id"><b>${escapeHtml(item.label)}</b><small>${modelCount} model${modelCount === 1 ? "" : "s"} · ${sourceIds.length} component ID${sourceIds.length === 1 ? "" : "s"}</small></span><input data-material-key="${escapeHtml(item.key)}" data-material-ids="${escapeHtml(JSON.stringify(sourceIds))}" value="${escapeHtml(previous.get(item.key) || "")}" placeholder="Replace with RH material name" autocomplete="off"></label>`;
     }).join("");
-    document.querySelectorAll("[data-material-id]").forEach(input => input.addEventListener("input", validate));
+    document.querySelectorAll("[data-material-key]").forEach(input => input.addEventListener("input", validate));
   };
   const renderBatch = () => {
     $("modelBatch").hidden = !state.batch.length; $("batchCount").textContent = `${state.batch.length} model${state.batch.length === 1 ? "" : "s"}`;
@@ -102,7 +101,7 @@
       $("modelOptions").insertAdjacentHTML("beforeend", `<option value="${escapeHtml(model.path)}">${escapeHtml(model.name)}</option>`);
     }
     renderMaterials(); selectModel(model);
-    const uph = document.querySelector('[data-material-id="UPH"], [data-material-id="uph"]'); if (uph && state.batch.length === 1) uph.focus();
+    const uph = document.querySelector('[data-material-key="uph"]'); if (uph && state.batch.length === 1) uph.focus();
     if (!quiet) toast(`${model.newlyAnalyzed ? "Analyzed and saved" : "Read"} ${model.materialIds.length} Material IDs from ${model.name}`);
   };
   const metadataModel = query => {

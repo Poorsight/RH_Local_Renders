@@ -4,7 +4,9 @@ Local control centre for RH BatchRender jobs. It keeps the sectional light-rig r
 
 ## Start
 
-Double-click `Start_RH_Local_Renders.bat`, or run:
+Double-click the **RH Local Renders** desktop shortcut. It starts the existing batch file without a visible terminal, waits for the local service, and opens the dashboard. Reopening the shortcut while the service is already running only opens the site and does not create another server.
+
+The underlying launchers are `Launch_RH_Local_Renders.vbs` and `Start_RH_Local_Renders.bat`. You can also run the batch file directly, or use:
 
 ```powershell
 cd D:\GitHub\RH_Local_Renders

@@ -124,6 +124,15 @@ test("legacy light-rig project files stay out of the unified project", () => {
   assert.deepEqual(Object.keys(scripts).sort(), ["build", "start", "test"]);
 });
 
+test("desktop launcher starts one hidden local server and waits before opening the site", () => {
+  const launcher = fs.readFileSync(path.join(root, "Launch_RH_Local_Renders.vbs"), "utf8");
+  const batch = fs.readFileSync(path.join(root, "Start_RH_Local_Renders.bat"), "utf8");
+  assert.match(launcher, /ServerReady\(statusUrl\)/);
+  assert.match(launcher, /--no-browser/);
+  assert.match(launcher, /shell\.Run siteUrl, 1, False/);
+  assert.match(batch, /if \/I "%~1"=="--no-browser" goto start_server/);
+});
+
 test("Unreal launch points the stock BatchRender plugin at the local API", () => {
   const apiUrl = "http://127.0.0.1:5500/api/unreal";
   const launch = buildUnrealLaunch("D:\\UE\\UnrealEditor.exe", "D:\\RH\\rh.uproject", apiUrl);

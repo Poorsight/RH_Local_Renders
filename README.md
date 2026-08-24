@@ -34,6 +34,8 @@ Override them with `RH_UNREAL_EDITOR`, `RH_UNREAL_PROJECT`, and `RH_MODELS_ROOT`
 - An import correction such as `-90°` is added to the camera Actor yaw. `model.Rotation` is deliberately not emitted because BatchRender does not parse it.
 - Render layers: Fabric Path Trace 5K and optional Shadow Lumen 15K×5K.
 
+Fabric and Shadow are separate Unreal phases because Substrate requires an editor restart. Fabric launches with the effective project override `r.Substrate=True`; Shadow launches in a fresh Unreal process with `r.Substrate=False`, which keeps Composure compatible. If both layers are selected, the service waits for Fabric `job_completed` and changed output files, closes Unreal, then starts Shadow. The override is passed with `-ini:Engine:[/Script/Engine.RendererSettings]` for that process only, so `rh_unreal_2/Config/DefaultEngine.ini` stays unchanged and its normal `r.Substrate=True` setting is preserved.
+
 The light rows are refreshed from the public Google Sheet (`gid=0`). `data/sectionals-indoor.csv` is the tracked startup fallback; a successful refresh is kept in memory for the current session.
 
 ## Model batches, automatic inspection, and generated presets
@@ -70,7 +72,7 @@ UnrealEditor.exe rh_unreal_2.uproject `
   -ini:Editor:[/Script/BatchRenderEditor.BatchRenderSettings]:ApiUrl=http://127.0.0.1:5500/api/unreal
 ```
 
-The generated job is served once to that process. A render is marked successful only after the plugin posts `job_completed` and at least one output image was created or updated; the dashboard then closes that Unreal process. No source, config, batch file, binary, or commit is required in `rh_unreal_2` or its BatchRender submodule.
+Each generated phase job is served once to its Unreal process. A phase advances only after the plugin posts `job_completed` and at least one output image was created or updated; the dashboard then closes that Unreal process. A combined Fabric/Shadow run is successful only when both ordered phases complete. No source, persistent config edit, batch file, binary, or commit is required in `rh_unreal_2` or its BatchRender submodule.
 
 ## Source and local data
 

@@ -323,10 +323,12 @@
   const updateRender = (render) => {
     state.status ||= {}; state.status.render = render;
     const badge = $("renderBadge"), box = $("renderStatus"), log = $("renderLog");
-    badge.dataset.state = render.state; badge.textContent = ({running:"Rendering",success:"Complete",failed:"Failed",idle:"Idle"})[render.state] || render.state;
+    badge.dataset.state = render.state; badge.textContent = render.state === "running" && render.phase ? render.phase : ({running:"Rendering",success:"Complete",failed:"Failed",idle:"Idle"})[render.state] || render.state;
     box.dataset.state = render.state;
-    const title = render.state === "running" ? "Unreal is rendering" : render.state === "success" ? "Render completed" : render.state === "failed" ? "Render stopped with an error" : "No active render";
-    box.querySelector("strong").textContent = title; box.querySelector("span").textContent = render.jobPath || "Generate a job, then launch it in Unreal Engine 5.6.";
+    const phase = render.phase ? ` · ${render.phase}${render.phaseCount > 1 ? ` (${render.phaseIndex}/${render.phaseCount})` : ""}` : "";
+    const title = render.state === "running" ? `Unreal is rendering${phase}` : render.state === "success" ? "Render completed" : render.state === "failed" ? "Render stopped with an error" : "No active render";
+    const substrate = render.state === "running" && typeof render.substrate === "boolean" ? `Substrate ${render.substrate ? "ON" : "OFF"} · ` : "";
+    box.querySelector("strong").textContent = title; box.querySelector("span").textContent = render.jobPath ? `${substrate}${render.jobPath}` : "Generate a job, then launch it in Unreal Engine 5.6.";
     log.hidden = !render.log; log.textContent = render.log || "";
     if (render.state !== "running" && state.poll) { clearInterval(state.poll); state.poll = null; loadHistory(); }
   };

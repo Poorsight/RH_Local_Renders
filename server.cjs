@@ -8,6 +8,7 @@ const { spawn } = require("node:child_process");
 const { SheetStore } = require("./lib/rig.cjs");
 const { ModelStore } = require("./lib/models.cjs");
 const { writeBatchJob } = require("./lib/jobs.cjs");
+const { buildRenderPlan } = require("./lib/render-plan.cjs");
 const { buildUnrealLaunch } = require("./lib/unreal.cjs");
 const { history } = require("./lib/history.cjs");
 
@@ -18,7 +19,7 @@ const UNREAL_EDITOR = process.env.RH_UNREAL_EDITOR || "D:\\Unreal_Engine\\UE_5.6
 const UNREAL_PROJECT = process.env.RH_UNREAL_PROJECT || "D:\\GitHub\\rh_unreal_2\\rh_unreal_2.uproject";
 const sheet = new SheetStore(ROOT), models = new ModelStore(ROOT);
 const RUNTIME_FILES = [
-  "server.cjs", "package.json", "lib/csv.cjs", "lib/history.cjs", "lib/jobs.cjs", "lib/models.cjs",
+  "server.cjs", "package.json", "lib/csv.cjs", "lib/history.cjs", "lib/jobs.cjs", "lib/models.cjs", "lib/render-plan.cjs",
   "lib/rig.cjs", "lib/unreal.cjs", "scripts/inspect_fbx.py"
 ];
 const runtimeSourceToken = () => {
@@ -33,7 +34,7 @@ const runtimeSourceToken = () => {
 const RUNTIME_STARTED_AT = new Date().toISOString();
 const RUNTIME_SOURCE_TOKEN = runtimeSourceToken();
 let render = { state: "idle", pid: null, jobPath: null, startedAt: null, finishedAt: null, exitCode: null, log: "" };
-let child = null, bridge = null, lastUnrealContactAt = null;
+let child = null, bridge = null, activeRun = null, lastUnrealContactAt = null;
 
 const json = (response, status, body) => { response.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" }); response.end(JSON.stringify(body)); };
 const error = (response, status, message) => json(response, status, { error: message });
@@ -63,16 +64,56 @@ function finishBridge(state, message) {
   if (!bridge || bridge.completed) return;
   const produced = changedImages(bridge.outputFolder, bridge.before);
   bridge.completed = true;
-  render.finishedAt = new Date().toISOString();
-  render.state = state === "success" && produced.length > 0 ? "success" : "failed";
-  appendRenderLog(`\nBatchRender ${state}: ${message}; changed images: ${produced.length}\n`);
-  if (render.state === "success") updateCatalog(bridge.jobPath);
+  bridge.success = state === "success" && produced.length > 0;
+  appendRenderLog(`\n${bridge.phase.name} phase ${bridge.success ? "completed" : "failed"}: ${message}; changed images: ${produced.length}\n`);
+  const processToClose = child;
   setTimeout(() => {
-    if (child) {
-      appendRenderLog("Closing Unreal after the local job event.\n");
-      child.kill();
+    if (child && child === processToClose) {
+      appendRenderLog(`Closing Unreal after ${bridge?.phase?.name || "render"} phase.\n`);
+      processToClose.kill();
     }
   }, 1500);
+}
+
+function finishRun(state, message) {
+  if (!activeRun) return;
+  const produced = changedImages(activeRun.outputFolder, activeRun.before);
+  render.finishedAt = new Date().toISOString(); render.pid = null;
+  render.state = state === "success" && produced.length > 0 ? "success" : "failed";
+  appendRenderLog(`\nRender plan ${render.state}: ${message}; changed images: ${produced.length}\n`);
+  if (render.state === "success") updateCatalog(activeRun.jobPath);
+  activeRun = null; bridge = null;
+}
+
+function startRenderPhase() {
+  if (!activeRun) return;
+  const phase = activeRun.phases[activeRun.index], apiUrl = `http://${HOST}:${PORT}/api/unreal`;
+  bridge = { job: phase.job, jobPath: activeRun.jobPath, outputFolder: activeRun.outputFolder, before: imageSnapshot(activeRun.outputFolder), delivered: false, completed: false, success: false, phase };
+  const phaseBridge = bridge, launch = buildUnrealLaunch(UNREAL_EDITOR, UNREAL_PROJECT, apiUrl, { substrate: phase.substrate });
+  appendRenderLog(`\nStarting ${phase.name} phase ${activeRun.index + 1}/${activeRun.phases.length}; Substrate ${phase.substrate ? "ON" : "OFF"}.\n${launch.command}\n${launch.args.join(" ")}\n`);
+  child = spawn(launch.command, launch.args, launch.options);
+  const phaseProcess = child;
+  render.pid = child.pid; render.phase = phase.name; render.phaseIndex = activeRun.index + 1; render.phaseCount = activeRun.phases.length; render.substrate = phase.substrate;
+  child.stdout.on("data", appendRenderLog); child.stderr.on("data", appendRenderLog);
+  child.on("error", launchError => {
+    appendRenderLog(`\n${launchError.message}\n`);
+    if (child === phaseProcess) child = null;
+    if (bridge === phaseBridge) bridge = null;
+    finishRun("failed", `${phase.name} could not start`);
+  });
+  child.on("exit", code => {
+    render.exitCode = code;
+    if (child === phaseProcess) child = null;
+    if (bridge === phaseBridge) bridge = null;
+    if (!activeRun) return;
+    if (!phaseBridge.completed) return finishRun("failed", `${phase.name} exited before job_completed`);
+    if (!phaseBridge.success) return finishRun("failed", `${phase.name} did not produce render files`);
+    if (activeRun.index + 1 < activeRun.phases.length) {
+      activeRun.index += 1; render.pid = null; render.phase = `Preparing ${activeRun.phases[activeRun.index].name}`; render.phaseIndex = activeRun.index + 1; render.substrate = null;
+      appendRenderLog(`Fabric is complete. Restarting Unreal for ${activeRun.phases[activeRun.index].name} with Substrate OFF.\n`);
+      setTimeout(startRenderPhase, 300);
+    } else finishRun("success", `${activeRun.phases.length} phase${activeRun.phases.length === 1 ? "" : "s"} completed`);
+  });
 }
 
 function scanImages(folder) {
@@ -123,8 +164,9 @@ async function api(request, response, url) {
     const event = await body(request), eventName = String(event.event || "unknown"), data = event.data || {};
     appendRenderLog(`BatchRender event ${eventName}: ${JSON.stringify(data).slice(0, 4000)}\n`);
     if (bridge && eventName === "render_finished") render.rendered = Number(render.rendered || 0) + 1;
-    if (bridge && eventName === "job_completed" && (!data.jobId || data.jobId === bridge.job.jobId)) finishBridge("success", `job ${data.jobId || bridge.job.jobId} completed`);
-    if (bridge && eventName === "error" && (!data.jobId || data.jobId === bridge.job.jobId)) finishBridge("failed", data.error || "plugin reported an error");
+    const matchesJob = bridge && (!data.jobId || data.jobId === bridge.job.jobId || data.jobId === activeRun?.job?.jobId);
+    if (matchesJob && eventName === "job_completed") finishBridge("success", `job ${data.jobId || bridge.job.jobId} completed`);
+    if (matchesJob && eventName === "error") finishBridge("failed", data.error || "plugin reported an error");
     return json(response, 200, { ok: true });
   }
   if (request.method === "GET" && url.pathname === "/api/status") return json(response, 200, {
@@ -148,25 +190,17 @@ async function api(request, response, url) {
     return json(response, 201, { jobPath: result.jobPath, outputFolder: result.outputFolder, modelCount: result.job.tasks.length, cameraCount, lightSource: sheet.source });
   }
   if (request.method === "POST" && url.pathname === "/api/renders") {
-    if (child) return error(response, 409, render.state === "running" ? "A render is already running" : "Unreal Editor is still closing");
+    if (child || activeRun) return error(response, 409, render.state === "running" ? "A render is already running" : "Unreal Editor is still closing");
     const input = await body(request), jobPath = path.resolve(String(input.jobPath || "")), jobsRoot = path.join(ROOT, "local", "jobs", "generated");
     if (!within(jobPath, jobsRoot) || !fs.existsSync(jobPath)) return error(response, 400, "Only generated local job files can be launched");
     if (!fs.existsSync(UNREAL_EDITOR) || !fs.existsSync(UNREAL_PROJECT)) return error(response, 503, "Unreal Editor 5.6 or rh_unreal_2.uproject was not found");
     const job = JSON.parse(fs.readFileSync(jobPath, "utf8"));
     const rendersRoot = path.join(ROOT, "local", "renders"), outputFolder = path.resolve(String(job._rhLocal?.outputFolder || ""));
     if (!within(outputFolder, rendersRoot)) return error(response, 400, "Job output must stay inside RH_Local_Renders/local/renders");
-    const apiUrl = `http://${HOST}:${PORT}/api/unreal`;
-    bridge = { job, jobPath, outputFolder, before: imageSnapshot(outputFolder), delivered: false, completed: false };
-    const launch = buildUnrealLaunch(UNREAL_EDITOR, UNREAL_PROJECT, apiUrl);
-    child = spawn(launch.command, launch.args, launch.options);
-    render = { state: "running", pid: child.pid, jobPath, startedAt: new Date().toISOString(), finishedAt: null, exitCode: null, rendered: 0, log: `Launching ${UNREAL_EDITOR}\n${launch.args.join(" ")}\nLocal BatchRender API: ${apiUrl}\n` };
-    child.stdout.on("data", appendRenderLog); child.stderr.on("data", appendRenderLog);
-    child.on("error", launchError => { appendRenderLog(`\n${launchError.message}`); render.state = "failed"; render.finishedAt = new Date().toISOString(); child = null; bridge = null; });
-    child.on("exit", code => {
-      render.exitCode = code;
-      if (render.state === "running") { render.state = "failed"; render.finishedAt = new Date().toISOString(); appendRenderLog("\nUnreal exited before job_completed.\n"); }
-      child = null; bridge = null;
-    });
+    const phases = buildRenderPlan(job);
+    activeRun = { job, jobPath, outputFolder, before: imageSnapshot(outputFolder), phases, index: 0 };
+    render = { state: "running", pid: null, jobPath, startedAt: new Date().toISOString(), finishedAt: null, exitCode: null, rendered: 0, phase: null, phaseIndex: 0, phaseCount: phases.length, substrate: null, log: `Queued ${phases.map(phase => phase.name).join(" → ")} render plan.\nLocal BatchRender API: http://${HOST}:${PORT}/api/unreal\n` };
+    startRenderPhase();
     return json(response, 202, currentRender());
   }
   if (request.method === "GET" && url.pathname === "/api/renders/status") return json(response, 200, currentRender());

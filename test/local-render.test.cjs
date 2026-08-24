@@ -5,12 +5,14 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
+const { spawn } = require("node:child_process");
 const { parseCsv } = require("../lib/csv.cjs");
 const { buildRig, jobLights, rigScale } = require("../lib/rig.cjs");
 const { buildJob, buildBatchJob, writeJob, CAMERA_YAW, groupedMaterials } = require("../lib/jobs.cjs");
 const { ModelStore, sectionalFormFactor } = require("../lib/models.cjs");
 const { buildUnrealLaunch } = require("../lib/unreal.cjs");
 const { history, expectedRenders } = require("../lib/history.cjs");
+const { buildRenderPlan } = require("../lib/render-plan.cjs");
 
 const root = path.join(__dirname, "..");
 const rows = parseCsv(fs.readFileSync(path.join(root, "data", "sectionals-indoor.csv"), "utf8"));
@@ -170,6 +172,55 @@ test("every Fabric filename material token resolves to an exact mesh in its task
   }
 });
 
+test("Fabric and Shadow become ordered Unreal phases with the required Substrate state", () => {
+  const job = buildJob({ ...baseInput, layers: ["Fabric", "Shadow"] }, { ...model, materialIds: ["UPH", "Stitches", "Feet"] }, rig, "D:\\renders\\phases");
+  const original = JSON.stringify(job), plan = buildRenderPlan(job);
+  assert.deepEqual(plan.map(phase => [phase.name, phase.substrate]), [["Fabric", true], ["Shadow", false]]);
+  assert.deepEqual(plan[0].job.tasks[0].layers.map(layer => layer.name), ["Fabric"]);
+  assert.deepEqual(plan[1].job.tasks[0].layers.map(layer => layer.name), ["Shadow"]);
+  assert.ok(plan[0].job.tasks[0].sequence.cameras.every(camera => camera.LayerResolutions.length === 1 && camera.LayerResolutions[0].Name === "Fabric"));
+  assert.ok(plan[1].job.tasks[0].sequence.cameras.every(camera => camera.LayerResolutions.length === 1 && camera.LayerResolutions[0].Name === "Shadow"));
+  assert.equal(plan[0].job.jobId, `${job.jobId}__fabric`); assert.equal(plan[1].job.jobId, `${job.jobId}__shadow`);
+  assert.equal(JSON.stringify(job), original, "the saved parent job stays unchanged");
+});
+
+test("local render service completes Fabric before restarting for Substrate-off Shadow", async () => {
+  const suffix = `${process.pid}_${Date.now()}`, port = 56000 + process.pid % 5000;
+  const jobsRoot = path.join(root, "local", "jobs", "generated"), output = path.join(root, "local", "renders", `test_phases_${suffix}`);
+  const jobPath = path.join(jobsRoot, `test_phases_${suffix}.job.json`), fakeLog = path.join(os.tmpdir(), `rh-fake-unreal-${suffix}.log`);
+  fs.mkdirSync(jobsRoot, { recursive: true }); fs.mkdirSync(output, { recursive: true });
+  const job = buildJob({ ...baseInput, layers: ["Fabric", "Shadow"] }, { ...model, materialIds: ["UPH", "Stitches", "Feet"] }, rig, output);
+  job.jobId = `test_phases_${suffix}`; job._rhLocal.outputFolder = `${output}${path.sep}`;
+  fs.writeFileSync(jobPath, JSON.stringify(job));
+  const service = spawn(process.execPath, [path.join(root, "server.cjs")], {
+    cwd: root, windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, RH_LOCAL_RENDERS_PORT: String(port), RH_UNREAL_EDITOR: process.execPath, RH_UNREAL_PROJECT: path.join(root, "test", "fake-unreal.cjs"), RH_FAKE_UNREAL_LOG: fakeLog }
+  });
+  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const statusUrl = `http://127.0.0.1:${port}/api/status`;
+  try {
+    let online = false;
+    for (let attempt = 0; attempt < 50 && !online; attempt++) { try { online = (await fetch(statusUrl)).ok; } catch {} if (!online) await sleep(50); }
+    assert.equal(online, true, "test render service should start");
+    const launch = await fetch(`http://127.0.0.1:${port}/api/renders`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jobPath }) });
+    assert.equal(launch.status, 202);
+    let status;
+    for (let attempt = 0; attempt < 150; attempt++) {
+      status = await (await fetch(`http://127.0.0.1:${port}/api/renders/status`)).json();
+      if (status.state !== "running") break;
+      await sleep(50);
+    }
+    assert.equal(status.state, "success", status.log);
+    const launches = fs.readFileSync(fakeLog, "utf8").trim().split(/\r?\n/).map(line => JSON.parse(line));
+    assert.deepEqual(launches.map(item => item.phase), ["Fabric", "Shadow"]);
+    assert.match(launches[0].substrateArgument, /r\.Substrate=True$/); assert.match(launches[1].substrateArgument, /r\.Substrate=False$/);
+    assert.match(status.log, /Fabric is complete\. Restarting Unreal for Shadow with Substrate OFF/);
+  } finally {
+    service.kill();
+    fs.rmSync(jobPath, { force: true }); fs.rmSync(output, { recursive: true, force: true }); fs.rmSync(fakeLog, { force: true });
+  }
+});
+
 test("legacy light-rig project files stay out of the unified project", () => {
   for (const legacy of ["handoff", "light-rig-reference.html", "comments.php", "ONBOARDING.md", ".claude"]) {
     assert.equal(fs.existsSync(path.join(root, legacy)), false, legacy);
@@ -198,12 +249,15 @@ test("server status exposes a runtime token and stale-source signal", () => {
 
 test("Unreal launch points the stock BatchRender plugin at the local API", () => {
   const apiUrl = "http://127.0.0.1:5500/api/unreal";
-  const launch = buildUnrealLaunch("D:\\UE\\UnrealEditor.exe", "D:\\RH\\rh.uproject", apiUrl);
+  const launch = buildUnrealLaunch("D:\\UE\\UnrealEditor.exe", "D:\\RH\\rh.uproject", apiUrl, { substrate: true });
   assert.equal(launch.options.shell, false);
   assert.ok(launch.args.includes("-BatchRender"));
+  assert.ok(launch.args.includes("-ini:Engine:[/Script/Engine.RendererSettings]:r.Substrate=True"));
   assert.ok(launch.args.includes(`-ini:Editor:[/Script/BatchRenderEditor.BatchRenderSettings]:ApiUrl=${apiUrl}`));
   assert.ok(!launch.args.some(argument => argument.startsWith("-ExecutePythonScript=")));
   assert.ok(!launch.args.some(argument => argument.startsWith("-BatchRenderJob=")));
+  const shadow = buildUnrealLaunch("D:\\UE\\UnrealEditor.exe", "D:\\RH\\rh.uproject", apiUrl, { substrate: false });
+  assert.ok(shadow.args.includes("-ini:Engine:[/Script/Engine.RendererSettings]:r.Substrate=False"));
 });
 
 test("main page renders the light rig natively in the shared workspace", () => {
@@ -243,6 +297,8 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(client, /data-history-action="rerun"/);
   assert.match(client, /openLocal\("showJob"/);
   assert.match(client, /selectHistoryModel/);
+  assert.match(html, /Shadow runs in a fresh Unreal process with Substrate disabled/);
+  assert.match(client, /Substrate \$\{render\.substrate \? "ON" : "OFF"\}/);
   assert.doesNotMatch(client, /Open the local dashboard with npm start to resolve full model paths/);
   assert.match(styles, /@media\(min-width:981px\)\{main\{width:calc\(100% - 48px\);max-width:none\}\}/);
 });

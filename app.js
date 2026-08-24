@@ -345,7 +345,8 @@
   const renderHistoryDetail = () => {
     const batch = state.historyBatch;
     if (!batch) { $("historyDetail").innerHTML = '<div class="empty-state">Choose a saved job to inspect its models, JSON, and render output.</div>'; return; }
-    $("historyDetail").innerHTML = `<div class="history-detail-heading"><div><span>SAVED JOB</span><strong>${escapeHtml(batch.id)}</strong><small>${escapeHtml(formatDate(batch.generatedAt))}</small></div><i class="history-state" data-state="${escapeHtml(batch.state)}">${escapeHtml(historyStateLabel(batch.state))}</i></div><div class="history-summary"><div><span>MODELS</span><strong>${batch.modelCount}</strong></div><div><span>RENDERS</span><strong>${batch.renderCount}/${batch.expectedRenders}</strong></div><div><span>OUTPUT</span><strong>${batch.renderCount ? "On disk" : "Empty"}</strong></div></div>${batch.error ? `<p class="inline-warning">${escapeHtml(batch.error)}</p>` : ""}<code class="history-path" title="${escapeHtml(batch.jobPath)}">${escapeHtml(batch.jobPath)}</code><div class="history-actions"><button class="primary-button" type="button" data-history-action="review"${batch.modelCount ? "" : " disabled"}>Review batch</button><button class="secondary-button" type="button" data-history-action="rerun"${batch.state === "invalid" ? " disabled" : ""}>Run again</button><button class="quiet-button" type="button" data-history-action="viewJob">View JSON</button><button class="quiet-button" type="button" data-history-action="showJob">Show JSON</button><button class="quiet-button" type="button" data-history-action="openRenders"${batch.renderCount ? "" : " disabled"}>Open renders</button></div>`;
+    const models = batch.models?.length ? `<div class="history-model-list" aria-label="Models in ${escapeHtml(batch.id)}">${batch.models.map((model, index) => `<button type="button" class="history-model-row" data-history-action="review" data-model-index="${index}" title="Review ${escapeHtml(model.name)} in Sectional light rig"><span>${String(index + 1).padStart(2, "0")}</span><strong>${escapeHtml(model.name)}</strong><small>${escapeHtml(model.side || "UNKNOWN")} · ${model.dimensions ? `${model.dimensions.width} × ${model.dimensions.depth} × ${model.dimensions.height} cm` : "No dimensions"} · ${model.renders.length}/${model.expectedRenders}</small></button>`).join("")}</div>` : '<div class="empty-state history-model-empty">No models stored in this job.</div>';
+    $("historyDetail").innerHTML = `<div class="history-detail-heading"><div><span>SAVED JOB</span><strong>${escapeHtml(batch.id)}</strong><small>${escapeHtml(formatDate(batch.generatedAt))}</small></div><i class="history-state" data-state="${escapeHtml(batch.state)}">${escapeHtml(historyStateLabel(batch.state))}</i></div><div class="history-summary"><div><span>MODELS</span><strong>${batch.modelCount}</strong></div><div><span>RENDERS</span><strong>${batch.renderCount}/${batch.expectedRenders}</strong></div><div><span>OUTPUT</span><strong>${batch.renderCount ? "On disk" : "Empty"}</strong></div></div>${models}${batch.error ? `<p class="inline-warning">${escapeHtml(batch.error)}</p>` : ""}<code class="history-path" title="${escapeHtml(batch.jobPath)}">${escapeHtml(batch.jobPath)}</code><div class="history-actions"><button class="primary-button" type="button" data-history-action="edit"${batch.modelCount ? "" : " disabled"}>Load & edit</button><button class="secondary-button" type="button" data-history-action="review"${batch.modelCount ? "" : " disabled"}>Review rig</button><button class="secondary-button" type="button" data-history-action="rerun"${batch.state === "invalid" ? " disabled" : ""}>Run again</button><button class="quiet-button" type="button" data-history-action="viewJob">View JSON</button><button class="quiet-button" type="button" data-history-action="showJob">Show JSON</button><button class="quiet-button" type="button" data-history-action="openRenders"${batch.renderCount ? "" : " disabled"}>Open renders</button></div>`;
   };
   const renderRigHistoryModels = () => {
     const batch = state.rigBatch, group = $("rigBatchGroup");
@@ -378,6 +379,46 @@
   const selectHistoryBatch = batch => { state.historyBatch = batch; renderHistoryList(); renderHistoryDetail(); };
   const viewHistoryJob = async batch => {
     const job = await api(batch.jobUrl); $("jobDialogTitle").textContent = batch.id; $("jobJson").textContent = JSON.stringify(job, null, 2); $("jobDialog").showModal();
+  };
+  const editHistoryJob = async batch => {
+    const job = await api(batch.jobUrl), tasks = job.tasks || [];
+    if (!tasks.length) throw new Error("This job has no models to edit");
+    const metadataRows = job._rhLocal?.models || (job._rhLocal?.name ? [job._rhLocal] : []);
+    const metadata = new Map(metadataRows.map(record => [record.name, record]));
+    const archived = new Map((batch.models || []).map(model => [model.name, model]));
+    const restored = [];
+    for (const task of tasks) {
+      const record = metadata.get(task.taskId) || archived.get(task.taskId) || {};
+      const modelPath = record.modelPath || task.model?.objPath || "";
+      const inspected = await inspectQuery(modelPath);
+      restored.push({
+        ...inspected, name: task.taskId || inspected.name, path: modelPath || inspected.path,
+        dimensions: record.dimensions || inspected.dimensions, side: sectionalFormFactor(task.taskId, record.side || inspected.side),
+        importYaw: Number.isFinite(+record.importYaw) ? +record.importYaw : inspected.importYaw,
+        sourceMode: record.sourceMode || inspected.sourceMode || "B"
+      });
+    }
+    const materialValues = new Map();
+    tasks.forEach(task => (task.materials || []).forEach(group => (group.list || []).forEach(material => (group.meshes || []).forEach(mesh => {
+      const key = normalizedMaterialId(mesh).toLowerCase();
+      if (!materialValues.has(key)) materialValues.set(key, new Set());
+      materialValues.get(key).add(String(material.name || ""));
+    }))));
+    const cameras = new Set(tasks.flatMap(task => (task.sequence?.cameras || []).map(camera => camera.name)));
+    const layers = new Set(tasks.flatMap(task => (task.layers || []).filter(layer => !layer.doNotRender).map(layer => layer.name)));
+    state.batch = restored; state.jobPath = null; state.historyModel = null;
+    $("materialsList").innerHTML = ""; renderMaterials(); selectModel(restored[0]);
+    document.querySelectorAll("[data-material-key]").forEach(input => {
+      const values = materialValues.get(input.dataset.materialKey); input.value = values?.size === 1 ? [...values][0] : "";
+    });
+    document.querySelectorAll('input[name="camera"]').forEach(input => input.checked = cameras.has(input.value));
+    document.querySelectorAll('input[name="layer"]').forEach(input => input.checked = layers.has(input.value));
+    const sides = new Set(restored.map(model => model.side).filter(side => ["R", "L", "U"].includes(side)));
+    $("sceneSide").value = sides.size === 1 ? [...sides][0] : "auto";
+    $("sourceMode").value = restored[0].sourceMode || "B"; $("jobResult").hidden = true;
+    validate(); document.querySelector(".workspace").scrollIntoView({ behavior: "smooth", block: "start" });
+    const conflicts = [...materialValues.values()].filter(values => values.size > 1).length;
+    toast(`Loaded ${restored.length} model${restored.length === 1 ? "" : "s"} for editing${conflicts ? ` · ${conflicts} material conflict${conflicts === 1 ? "" : "s"} need review` : ""}`);
   };
   const openLocal = (action, path) => api("/api/local/open", { method: "POST", body: JSON.stringify({ action, path }) });
   const loadHistory = async () => {
@@ -456,7 +497,8 @@
     const button = event.target.closest("[data-history-action]"), batch = state.historyBatch; if (!button || !batch) return;
     const action = button.dataset.historyAction;
     try {
-      if (action === "review") reviewHistoryBatch(batch, +(button.dataset.modelIndex || 0));
+      if (action === "edit") await editHistoryJob(batch);
+      else if (action === "review") reviewHistoryBatch(batch, +(button.dataset.modelIndex || 0));
       else if (action === "rerun") { state.jobPath = batch.jobPath; $("jobResult").hidden = false; $("copyJobPath").textContent = batch.jobPath; await launch(); }
       else if (action === "viewJob") await viewHistoryJob(batch);
       else if (action === "showJob") { await openLocal("showJob", batch.jobPath); toast("JSON selected in Explorer"); }

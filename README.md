@@ -38,6 +38,8 @@ The light rows are refreshed from the public Google Sheet (`gid=0`). `data/secti
 
 The model input accepts a full FBX path, exact filename, or unique product substring. Geometry metadata comes from `D:\GitHub\sectional-classifier\cache`; the existing report supplies corrected units, side, dimensions, and import-orientation warnings. Material IDs are the suffixes of component names after the last colon, for example `UPH`, `Stitches`, and `Feet`.
 
+An FBX can also be dropped directly onto the model field (or selected with **Choose FBX**). The local dashboard matches its filename against the indexed models, fills the full Windows path, and runs the same inspection. The FBX is not uploaded or copied.
+
 There are no bundled model presets. After a successful render produces images, the service adds that model to ignored `local/catalog.json` with its measured dimensions and render files. The UI then displays it under **Rendered models**.
 
 ## Light reference

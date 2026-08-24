@@ -52,11 +52,17 @@
         </div>
 
         <label class="wide-field">Model name or FBX path
-          <div class="input-action">
+          <div id="modelDropTarget" class="input-action model-drop-target">
             <input id="modelPath" list="modelOptions" autocomplete="off" placeholder="prod9690053 or D:\…\model.fbx">
             <datalist id="modelOptions"></datalist>
-            <button id="inspectModel" class="secondary-button" type="button">Inspect model</button>
+            <div class="model-path-actions">
+              <button id="chooseModel" class="secondary-button" type="button">Choose FBX</button>
+              <button id="inspectModel" class="secondary-button" type="button">Inspect model</button>
+            </div>
+            <div class="model-drop-overlay" aria-hidden="true"><span>Drop FBX here</span><small>The full local path will be used</small></div>
           </div>
+          <input id="modelFileInput" type="file" accept=".fbx" hidden>
+          <span id="modelDropStatus" class="model-drop-status" aria-live="polite">Drop a local FBX here or choose one to fill its full path.</span>
         </label>
 
         <div id="modelEmpty" class="empty-state">Choose a model to read its dimensions and Material IDs.</div>

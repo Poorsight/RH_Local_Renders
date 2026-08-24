@@ -192,6 +192,27 @@
       renderRig();
     } catch (error) { $("rigLoading").dataset.state = "error"; $("rigLoading").textContent = `Light rig unavailable: ${error.message}`; }
   };
+  const droppedFilePath = (file, transfer) => {
+    const directPath = typeof file?.path === "string" ? file.path : "";
+    if (/^[a-z]:[\\/].+\.fbx$/i.test(directPath)) return directPath.replace(/\//g, "\\");
+    const uri = String(transfer?.getData?.("text/uri-list") || "").split(/\r?\n/).find(value => /^file:\/\/\/[a-z]:\//i.test(value));
+    if (uri) { try { return decodeURIComponent(uri.replace(/^file:\/\/\//i, "")).replace(/\//g, "\\"); } catch {} }
+    const name = String(file?.name || "").toLowerCase();
+    return state.models.find(model => model.path.split(/[\\/]/).pop().toLowerCase() === name)?.path || "";
+  };
+  const useDroppedModel = async (file, transfer = null) => {
+    const status = $("modelDropStatus");
+    if (!file || !/\.fbx$/i.test(file.name || "")) { status.dataset.state = "error"; status.textContent = "Only FBX model files are supported."; return toast(status.textContent, true); }
+    const fullPath = droppedFilePath(file, transfer);
+    if (!fullPath) {
+      status.dataset.state = "error";
+      status.textContent = canReachLocalService ? "This FBX is not in the indexed models folder. Add it there or paste its full path." : "Open the local dashboard with npm start to resolve full model paths.";
+      return toast(status.textContent, true);
+    }
+    $("modelPath").value = fullPath; status.dataset.state = "success"; status.textContent = fullPath;
+    toast("Full FBX path added");
+    if (canReachLocalService) await inspect();
+  };
   const inspect = async () => {
     const query = $("modelPath").value.trim(); if (!query) return toast("Enter a model name or path", true);
     $("inspectModel").disabled = true; $("inspectModel").textContent = "Inspecting…";
@@ -257,6 +278,12 @@
     } catch { setConnection(false); $("sheetState").textContent = "OFFLINE"; $("unrealState").textContent = "OFFLINE"; }
   };
   $("inspectModel").addEventListener("click", inspect); $("modelPath").addEventListener("keydown", event => { if (event.key === "Enter") inspect(); });
+  $("chooseModel").addEventListener("click", () => $("modelFileInput").click());
+  $("modelFileInput").addEventListener("change", event => { useDroppedModel(event.target.files?.[0]); event.target.value = ""; });
+  const dropTarget = $("modelDropTarget");
+  ["dragenter", "dragover"].forEach(type => dropTarget.addEventListener(type, event => { event.preventDefault(); event.dataTransfer.dropEffect = "link"; dropTarget.dataset.dragging = "true"; }));
+  dropTarget.addEventListener("dragleave", event => { if (!dropTarget.contains(event.relatedTarget)) delete dropTarget.dataset.dragging; });
+  dropTarget.addEventListener("drop", event => { event.preventDefault(); delete dropTarget.dataset.dragging; useDroppedModel(event.dataTransfer.files?.[0], event.dataTransfer); });
   $("generateJob").addEventListener("click", generate); $("launchRender").addEventListener("click", launch); $("refreshSheet").addEventListener("click", refreshSheet);
   $("copyJobPath").addEventListener("click", async () => { await navigator.clipboard.writeText(state.jobPath || ""); toast("Job path copied"); });
   $("rigUseModel").addEventListener("click", syncRigFromModel);

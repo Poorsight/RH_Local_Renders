@@ -77,4 +77,8 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(client, /Math\.max\(1, raw\)/);
   assert.match(client, /canReachLocalService/);
   assert.match(client, /range\.addEventListener\("input"/);
+  assert.match(html, /id="modelDropTarget"/);
+  assert.match(html, /id="modelFileInput" type="file" accept="\.fbx"/);
+  assert.match(client, /droppedFilePath/);
+  assert.match(client, /dropTarget\.addEventListener\("drop"/);
 });

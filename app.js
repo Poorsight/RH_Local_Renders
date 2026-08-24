@@ -1,6 +1,7 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const state = { status: null, models: [], model: null, jobPath: null, poll: null, rig: null };
+  const canReachLocalService = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
   const RIG_REFERENCE = { width: 453, depth: 279, height: 79 };
   const RIG_GEOMETRY = {
     front_fill_lgt: { type: "rect", width: 500, height: 500, radius: 282.094791774 },
@@ -238,6 +239,7 @@
   };
   const init = async () => {
     loadRig();
+    if (!canReachLocalService) { setConnection(false); $("sheetState").textContent = "STATIC"; $("unrealState").textContent = "OFFLINE"; return; }
     try {
       const status = await api("/api/status"); state.status = status; state.models = status.models; setConnection(true);
       $("modelCount").textContent = status.models.length; $("sheetState").textContent = status.sheet.source.toUpperCase(); $("unrealState").textContent = status.unreal.available ? "READY" : "MISSING";

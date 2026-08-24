@@ -72,4 +72,5 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.doesNotMatch(html, /<iframe/i);
   assert.match(client, /data\/sectionals-indoor\.csv/);
   assert.match(client, /Math\.max\(1, raw\)/);
+  assert.match(client, /canReachLocalService/);
 });

@@ -378,6 +378,8 @@
   };
   const selectHistoryBatch = batch => { state.historyBatch = batch; renderHistoryList(); renderHistoryDetail(); };
   const viewHistoryJob = async batch => {
+    const rawJsonTab = window.open(batch.jobUrl, "_blank");
+    if (rawJsonTab) { rawJsonTab.opener = null; return; }
     const job = await api(batch.jobUrl); $("jobDialogTitle").textContent = batch.id; $("jobJson").textContent = JSON.stringify(job, null, 2); $("jobDialog").showModal();
   };
   const editHistoryJob = async batch => {

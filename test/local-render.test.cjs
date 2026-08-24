@@ -309,6 +309,9 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(client, /data-history-action="rerun"/);
   assert.match(client, /data-history-action="edit"/);
   assert.match(client, /const editHistoryJob = async batch =>/);
+  assert.match(client, /window\.open\(batch\.jobUrl, "_blank"\)/);
+  assert.match(client, /rawJsonTab\.opener = null/);
+  assert.match(client, /const job = await api\(batch\.jobUrl\)/);
   assert.match(client, /state\.batch = restored/);
   assert.match(client, /importYaw: Number\.isFinite\(\+inspected\.importYaw\)/);
   assert.match(client, /class="history-model-list"/);

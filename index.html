@@ -152,9 +152,18 @@
           <div class="rig-control-group">
             <div class="rig-control-heading"><span>SOFA DIMENSIONS</span><button id="rigUseModel" class="text-button" type="button" disabled>Use inspected model</button></div>
             <div class="rig-dimensions">
-              <label>Width · X <span>cm</span><input id="rigWidth" type="number" min="1" step="1" value="453"></label>
-              <label>Depth · Y <span>cm</span><input id="rigDepth" type="number" min="1" step="1" value="279"></label>
-              <label>Height · Z <span>cm</span><input id="rigHeight" type="number" min="1" step="1" value="79"></label>
+              <div class="rig-dimension-control">
+                <div class="rig-dimension-heading"><label for="rigWidth">Width · X</label><div class="rig-dimension-number"><input id="rigWidth" type="number" min="1" step="1" value="453"><span>cm</span></div></div>
+                <input id="rigWidthRange" class="rig-dimension-slider" type="range" min="1" max="1000" step="1" value="453" aria-label="Width slider">
+              </div>
+              <div class="rig-dimension-control">
+                <div class="rig-dimension-heading"><label for="rigDepth">Depth · Y</label><div class="rig-dimension-number"><input id="rigDepth" type="number" min="1" step="1" value="279"><span>cm</span></div></div>
+                <input id="rigDepthRange" class="rig-dimension-slider" type="range" min="1" max="700" step="1" value="279" aria-label="Depth slider">
+              </div>
+              <div class="rig-dimension-control">
+                <div class="rig-dimension-heading"><label for="rigHeight">Height · Z</label><div class="rig-dimension-number"><input id="rigHeight" type="number" min="1" step="1" value="79"><span>cm</span></div></div>
+                <input id="rigHeightRange" class="rig-dimension-slider" type="range" min="1" max="250" step="1" value="79" aria-label="Height slider">
+              </div>
             </div>
           </div>
 

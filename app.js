@@ -171,9 +171,18 @@
       return `<article class="rig-light-card"><div class="rig-light-name"><i class="rig-light-dot" style="color:${color};background:${color}"></i><strong>${escapeHtml(light.meta.label)}</strong></div><div class="rig-light-values"><span>${light.intensity.toFixed(light.intensity < 10 ? 2 : 1)} cd · ${size} cm</span><span>${light.position.map(value => Math.round(value)).join(" · ")} cm</span></div></article>`;
     }).join("");
   };
+  const updateRigRange = range => {
+    const progress = ((+range.value - +range.min) / (+range.max - +range.min)) * 100;
+    range.style.setProperty("--range-progress", `${progress}%`);
+  };
   const syncRigFromModel = () => {
     if (!state.model) return;
-    $("rigWidth").value = $("width").value; $("rigDepth").value = $("depth").value; $("rigHeight").value = $("height").value; renderRig();
+    [["rigWidth", "rigWidthRange", "width"], ["rigDepth", "rigDepthRange", "depth"], ["rigHeight", "rigHeightRange", "height"]].forEach(([numberId, rangeId, modelId]) => {
+      const number = $(numberId), range = $(rangeId), value = Math.max(+number.min, +$(modelId).value || +number.value);
+      if (value > +range.max) range.max = value;
+      number.value = value; range.value = value; updateRigRange(range);
+    });
+    renderRig();
   };
   const loadRig = async () => {
     try {
@@ -251,7 +260,17 @@
   $("generateJob").addEventListener("click", generate); $("launchRender").addEventListener("click", launch); $("refreshSheet").addEventListener("click", refreshSheet);
   $("copyJobPath").addEventListener("click", async () => { await navigator.clipboard.writeText(state.jobPath || ""); toast("Job path copied"); });
   $("rigUseModel").addEventListener("click", syncRigFromModel);
-  ["rigWidth", "rigDepth", "rigHeight"].forEach(id => $(id).addEventListener("input", renderRig));
+  [["rigWidth", "rigWidthRange"], ["rigDepth", "rigDepthRange"], ["rigHeight", "rigHeightRange"]].forEach(([numberId, rangeId]) => {
+    const number = $(numberId), range = $(rangeId);
+    number.addEventListener("input", () => { if (+number.value > +range.max) range.max = number.value; range.value = number.value; updateRigRange(range); renderRig(); });
+    number.addEventListener("change", () => {
+      const value = Math.max(+number.min, +number.value || +number.min);
+      if (value > +range.max) range.max = value;
+      number.value = value; range.value = value; updateRigRange(range); renderRig();
+    });
+    range.addEventListener("input", () => { number.value = range.value; updateRigRange(range); renderRig(); });
+    updateRigRange(range);
+  });
   $("rigMode").addEventListener("change", renderRig);
   document.querySelectorAll('input[name="rigShot"], input[name="rigColor"]').forEach(node => node.addEventListener("change", renderRig));
   document.querySelectorAll('input[name="rigLayout"]').forEach(node => node.addEventListener("change", () => { $("rigViews").dataset.layout = node.value; requestAnimationFrame(renderRig); }));

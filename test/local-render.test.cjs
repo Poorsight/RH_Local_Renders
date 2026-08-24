@@ -69,8 +69,12 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(html, /class="rig-workspace"/);
   assert.match(html, /id="rigPlan"/);
   assert.match(html, /id="rigElevation"/);
+  assert.match(html, /id="rigWidthRange" class="rig-dimension-slider" type="range"/);
+  assert.match(html, /id="rigDepthRange" class="rig-dimension-slider" type="range"/);
+  assert.match(html, /id="rigHeightRange" class="rig-dimension-slider" type="range"/);
   assert.doesNotMatch(html, /<iframe/i);
   assert.match(client, /data\/sectionals-indoor\.csv/);
   assert.match(client, /Math\.max\(1, raw\)/);
   assert.match(client, /canReachLocalService/);
+  assert.match(client, /range\.addEventListener\("input"/);
 });

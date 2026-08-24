@@ -1,11 +1,11 @@
 {
-  "name": "light-rig-scaler",
-  "version": "1.0.0",
-  "description": "Scale an Unreal Engine light rig to a sofa's dimensions and generate paste-ready T3D.",
+  "name": "rh-local-renders",
+  "version": "2.0.0",
+  "description": "Local RH model inspection, BatchRender job generation, and Unreal render control.",
   "private": true,
   "scripts": {
-    "test": "node test/sanity.cjs",
-    "start": "npx serve . -l 5500",
+    "test": "node test/sanity.cjs && node --test test/local-render.test.cjs",
+    "start": "node server.cjs",
     "gen:manifest": "node scripts/gen-render-manifest.cjs",
     "handoff": "node handoff/export_from_index.cjs",
     "verify:scene": "node handoff/verify_scene.cjs"

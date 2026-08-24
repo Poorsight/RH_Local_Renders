@@ -25,7 +25,7 @@ const VIEWS = ["F", "FH", "TQR", "TQL"];
 const REF_DIR = path.join(__dirname, "ue_reference");
 
 /* The rig core: the generated library when this runs inside the standalone handoff
-   package, otherwise the logic lifted straight out of index.html in the source repo. */
+   package, otherwise the logic lifted straight out of light-rig-reference.html in the source repo. */
 function loadRig() {
   for (const p of ["../lib/light-rig.global.js", "./light-rig.global.js"]) {
     try { return require(p); } catch (e) { /* not the package layout */ }

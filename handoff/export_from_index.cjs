@@ -1,10 +1,10 @@
-// Regenerate the handoff data files from index.html — the single source of truth.
+// Regenerate the handoff data files from light-rig-reference.html — the light-rig source of truth.
 //
 //   node handoff/export_from_index.cjs           # write handoff/{light_rig.json,rig_template.t3d,acceptance_vectors.json}
-//   node handoff/export_from_index.cjs --check   # verify the committed files still match index.html (used by `npm test`)
+//   node handoff/export_from_index.cjs --check   # verify committed data matches the reference (used by `npm test`)
 //
 // Why: HANDOFF_FORMULA.md + light_rig.py are a port target for whoever automates the rig.
-// If LIGHT_BASE / VIEWS / TEMPLATE / BUILTIN change in index.html, re-run this so the
+// If LIGHT_BASE / VIEWS / TEMPLATE / BUILTIN change in light-rig-reference.html, re-run this so the
 // handoff package (and its golden vectors) cannot silently drift from the tool.
 
 const fs = require("fs");
@@ -14,11 +14,11 @@ const crypto = require("crypto");
 const ROOT = path.join(__dirname, "..");
 const sha256 = s => crypto.createHash("sha256").update(s, "utf8").digest("hex");
 
-/* Pull the pure logic + the UI-side constants out of index.html. */
+/* Pull the pure logic + the UI-side constants out of the standalone light-rig reference. */
 function loadLogic() {
-  const html = fs.readFileSync(path.join(ROOT, "index.html"), "utf8");
+  const html = fs.readFileSync(path.join(ROOT, "light-rig-reference.html"), "utf8");
   const m = html.match(/<script>([\s\S]*?)<\/script>/);
-  if (!m) throw new Error("index.html: <script> block not found");
+  if (!m) throw new Error("light-rig-reference.html: <script> block not found");
 
   const tmp = path.join(__dirname, "_lightrig.export.tmp.cjs");
   fs.writeFileSync(tmp, m[1]);
@@ -27,12 +27,12 @@ function loadLogic() {
 
   // BUILTIN lives inside the `document` guard, so it is not exported.
   const bm = m[1].match(/const BUILTIN = (\{[\s\S]*?\n {2}\});/);
-  if (!bm) throw new Error("index.html: BUILTIN preset table not found");
+  if (!bm) throw new Error("light-rig-reference.html: BUILTIN preset table not found");
   const BUILTIN = new Function("return " + bm[1])();
 
   // Arm-side gating is exported since 272716e (explicit preset.arm, name parsing as fallback).
   if (typeof L.presetArmSide !== "function" || typeof L.armRequiredView !== "function")
-    throw new Error("index.html: presetArmSide / armRequiredView are no longer exported");
+    throw new Error("light-rig-reference.html: presetArmSide / armRequiredView are no longer exported");
 
   return { L, BUILTIN };
 }
@@ -82,7 +82,7 @@ function buildConstants({ L, BUILTIN }) {
 
   return {
     schema_version: "1.0",
-    generated_from: "light-rig-scaler/index.html (run handoff/export_from_index.cjs to refresh)",
+    generated_from: "RH_Local_Renders/light-rig-reference.html (run handoff/export_from_index.cjs to refresh)",
     units: "centimetres; 1 cm = 1 Unreal unit. Angles in degrees.",
     axes: { X: "sofa width", Y: "sofa depth (+Y = front / camera side)", Z: "height (0 = floor)" },
     reference: { W: REF_DEFAULT.W, D: REF_DEFAULT.D, H: REF_DEFAULT.H },
@@ -195,7 +195,7 @@ function buildVectors({ L }) {
 
   return {
     schema_version: "1.0",
-    generated_from: "light-rig-scaler/index.html (run handoff/export_from_index.cjs to refresh)",
+    generated_from: "RH_Local_Renders/light-rig-reference.html (run handoff/export_from_index.cjs to refresh)",
     note: [
       "Every value is the string that must appear in the generated T3D (6 decimals).",
       "t3d_sha256 = SHA-256 of the full T3D text, LF line endings, no trailing newline.",
@@ -241,7 +241,7 @@ if (require.main === module) {
   if (process.argv.includes("--check")) {
     const problems = check();
     if (problems.length) { console.error(problems.map(p => `FAIL  ${p}`).join("\n")); process.exit(1); }
-    console.log("handoff data files are in sync with index.html");
+    console.log("handoff data files are in sync with light-rig-reference.html");
   } else {
     write();
   }

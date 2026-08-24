@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Reference implementation of the sectional light-rig scaler (port target for automation).
 
-Byte-for-byte equivalent to the browser tool (light-rig-scaler/index.html): given a sofa's
+Byte-for-byte equivalent to the browser tool (RH_Local_Renders/light-rig-reference.html): given a sofa's
 Width x Depth x Height and a camera shot, it scales the 5-light rig and emits paste-ready
 Unreal T3D. See HANDOFF_FORMULA.md for the formula and the field-by-field contract.
 
-Data lives next to this file and is generated from index.html:
+Data lives next to this file and is generated from light-rig-reference.html:
     light_rig.json           constants (reference sofa, per-light base, per-shot rigs, presets)
     rig_template.t3d         the T3D skeleton whose numeric fields get rewritten
     acceptance_vectors.json  golden cases for --selftest

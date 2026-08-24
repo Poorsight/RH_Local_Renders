@@ -7,9 +7,9 @@ constant, the exact T3D output contract, and golden vectors. **A port that passe
 | | |
 |---|---|
 | Tool | https://preview.3dsource.com/dmitriy.derevyanko/light-rig/ (GitHub Pages is not enabled for this repo) |
-| Source of truth | `index.html` → `computeAll()` + `generateT3D()` |
+| Source of truth | `light-rig-reference.html` → `computeAll()` + `generateT3D()` |
 | Source revision | `03d9454`, 2026-07-13 |
-| This package | `handoff/` (data files are generated from `index.html`; `npm test` fails if they drift) |
+| This package | `handoff/` (data files are generated from `light-rig-reference.html`; `npm test` fails if they drift) |
 | Units | centimetres = Unreal units, degrees for angles |
 
 ---
@@ -37,11 +37,11 @@ render/file naming.
 | `rig_template.t3d` | the T3D skeleton whose numeric fields get rewritten (LF, **no trailing newline**) |
 | `acceptance_vectors.json` | 13 golden cases: expected per-light strings + SHA-256 of the full T3D |
 | `light_rig.py` | reference implementation (stdlib only) + CLI + `--selftest` |
-| `export_from_index.cjs` | regenerates the three data files from `index.html` |
-| `ue_reference/<shot>.t3d` | the rig as exported from the UE scene, one file per shot — the **only** reference in this package that does not come from `index.html` (§11.5) |
+| `export_from_index.cjs` | regenerates the three data files from `light-rig-reference.html` |
+| `ue_reference/<shot>.t3d` | the rig as exported from the UE scene, one file per shot — the **only** reference in this package that does not come from `light-rig-reference.html` (§11.5) |
 | `verify_scene.cjs` | checks a scene export against the package: `npm run verify:scene` |
 
-Regenerate after any change to the rig in `index.html`:
+Regenerate after any change to the rig in `light-rig-reference.html`:
 
 ```bash
 node handoff/export_from_index.cjs
@@ -400,30 +400,11 @@ In the tool this gates only the **render-preview board** (an `L` model shows ¾ 
 only); `F`/`FH` are never gated, and the *rig generation itself is never blocked* — any shot can be
 generated for any dimensions.
 
-## 9. Built-in presets (measured UPH bounds, cm)
+## 9. Generated presets
 
-| model | SKU | W × D × H | arm | TQ shot |
-|---|---|---|---|---|
-| KOPER_LEFT_ARM_L_SECTIONAL_prod39250480 | 39250480 | 384 × 305 × 82 | L | TQL |
-| Borgo · Double Partial-Back U | 39940015 | 423 × 276 × 80 | — | — |
-| Borgo · Partial-Back Chaise-End U | 39940017 | 390 × 276 × 80 | — | — |
-| Borgo · Partial-Back U | 39940016 | 390 × 307 × 80 | — | — |
-| Borgo · Right-Arm Chaise | 39250509 | 361 × 210 × 80 | R | TQR |
-| Borgo · Right-Arm L | 39250511 | 381 × 310 × 80 | R | TQR |
-| Borgo · U | 39250513 | 453 × 280 × 80 | — | — |
-| Koper · Chaise-End U | 39940020 | 394 × 276 × 83 | — | — |
-| Koper · U-Chaise | 39250482 | 403 × 233 × 83 | — | — |
-| Koper · U | 39250483 | 459 × 276 × 83 | — | — |
-| Masson · Left-Arm 2-Seat Chaise-End U | 40460153 | 453 × 275 × 78 | L | TQL |
-| Masson · Right-Arm Chaise-End | 39250417 | 361 × 200 × 78 | R | TQR |
-| Masson · Right-Arm L | 39250419 | 312 × 246 × 77 | R | TQR |
-| Masson · Right-Arm 2-Seat Chaise-End U | 40460154 | 453 × 275 × 78 | R | TQR |
-| Masson · U-Chaise | 39250420 | 447 × 200 × 78 | — | — |
-| Masson · U | 39250421 | 434 × 275 × 78 | — | — |
-| Onic · Right-Arm L | 39250451 | 343 × 307 × 79 | R | TQR |
-
-Dimensions are the UPH mesh bounds measured in the UE project, rounded to whole cm. If automation
-measures bounds itself, round the same way to reproduce these numbers.
+There are no bundled model presets. `RH_Local_Renders` reads corrected FBX bounds from the
+sectional-classifier report and creates `local/catalog.json` only after a successful render has
+produced image files. That local catalogue owns the model dimensions, side and render examples.
 
 ## 10. Sanity checks (advisory, do not block output)
 
@@ -457,7 +438,7 @@ non-default `ref`.
 ### 11.5 Checking the constants against the UE scene
 
 Everything above proves a *port* matches the *tool*. It cannot prove the tool matches the
-**scene** — `light_rig.json` and the golden vectors are generated from `index.html`, so they can
+**scene** — `light_rig.json` and the golden vectors are generated from `light-rig-reference.html`, so they can
 never disagree with it. Only an export from Unreal can settle that, and `ue_reference/` holds one
 per shot: select the five lights in the viewport, `Ctrl + C`, save as `.t3d`.
 
@@ -531,7 +512,7 @@ fields only — everything static still comes from `rig_template.t3d`.
     newline translation, or the SHA-256 checks will fail.
 12. **Don't re-round inputs.** `W/D/H` go into the math as given; only the *output* is rounded to
     6 decimals.
-13. If the UE rig is ever re-tuned, `index.html` changes and this whole package must be
+13. If the UE rig is ever re-tuned, `light-rig-reference.html` changes and this whole package must be
     regenerated (§2) — the constants here are not independent copies to be edited by hand.
     The rig math itself has already changed once this way: `10d1383` added the aim transform.
 

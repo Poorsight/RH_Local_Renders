@@ -1,16 +1,16 @@
 // Sanity test for the light-rig scaler.
-// Extracts the pure logic from index.html and verifies the core invariants
+// Extracts the pure logic from light-rig-reference.html and verifies the core invariants
 // without needing a browser. Run: `npm test`  (or `node test/sanity.cjs`). Node 18+.
 
 const fs = require("fs");
 const path = require("path");
 
-const htmlPath = path.join(__dirname, "..", "index.html");
+const htmlPath = path.join(__dirname, "..", "light-rig-reference.html");
 const html = fs.readFileSync(htmlPath, "utf8");
 
 const m = html.match(/<script>([\s\S]*?)<\/script>/);
 if (!m) {
-  console.error("FAIL: <script> block not found in index.html");
+  console.error("FAIL: <script> block not found in light-rig-reference.html");
   process.exit(1);
 }
 
@@ -51,8 +51,10 @@ const fittedTall = fitAspectBounds(-200, 200, -50, 50, 1);
 check("diagram bounds expand to fill wide/tall viewports without cropping",
   fittedWide.minX === -200 && fittedWide.maxX === 200 && fittedWide.minY === -100 && fittedWide.maxY === 100 &&
   fittedTall.minX === -200 && fittedTall.maxX === 200 && fittedTall.minY === -200 && fittedTall.maxY === 200);
-check("default Koper preset is 384x305x82, arm L",
-  /"KOPER_LEFT_ARM_L_SECTIONAL_prod39250480":\s*\{\s*W:384,\s*D:305,\s*H:82,\s*arm:"L",/.test(html));
+check("legacy model presets are removed from the reference UI",
+  /const DEFAULT_PRESET = "Manual dimensions"/.test(html) &&
+  /"Manual dimensions": \{ W:453, D:279, H:79 \}/.test(html) &&
+  !/KOPER_LEFT_ARM_L_SECTIONAL_prod39250480":\s*\{\s*W:/.test(html));
 check("arm side: explicit preset.arm wins over the name",
   presetArmSide({ arm:"R" }, "KOPER_LEFT_ARM_L_SECTIONAL_prod39250480") === "R" &&
   presetArmSide({ arm:"L" }, "no arm hints here") === "L");
@@ -61,7 +63,7 @@ check("arm side: inferred from the name when preset.arm is absent",
   presetArmSide({}, "Borgo · Right-Arm L (39250511)") === "R" &&
   presetArmSide({}, "Koper · U (39250483)") === "");
 // Key letter == arm side: L -> TQL (sofa −36°), R -> TQR (sofa +36°). Briefly inverted and
-// reverted on 2026-08-13 — see the comment on armRequiredView in index.html before changing it.
+// reverted on 2026-08-13 — see armRequiredView in light-rig-reference.html before changing it.
 check("armRequiredView: L -> TQL, R -> TQR, none -> ''",
   armRequiredView("L") === "TQL" && armRequiredView("R") === "TQR" && armRequiredView("") === "");
 check("arm gating blocks only the opposite TQ view (F/FH stay open)",
@@ -187,7 +189,7 @@ check("scaled F keeps 5 actors + line count",
   }
 }
 
-// 6. The automation handoff package still matches index.html (see handoff/HANDOFF_FORMULA.md).
+// 6. The automation handoff package still matches light-rig-reference.html.
 {
   const problems = require("../handoff/export_from_index.cjs").check();
   check("handoff/ data files in sync (npm run handoff)", problems.length === 0);
@@ -195,7 +197,7 @@ check("scaled F keeps 5 actors + line count",
 }
 
 // 7. The rig still matches the UE scene it was tuned in. This is the only check whose
-// reference is external: everything else compares index.html against itself, so it cannot
+// reference is external: everything else compares the reference page against itself, so it cannot
 // catch a rig that drifted from the scene. handoff/ue_reference/<shot>.t3d are verbatim
 // Ctrl+C exports of the five lights (see handoff/verify_scene.cjs).
 {

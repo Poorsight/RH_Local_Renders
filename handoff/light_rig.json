@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "generated_from": "light-rig-scaler/index.html (run handoff/export_from_index.cjs to refresh)",
+  "generated_from": "RH_Local_Renders/light-rig-reference.html (run handoff/export_from_index.cjs to refresh)",
   "units": "centimetres; 1 cm = 1 Unreal unit. Angles in degrees.",
   "axes": {
     "X": "sofa width",
@@ -376,174 +376,14 @@
   },
   "presets": [
     {
-      "name": "KOPER_LEFT_ARM_L_SECTIONAL_prod39250480",
-      "sku": "39250480",
-      "W": 384,
-      "D": 305,
-      "H": 82,
-      "render_prefix": "KOPER_LEFT_ARM_L_SECTIONAL_prod39250480",
-      "arm": "L",
-      "tq_view": "TQL"
-    },
-    {
-      "name": "Borgo · Double Partial-Back U (39940015)",
-      "sku": "39940015",
-      "W": 423,
-      "D": 276,
-      "H": 80,
-      "render_prefix": "BORGO_DOUBLE_PARTIAL_BACK_U_SECTIONAL_prod39940015",
-      "arm": null,
-      "tq_view": null
-    },
-    {
-      "name": "Borgo · Partial-Back Chaise-End U (39940017)",
-      "sku": "39940017",
-      "W": 390,
-      "D": 276,
-      "H": 80,
-      "render_prefix": "BORGO_PARTIAL_BACK_CHAISE_END_U_SECTIONAL_prod39940017",
-      "arm": null,
-      "tq_view": null
-    },
-    {
-      "name": "Borgo · Partial-Back U (39940016)",
-      "sku": "39940016",
-      "W": 390,
-      "D": 307,
-      "H": 80,
-      "render_prefix": "BORGO_PARTIAL_BACK_U_SECTIONAL_prod39940016",
-      "arm": null,
-      "tq_view": null
-    },
-    {
-      "name": "Borgo · Right-Arm Chaise (39250509)",
-      "sku": "39250509",
-      "W": 361,
-      "D": 210,
-      "H": 80,
-      "render_prefix": "BORGO_RIGHT_ARM_CHAISE_SECTIONAL_prod39250509",
-      "arm": "R",
-      "tq_view": "TQR"
-    },
-    {
-      "name": "Borgo · Right-Arm L (39250511)",
-      "sku": "39250511",
-      "W": 381,
-      "D": 310,
-      "H": 80,
-      "render_prefix": "BORGO_RIGHT_ARM_L_SECTIONAL_prod39250511",
-      "arm": "R",
-      "tq_view": "TQR"
-    },
-    {
-      "name": "Borgo · U (39250513)",
-      "sku": "39250513",
+      "name": "Manual dimensions",
+      "sku": null,
       "W": 453,
-      "D": 280,
-      "H": 80,
-      "render_prefix": "BORGO_U_SECTIONAL_prod39250513",
-      "arm": null,
-      "tq_view": null
-    },
-    {
-      "name": "Koper · Chaise-End U (39940020)",
-      "sku": "39940020",
-      "W": 394,
-      "D": 276,
-      "H": 83,
-      "render_prefix": "KOPER_CHAISE_END_U_SECTIONAL_prod39940020",
-      "arm": null,
-      "tq_view": null
-    },
-    {
-      "name": "Koper · U-Chaise (39250482)",
-      "sku": "39250482",
-      "W": 403,
-      "D": 233,
-      "H": 83,
-      "render_prefix": "KOPER_U_CHAISE_SECTIONAL_prod39250482",
-      "arm": null,
-      "tq_view": null
-    },
-    {
-      "name": "Koper · U (39250483)",
-      "sku": "39250483",
-      "W": 459,
-      "D": 276,
-      "H": 83,
-      "render_prefix": "KOPER_U_SECTIONAL_prod39250483",
-      "arm": null,
-      "tq_view": null
-    },
-    {
-      "name": "Masson · Left-Arm 2-Seat Chaise-End U (40460153)",
-      "sku": "40460153",
-      "W": 453,
-      "D": 275,
-      "H": 78,
-      "render_prefix": "MASSON_LEFT_ARM_TWO_SEAT_CHAISE_END_U_SECTIONAL_prod40460153",
-      "arm": "L",
-      "tq_view": "TQL"
-    },
-    {
-      "name": "Masson · Right-Arm Chaise-End (39250417)",
-      "sku": "39250417",
-      "W": 361,
-      "D": 200,
-      "H": 78,
-      "render_prefix": "MASSON_RIGHT_ARM_CHAISE_END_SECTIONAL_prod39250417",
-      "arm": "R",
-      "tq_view": "TQR"
-    },
-    {
-      "name": "Masson · Right-Arm L (39250419)",
-      "sku": "39250419",
-      "W": 312,
-      "D": 246,
-      "H": 77,
-      "render_prefix": "MASSON_RIGHT_ARM_L_SECTIONAL_prod39250419",
-      "arm": "R",
-      "tq_view": "TQR"
-    },
-    {
-      "name": "Masson · Right-Arm 2-Seat Chaise-End U (40460154)",
-      "sku": "40460154",
-      "W": 453,
-      "D": 275,
-      "H": 78,
-      "render_prefix": "MASSON_RIGHT_ARM_TWO_SEAT_CHAISE_END_U_SECTIONAL_prod40460154",
-      "arm": "R",
-      "tq_view": "TQR"
-    },
-    {
-      "name": "Masson · U-Chaise (39250420)",
-      "sku": "39250420",
-      "W": 447,
-      "D": 200,
-      "H": 78,
-      "render_prefix": "MASSON_U_CHAISE_SECTIONAL_prod39250420",
-      "arm": null,
-      "tq_view": null
-    },
-    {
-      "name": "Masson · U (39250421)",
-      "sku": "39250421",
-      "W": 434,
-      "D": 275,
-      "H": 78,
-      "render_prefix": "MASSON_U_SECTIONAL_prod39250421",
-      "arm": null,
-      "tq_view": null
-    },
-    {
-      "name": "Onic · Right-Arm L (39250451)",
-      "sku": "39250451",
-      "W": 343,
-      "D": 307,
+      "D": 279,
       "H": 79,
-      "render_prefix": "ONIC_RIGHT_ARM_L_SECTIONAL_prod39250451",
-      "arm": "R",
-      "tq_view": "TQR"
+      "render_prefix": null,
+      "arm": null,
+      "tq_view": null
     }
   ]
 }

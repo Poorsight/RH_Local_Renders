@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "generated_from": "light-rig-scaler/index.html (run handoff/export_from_index.cjs to refresh)",
+  "generated_from": "RH_Local_Renders/light-rig-reference.html (run handoff/export_from_index.cjs to refresh)",
   "note": [
     "Every value is the string that must appear in the generated T3D (6 decimals).",
     "t3d_sha256 = SHA-256 of the full T3D text, LF line endings, no trailing newline.",

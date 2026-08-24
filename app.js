@@ -1,6 +1,6 @@
 (() => {
   const $ = (id) => document.getElementById(id);
-  const state = { status: null, models: [], metadata: null, model: null, jobPath: null, poll: null, rig: null };
+  const state = { status: null, models: [], metadata: null, batch: [], model: null, jobPath: null, poll: null, rig: null };
   const canReachLocalService = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
   const LOCAL_MODELS_ROOT = "D:\\GitHub\\RH_Local_Renders\\local\\models";
   const RIG_REFERENCE = { width: 453, depth: 279, height: 79 };
@@ -34,42 +34,61 @@
   };
   const selected = (name) => [...document.querySelectorAll(`input[name=${name}]:checked`)].map(node => node.value);
   const materialRows = () => [...document.querySelectorAll("[data-material-id]")].map(node => ({ meshes: [node.dataset.materialId], material: node.value.trim() }));
-  const sideFromModel = () => {
-    const value = $("sceneSide").value;
-    if (value !== "auto") return value;
-    const label = state.model?.side || "";
-    return label.includes("RIGHT") ? "R" : label.includes("LEFT") ? "L" : label.includes("U") ? "U" : "R";
-  };
   const payload = () => ({
     modelPath: state.model.path,
+    models: state.batch.map(model => ({ modelPath: model.path, dimensions: model.dimensions, importYaw: model.importYaw })),
     category: $("category").value,
     environment: $("environment").value,
-    side: sideFromModel(), sourceMode: $("sourceMode").value,
+    side: $("sceneSide").value, sourceMode: $("sourceMode").value,
     dimensions: { width: +$("width").value, depth: +$("depth").value, height: +$("height").value },
     importYaw: +$("importYaw").value || 0,
     cameras: selected("camera"), layers: selected("layer"), materials: materialRows()
   });
   const validate = () => {
-    const ready = canReachLocalService && !!state.model && materialRows().length > 0 && materialRows().every(row => row.material) && selected("camera").length && selected("layer").length;
+    const ready = canReachLocalService && state.batch.length > 0 && materialRows().length > 0 && materialRows().every(row => row.material) && selected("camera").length && selected("layer").length;
     $("generateJob").disabled = !ready;
     if (!ready) state.jobPath = null;
     $("launchRender").disabled = !state.jobPath;
   };
-  const renderMaterials = (ids) => {
+  const renderMaterials = () => {
+    const previous = new Map(materialRows().map(row => [row.meshes[0].toLowerCase(), row.material]));
+    const grouped = new Map();
+    state.batch.forEach(model => model.materialIds.forEach(id => {
+      const key = id.toLowerCase();
+      if (!grouped.has(key)) grouped.set(key, { id, models: 0 });
+      grouped.get(key).models++;
+    }));
+    const ids = [...grouped.values()];
     $("materialsEmpty").hidden = !!ids.length;
-    $("materialsList").innerHTML = ids.map(id => `<label class="material-row"><span class="material-id">${escapeHtml(id)}</span><input data-material-id="${escapeHtml(id)}" placeholder="RH material name" autocomplete="off"></label>`).join("");
+    $("materialsList").innerHTML = ids.map(item => `<label class="material-row"><span class="material-id"><b>${escapeHtml(item.id)}</b><small>${item.models} model${item.models === 1 ? "" : "s"}</small></span><input data-material-id="${escapeHtml(item.id)}" value="${escapeHtml(previous.get(item.id.toLowerCase()) || "")}" placeholder="RH material name" autocomplete="off"></label>`).join("");
     document.querySelectorAll("[data-material-id]").forEach(input => input.addEventListener("input", validate));
   };
-  const applyModel = model => {
-    state.model = model; state.jobPath = null;
+  const renderBatch = () => {
+    $("modelBatch").hidden = !state.batch.length; $("batchCount").textContent = `${state.batch.length} model${state.batch.length === 1 ? "" : "s"}`;
+    $("batchList").innerHTML = state.batch.map(model => `<div class="batch-model${state.model?.path === model.path ? " active" : ""}" data-model-path="${escapeHtml(model.path)}"><button class="batch-model-select" type="button" title="Open ${escapeHtml(model.name)}"><span>${escapeHtml(model.name)}</span><small>${model.dimensions.width} × ${model.dimensions.depth} × ${model.dimensions.height} cm · ${escapeHtml(model.materialIds.length)} IDs</small></button><button class="batch-model-remove" type="button" title="Remove ${escapeHtml(model.name)}" aria-label="Remove ${escapeHtml(model.name)}">×</button></div>`).join("");
+  };
+  const selectModel = model => {
+    state.model = model;
     $("modelEmpty").hidden = true; $("modelDetails").hidden = false;
     $("inspectedName").textContent = model.name; $("modelSide").textContent = model.side || "Unknown side";
     $("width").value = model.dimensions.width; $("depth").value = model.dimensions.depth; $("height").value = model.dimensions.height; $("importYaw").value = model.importYaw;
+    $("modelPath").value = model.path;
     $("modelWarning").hidden = !model.warning; $("modelWarning").textContent = model.warning || "";
-    renderMaterials(model.materialIds);
     $("rigUseModel").disabled = false; syncRigFromModel();
-    const uph = document.querySelector('[data-material-id="UPH"], [data-material-id="uph"]'); if (uph) uph.focus();
-    validate(); toast(`Read ${model.materialIds.length} Material IDs from ${model.name}`);
+    renderBatch(); validate();
+  };
+  const applyModel = (model, quiet = false) => {
+    state.jobPath = null;
+    const index = state.batch.findIndex(item => item.path.toLowerCase() === model.path.toLowerCase());
+    if (index >= 0) state.batch[index] = model; else state.batch.push(model);
+    if (!state.models.some(item => item.path.toLowerCase() === model.path.toLowerCase())) {
+      state.models.push({ name: model.name, path: model.path });
+      $("modelCount").textContent = state.models.length;
+      $("modelOptions").insertAdjacentHTML("beforeend", `<option value="${escapeHtml(model.path)}">${escapeHtml(model.name)}</option>`);
+    }
+    renderMaterials(); selectModel(model);
+    const uph = document.querySelector('[data-material-id="UPH"], [data-material-id="uph"]'); if (uph && state.batch.length === 1) uph.focus();
+    if (!quiet) toast(`${model.newlyAnalyzed ? "Analyzed and saved" : "Read"} ${model.materialIds.length} Material IDs from ${model.name}`);
   };
   const metadataModel = query => {
     const value = String(query || "").trim(), needle = value.split(/[\\/]/).pop().replace(/\.fbx$/i, "").toLowerCase();
@@ -225,30 +244,36 @@
   const droppedFilePath = (file, transfer) => {
     const directPath = typeof file?.path === "string" ? file.path : "";
     if (/^[a-z]:[\\/].+\.fbx$/i.test(directPath)) return directPath.replace(/\//g, "\\");
-    const uri = String(transfer?.getData?.("text/uri-list") || "").split(/\r?\n/).find(value => /^file:\/\/\/[a-z]:\//i.test(value));
+    const uris = String(transfer?.getData?.("text/uri-list") || "").split(/\r?\n/).filter(value => /^file:\/\/\/[a-z]:\//i.test(value));
+    const uri = uris.find(value => { try { return decodeURIComponent(value).split("/").pop().toLowerCase() === String(file?.name || "").toLowerCase(); } catch { return false; } }) || (uris.length === 1 ? uris[0] : "");
     if (uri) { try { return decodeURIComponent(uri.replace(/^file:\/\/\//i, "")).replace(/\//g, "\\"); } catch {} }
     const name = String(file?.name || "").toLowerCase();
-    return state.models.find(model => model.path.split(/[\\/]/).pop().toLowerCase() === name)?.path || "";
+    const known = state.models.find(model => model.path.split(/[\\/]/).pop().toLowerCase() === name)?.path;
+    return known || (canReachLocalService && name ? `${LOCAL_MODELS_ROOT}\\${file.name}` : "");
   };
-  const useDroppedModel = async (file, transfer = null) => {
+  const inspectQuery = query => canReachLocalService ? api("/api/models/inspect", { method: "POST", body: JSON.stringify({ modelPath: query }) }) : Promise.resolve(metadataModel(query));
+  const useDroppedModels = async (files, transfer = null) => {
     const status = $("modelDropStatus");
-    if (!file || !/\.fbx$/i.test(file.name || "")) { status.dataset.state = "error"; status.textContent = "Only FBX model files are supported."; return toast(status.textContent, true); }
-    const fullPath = droppedFilePath(file, transfer);
-    if (!fullPath) {
-      status.dataset.state = "error";
-      status.textContent = canReachLocalService ? "This FBX is not in the indexed models folder. Add it there or paste its full path." : "This FBX is not listed in the project model metadata.";
-      return toast(status.textContent, true);
+    const selectedFiles = [...(files || [])], fbxFiles = selectedFiles.filter(file => /\.fbx$/i.test(file.name || ""));
+    if (!fbxFiles.length) { status.dataset.state = "error"; status.textContent = "Choose one or more FBX model files."; return toast(status.textContent, true); }
+    $("inspectModel").disabled = true; $("chooseModel").disabled = true;
+    let added = 0, failed = 0;
+    for (let index = 0; index < fbxFiles.length; index++) {
+      const file = fbxFiles[index], fullPath = droppedFilePath(file, transfer);
+      status.dataset.state = "working"; status.textContent = `Inspecting ${index + 1} of ${fbxFiles.length}: ${file.name}`;
+      if (!fullPath) { failed++; continue; }
+      try { applyModel(await inspectQuery(fullPath), true); added++; } catch (error) { console.warn(`${file.name}: ${error.message}`); failed++; }
     }
-    $("modelPath").value = fullPath; status.dataset.state = "success"; status.textContent = fullPath;
-    toast("Full FBX path added");
-    await inspect();
+    $("inspectModel").disabled = false; $("chooseModel").disabled = false;
+    status.dataset.state = failed ? "error" : "success";
+    status.textContent = `${added} model${added === 1 ? "" : "s"} added${failed ? ` · ${failed} failed` : ""}`;
+    toast(status.textContent, !!failed);
   };
   const inspect = async () => {
     const query = $("modelPath").value.trim(); if (!query) return toast("Enter a model name or path", true);
     $("inspectModel").disabled = true; $("inspectModel").textContent = "Inspecting…";
     try {
-      const model = canReachLocalService ? await api("/api/models/inspect", { method: "POST", body: JSON.stringify({ modelPath: query }) }) : metadataModel(query);
-      applyModel(model);
+      applyModel(await inspectQuery(query));
     } catch (error) { toast(error.message, true); }
     finally { $("inspectModel").disabled = false; $("inspectModel").textContent = "Inspect model"; }
   };
@@ -257,7 +282,7 @@
     try {
       const result = await api("/api/jobs", { method: "POST", body: JSON.stringify(payload()) });
       state.jobPath = result.jobPath; $("jobResult").hidden = false; $("copyJobPath").textContent = result.jobPath;
-      $("launchRender").disabled = false; toast(`Job ready: ${result.cameraCount} views · ${result.lightSource}`);
+      $("launchRender").disabled = false; toast(`Job ready: ${result.modelCount || 1} model${result.modelCount === 1 ? "" : "s"} · ${result.cameraCount} views · ${result.lightSource}`);
     } catch (error) { toast(error.message, true); }
     finally { $("generateJob").disabled = false; $("generateJob").textContent = "Generate job"; validate(); }
   };
@@ -302,11 +327,25 @@
   };
   $("inspectModel").addEventListener("click", inspect); $("modelPath").addEventListener("keydown", event => { if (event.key === "Enter") inspect(); });
   $("chooseModel").addEventListener("click", () => $("modelFileInput").click());
-  $("modelFileInput").addEventListener("change", event => { useDroppedModel(event.target.files?.[0]); event.target.value = ""; });
+  $("modelFileInput").addEventListener("change", event => { useDroppedModels(event.target.files); event.target.value = ""; });
   const dropTarget = $("modelDropTarget");
   ["dragenter", "dragover"].forEach(type => dropTarget.addEventListener(type, event => { event.preventDefault(); event.dataTransfer.dropEffect = "link"; dropTarget.dataset.dragging = "true"; }));
   dropTarget.addEventListener("dragleave", event => { if (!dropTarget.contains(event.relatedTarget)) delete dropTarget.dataset.dragging; });
-  dropTarget.addEventListener("drop", event => { event.preventDefault(); delete dropTarget.dataset.dragging; useDroppedModel(event.dataTransfer.files?.[0], event.dataTransfer); });
+  dropTarget.addEventListener("drop", event => { event.preventDefault(); delete dropTarget.dataset.dragging; useDroppedModels(event.dataTransfer.files, event.dataTransfer); });
+  $("batchList").addEventListener("click", event => {
+    const row = event.target.closest("[data-model-path]"); if (!row) return;
+    const index = state.batch.findIndex(model => model.path === row.dataset.modelPath); if (index < 0) return;
+    if (event.target.closest(".batch-model-remove")) {
+      const [removed] = state.batch.splice(index, 1); state.jobPath = null;
+      if (state.model?.path === removed.path) state.model = state.batch[Math.min(index, state.batch.length - 1)] || null;
+      renderMaterials(); renderBatch();
+      if (state.model) selectModel(state.model); else { $("modelDetails").hidden = true; $("modelEmpty").hidden = false; $("rigUseModel").disabled = true; $("modelPath").value = ""; }
+      validate(); return;
+    }
+    selectModel(state.batch[index]);
+  });
+  [["width", "width"], ["depth", "depth"], ["height", "height"]].forEach(([id, key]) => $(id).addEventListener("input", () => { if (state.model && +$(id).value > 0) { state.model.dimensions[key] = +$(id).value; renderBatch(); validate(); } }));
+  $("importYaw").addEventListener("input", () => { if (state.model) { state.model.importYaw = +$("importYaw").value || 0; validate(); } });
   $("generateJob").addEventListener("click", generate); $("launchRender").addEventListener("click", launch); $("refreshSheet").addEventListener("click", refreshSheet);
   $("copyJobPath").addEventListener("click", async () => { await navigator.clipboard.writeText(state.jobPath || ""); toast("Job path copied"); });
   $("rigUseModel").addEventListener("click", syncRigFromModel);

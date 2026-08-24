@@ -34,13 +34,15 @@ Override them with `RH_UNREAL_EDITOR`, `RH_UNREAL_PROJECT`, and `RH_MODELS_ROOT`
 
 The light rows are refreshed from the public Google Sheet (`gid=0`). `data/sectionals-indoor.csv` is the tracked startup fallback; a successful refresh is kept in memory for the current session.
 
-## Model inspection and generated presets
+## Model batches, automatic inspection, and generated presets
 
-The model input accepts a full FBX path, exact filename, or unique product substring. The tracked `data/models.json` keeps the dimensions, side, import correction and Material IDs required by the 16 current FBX files, so the dashboard does not depend on another classifier project at runtime.
+The model input accepts a full FBX path, exact filename, or unique product substring. **Choose FBX** and drag-and-drop accept multiple files at once and add them to one model batch. Selecting a row opens that model's dimensions and import yaw; removing a row does not touch the FBX on disk.
 
-An FBX can also be dropped directly onto the model field (or selected with **Choose FBX**). The local dashboard matches its filename against the indexed models, fills the full Windows path, and runs the same inspection. The FBX is not uploaded or copied.
+The tracked `data/models.json` keeps the metadata for the original 16 FBX files. A new FBX placed in `local/models/` is analyzed automatically on first inspection with the installed local Blender: the service reads its bounds, unit scale, back orientation, sectional side, import yaw, and component Material IDs. The result is cached in ignored `local/model-metadata.json` and is refreshed if that FBX changes. No file is uploaded or copied, and the runtime does not depend on the old `sectional-classifier` project. Set `RH_BLENDER` only if Blender is installed outside `C:\Program Files\Blender Foundation\`.
 
-The static preview uses the same tracked `data/models.json`: dropping one of the 16 known FBX files restores its expected `D:\GitHub\RH_Local_Renders\local\models\…` path and shows dimensions and Material IDs without uploading the file. Generating a job or launching Unreal still requires `Start_RH_Local_Renders.bat` because a public web page cannot start a local process.
+Material assignments are the union of the batch: an identical component ID is shown once with the number of models using it, and its RH material value is applied to each matching task. **Generate job** creates one `.job.json` whose `tasks` contain every model, while dimensions, side, import yaw, lights, and output folder remain model-specific.
+
+The static preview uses the same tracked `data/models.json`: dropping any batch made from the 16 known FBX files restores their expected `D:\GitHub\RH_Local_Renders\local\models\…` paths and groups their Material IDs without uploading files. First-time analysis of a new FBX, job generation, and Unreal launch require `Start_RH_Local_Renders.bat` because a public web page cannot run Blender or local processes.
 
 There are no bundled model presets. After a successful render produces images, the service adds that model to ignored `local/catalog.json` with its measured dimensions and render files. The UI then displays it under **Rendered models**.
 
@@ -54,7 +56,7 @@ The sectional light-rig scaler and schematic are native parts of the dashboard, 
 npm test
 ```
 
-The suite checks model metadata, the sectional sheet, fixed-Z five-light jobs, material grouping, the exact actor-yaw rules, the Unreal launcher contract, and the native dashboard surface.
+The suite checks tracked and auto-cached model metadata, multi-model jobs, shared Material ID filtering, the sectional sheet, fixed-Z five-light jobs, the exact actor-yaw rules, the Unreal launcher contract, and the native dashboard surface.
 
 The launcher is stored entirely in this repository. The stock BatchRender plugin already reads `ApiUrl` from `Config/DefaultEditor.ini`, fetches a job with `GET`, and reports events such as `render_finished`, `job_completed`, and `error` with `POST`. The dashboard exposes the same protocol at `http://127.0.0.1:5500/api/unreal` and overrides `ApiUrl` only for the launched process.
 

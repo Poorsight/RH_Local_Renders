@@ -6,7 +6,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 const { SheetStore } = require("./lib/rig.cjs");
 const { ModelStore } = require("./lib/models.cjs");
-const { writeJob } = require("./lib/jobs.cjs");
+const { writeBatchJob } = require("./lib/jobs.cjs");
 const { buildUnrealLaunch } = require("./lib/unreal.cjs");
 
 const ROOT = __dirname;
@@ -73,12 +73,15 @@ function scanImages(folder) {
 
 function updateCatalog(jobPath) {
   try {
-    const job = JSON.parse(fs.readFileSync(jobPath, "utf8")), task = job.tasks[0], metadata = job._rhLocal || {};
-    const images = scanImages(metadata.outputFolder); if (!images.length) return;
+    const job = JSON.parse(fs.readFileSync(jobPath, "utf8")), metadata = job._rhLocal || {};
     const catalogPath = path.join(ROOT, "local", "catalog.json");
     const catalog = fs.existsSync(catalogPath) ? JSON.parse(fs.readFileSync(catalogPath, "utf8")) : { models: [] };
-    const entry = { name: task.taskId, modelPath: task.model.objPath, dimensions: metadata.dimensions, side: metadata.side, renders: images, updatedAt: new Date().toISOString() };
-    const index = catalog.models.findIndex(item => item.modelPath === entry.modelPath); if (index >= 0) catalog.models[index] = entry; else catalog.models.unshift(entry);
+    const records = metadata.models || [metadata];
+    for (const record of records) {
+      const images = scanImages(record.outputFolder); if (!images.length) continue;
+      const entry = { name: record.name || path.basename(record.modelPath, path.extname(record.modelPath)), modelPath: record.modelPath, dimensions: record.dimensions, side: record.side, renders: images, updatedAt: new Date().toISOString() };
+      const index = catalog.models.findIndex(item => item.modelPath === entry.modelPath); if (index >= 0) catalog.models[index] = entry; else catalog.models.unshift(entry);
+    }
     fs.writeFileSync(catalogPath, `${JSON.stringify(catalog, null, 2)}\n`, "utf8");
   } catch (catalogError) { render.log += `\nCatalog update failed: ${catalogError.message}`; }
 }
@@ -111,11 +114,20 @@ async function api(request, response, url) {
     project: "RH_Local_Renders", models: models.list(), sheet: sheet.status(),
     unreal: { editor: UNREAL_EDITOR, project: UNREAL_PROJECT, available: fs.existsSync(UNREAL_EDITOR) && fs.existsSync(UNREAL_PROJECT), lastContactAt: lastUnrealContactAt }, render: currentRender()
   });
-  if (request.method === "POST" && url.pathname === "/api/models/inspect") return json(response, 200, models.inspect((await body(request)).modelPath));
+  if (request.method === "POST" && url.pathname === "/api/models/inspect") return json(response, 200, await models.inspect((await body(request)).modelPath));
   if (request.method === "POST" && url.pathname === "/api/sheet/refresh") return json(response, 200, await sheet.refresh());
   if (request.method === "POST" && url.pathname === "/api/jobs") {
-    const input = await body(request), model = models.inspect(input.modelPath), result = writeJob(ROOT, input, model, sheet.rig());
-    return json(response, 201, { jobPath: result.jobPath, outputFolder: result.outputFolder, cameraCount: result.job.tasks[0].sequence.cameras.length, lightSource: sheet.source });
+    const input = await body(request), selections = input.models?.length ? input.models : [{ modelPath: input.modelPath, dimensions: input.dimensions, importYaw: input.importYaw }];
+    const entries = [];
+    for (const selection of selections) {
+      const model = await models.inspect(selection.modelPath);
+      const modelSide = String(model.side || "");
+      const side = input.side === "auto" || !input.side ? (modelSide.includes("RIGHT") ? "R" : modelSide.includes("LEFT") ? "L" : modelSide.includes("U") ? "U" : "R") : input.side;
+      entries.push({ model, input: { ...input, ...selection, side, dimensions: selection.dimensions || model.dimensions, importYaw: selection.importYaw ?? model.importYaw } });
+    }
+    const result = writeBatchJob(ROOT, entries, sheet.rig());
+    const cameraCount = result.job.tasks.reduce((total, task) => total + task.sequence.cameras.length, 0);
+    return json(response, 201, { jobPath: result.jobPath, outputFolder: result.outputFolder, modelCount: result.job.tasks.length, cameraCount, lightSource: sheet.source });
   }
   if (request.method === "POST" && url.pathname === "/api/renders") {
     if (child) return error(response, 409, render.state === "running" ? "A render is already running" : "Unreal Editor is still closing");

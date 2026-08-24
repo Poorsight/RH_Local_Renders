@@ -7,7 +7,7 @@ const path = require("node:path");
 const os = require("node:os");
 const { parseCsv } = require("../lib/csv.cjs");
 const { buildRig, jobLights, rigScale } = require("../lib/rig.cjs");
-const { buildJob, CAMERA_YAW, groupedMaterials } = require("../lib/jobs.cjs");
+const { buildJob, buildBatchJob, CAMERA_YAW, groupedMaterials } = require("../lib/jobs.cjs");
 const { ModelStore } = require("../lib/models.cjs");
 const { buildUnrealLaunch } = require("../lib/unreal.cjs");
 
@@ -61,18 +61,47 @@ test("equal material names become one BatchRender material group", () => {
   assert.deepEqual(groupedMaterials([{ meshes: ["UPH"], material: "A" }, { meshes: ["Stitches"], material: "A" }])[0].meshes, ["uph", "stitches"]);
 });
 
-test("tracked metadata makes all current models self-contained", () => {
+test("tracked metadata makes all current models self-contained", async () => {
   const metadata = JSON.parse(fs.readFileSync(path.join(root, "data", "models.json"), "utf8"));
   assert.equal(Object.keys(metadata.models).length, 16);
   const name = "BELGIAN_SLIPCOVERED_CLASSIC_SLOPE_ARM_BENCH_SEAT_RIGHT_ARM_L_SECTIONAL_LUXE_prod9910052";
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "rh-local-renders-"));
   try {
     fs.writeFileSync(path.join(temp, `${name}.fbx`), "");
-    const inspected = new ModelStore(root, { modelsRoot: temp }).inspect(name);
+    const inspected = await new ModelStore(root, { modelsRoot: temp }).inspect(name);
     assert.deepEqual(inspected.dimensions, { width: 356.3, depth: 274.7, height: 88.6 });
     assert.equal(inspected.side, "RIGHT_ARM"); assert.equal(inspected.importYaw, -90); assert.equal(inspected.offsetUniformScale, 2.54);
     assert.deepEqual(inspected.materialIds, ["UPH", "Stitches", "Feet"]);
   } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+});
+
+test("a new FBX is analyzed once and persisted in ignored local metadata", async () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "rh-local-renders-new-"));
+  const modelsRoot = path.join(temp, "models"), localMetadataPath = path.join(temp, "model-metadata.json"), name = "NEW_LEFT_ARM_L_SECTIONAL_prod123";
+  fs.mkdirSync(modelsRoot); fs.writeFileSync(path.join(modelsRoot, `${name}.fbx`), "fixture");
+  const analyzed = { side: "LEFT_ARM", dimensions: [300, 250, 80], yaw: 0, scale: 1, materialIds: ["UPH", "Feet"], meshObjects: 2, warning: "" };
+  try {
+    const first = await new ModelStore(root, { modelsRoot, localMetadataPath, analyzeModel: async () => analyzed }).inspect(name);
+    assert.equal(first.newlyAnalyzed, true); assert.equal(first.metadataSource, "local");
+    assert.deepEqual(first.materialIds, ["UPH", "Feet"]); assert.ok(fs.existsSync(localMetadataPath));
+    const second = await new ModelStore(root, { modelsRoot, localMetadataPath, analyzeModel: async () => { throw new Error("should use cache"); } }).inspect(name);
+    assert.equal(second.newlyAnalyzed, false); assert.deepEqual(second.dimensions, { width: 300, depth: 250, height: 80 });
+  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+});
+
+test("batch jobs keep per-model geometry and apply shared IDs only where present", () => {
+  const left = { ...model, name: "LEFT_prod1", materialIds: ["UPH", "Feet"] };
+  const right = { ...model, name: "RIGHT_prod2", path: "D:\\models\\RIGHT_prod2.fbx", materialIds: ["UPH", "Stitches"] };
+  const materials = [{ meshes: ["UPH"], material: "FABRIC_A" }, { meshes: ["Feet"], material: "WOOD_A" }, { meshes: ["Stitches"], material: "THREAD_A" }];
+  const job = buildBatchJob([
+    { model: left, input: { ...baseInput, side: "L", dimensions: { width: 300, depth: 250, height: 80 }, materials } },
+    { model: right, input: { ...baseInput, side: "R", dimensions: { width: 400, depth: 280, height: 90 }, materials } }
+  ], rig, "D:\\renders\\batch", "batch_2_test");
+  assert.equal(job.tasks.length, 2); assert.equal(job._rhLocal.models.length, 2);
+  assert.deepEqual(job.tasks[0].materials.flatMap(group => group.meshes).sort(), ["feet", "uph"]);
+  assert.deepEqual(job.tasks[1].materials.flatMap(group => group.meshes).sort(), ["stitches", "uph"]);
+  assert.equal(job.tasks[0].sequence.cameras[2].Actor.Rotation.Yaw, 36);
+  assert.equal(job.tasks[1].sequence.cameras[2].Actor.Rotation.Yaw, -36);
 });
 
 test("legacy light-rig project files stay out of the unified project", () => {
@@ -110,9 +139,11 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(client, /canReachLocalService/);
   assert.match(client, /range\.addEventListener\("input"/);
   assert.match(html, /id="modelDropTarget"/);
-  assert.match(html, /id="modelFileInput" type="file" accept="\.fbx"/);
+  assert.match(html, /id="modelFileInput" type="file" accept="\.fbx" multiple/);
   assert.match(client, /droppedFilePath/);
   assert.match(client, /dropTarget\.addEventListener\("drop"/);
+  assert.match(client, /useDroppedModels/);
+  assert.match(html, /id="modelBatch"/);
   assert.match(client, /LOCAL_MODELS_ROOT = "D:\\\\GitHub\\\\RH_Local_Renders\\\\local\\\\models"/);
   assert.match(client, /const metadataModel = query =>/);
   assert.match(client, /await loadModelMetadata\(\)/);

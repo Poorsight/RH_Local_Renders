@@ -59,11 +59,16 @@
               <button id="chooseModel" class="secondary-button" type="button">Choose FBX</button>
               <button id="inspectModel" class="secondary-button" type="button">Inspect model</button>
             </div>
-            <div class="model-drop-overlay" aria-hidden="true"><span>Drop FBX here</span><small>The full local path will be used</small></div>
+            <div class="model-drop-overlay" aria-hidden="true"><span>Drop FBX models here</span><small>One model or a whole batch</small></div>
           </div>
-          <input id="modelFileInput" type="file" accept=".fbx" hidden>
-          <span id="modelDropStatus" class="model-drop-status" aria-live="polite">Drop a local FBX here or choose one to fill its full path.</span>
+          <input id="modelFileInput" type="file" accept=".fbx" multiple hidden>
+          <span id="modelDropStatus" class="model-drop-status" aria-live="polite">Drop one or more local FBX models here. New files are analyzed automatically.</span>
         </label>
+
+        <div id="modelBatch" class="model-batch" hidden>
+          <div class="model-batch-heading"><span>MODEL BATCH</span><strong id="batchCount">0 models</strong></div>
+          <div id="batchList" class="model-batch-list"></div>
+        </div>
 
         <div id="modelEmpty" class="empty-state">Choose a model to read its dimensions and Material IDs.</div>
         <div id="modelDetails" class="model-details" hidden>
@@ -80,9 +85,9 @@
 
       <section class="panel materials-panel" aria-labelledby="materialsTitle">
         <div class="panel-heading"><div><span class="step">02</span><h2 id="materialsTitle">Material assignments</h2></div></div>
-        <div id="materialsEmpty" class="empty-state">Material IDs appear after model inspection.</div>
+        <div id="materialsEmpty" class="empty-state">Shared Material IDs appear after model inspection.</div>
         <div id="materialsList" class="materials-list"></div>
-        <p class="field-hint">IDs come from FBX component names. IDs with the same material are grouped in the generated job.</p>
+        <p class="field-hint">Identical component IDs are shown once and assigned across every model in the batch. IDs using the same RH material are grouped again in the generated job.</p>
       </section>
 
       <section class="panel output-panel" aria-labelledby="outputTitle">

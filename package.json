@@ -5,11 +5,8 @@
   "private": true,
   "scripts": {
     "build": "node --check app.js && node --check server.cjs",
-    "test": "node test/sanity.cjs && node --test test/local-render.test.cjs",
-    "start": "node server.cjs",
-    "gen:manifest": "node scripts/gen-render-manifest.cjs",
-    "handoff": "node handoff/export_from_index.cjs",
-    "verify:scene": "node handoff/verify_scene.cjs"
+    "test": "node --test test/local-render.test.cjs",
+    "start": "node server.cjs"
   },
   "license": "UNLICENSED"
 }

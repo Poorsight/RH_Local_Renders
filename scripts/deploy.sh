@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 HOST="exile.dreamsoft.us"
 REMOTE_DIR="dmitriy.derevyanko/light-rig"
 PUBLIC_URL="https://preview.3dsource.com/$REMOTE_DIR/"
-FILES=(index.html light-rig-reference.html app.css app.js favicon.svg data/sectionals-indoor.csv)
+FILES=(index.html app.css app.js favicon.svg data/sectionals-indoor.csv data/models.json)
 
 [[ "$(git branch --show-current)" == "main" ]] || { echo "Deploy requires main" >&2; exit 1; }
 git fetch --quiet origin main

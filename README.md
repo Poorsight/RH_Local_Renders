@@ -21,7 +21,7 @@ Default local paths:
 - jobs: `D:\GitHub\RH_Local_Renders\local\jobs\generated\`
 - renders: `D:\GitHub\RH_Local_Renders\local\renders\`
 
-Override them with `RH_UNREAL_EDITOR`, `RH_UNREAL_PROJECT`, `RH_MODELS_ROOT`, and `RH_CLASSIFIER_ROOT` environment variables.
+Override them with `RH_UNREAL_EDITOR`, `RH_UNREAL_PROJECT`, and `RH_MODELS_ROOT` environment variables.
 
 ## Current scope
 
@@ -32,11 +32,11 @@ Override them with `RH_UNREAL_EDITOR`, `RH_UNREAL_PROJECT`, `RH_MODELS_ROOT`, an
 - An import correction such as `-90°` is added to the camera Actor yaw. `model.Rotation` is deliberately not emitted because BatchRender does not parse it.
 - Render layers: Fabric Path Trace 5K and optional Shadow Lumen 15K×5K.
 
-The light rows are refreshed from the public Google Sheet (`gid=0`). `data/sectionals-indoor.csv` is the tracked fallback, and the latest successful download is cached under ignored `local/cache/`.
+The light rows are refreshed from the public Google Sheet (`gid=0`). `data/sectionals-indoor.csv` is the tracked startup fallback; a successful refresh is kept in memory for the current session.
 
 ## Model inspection and generated presets
 
-The model input accepts a full FBX path, exact filename, or unique product substring. Geometry metadata comes from `D:\GitHub\sectional-classifier\cache`; the existing report supplies corrected units, side, dimensions, and import-orientation warnings. Material IDs are the suffixes of component names after the last colon, for example `UPH`, `Stitches`, and `Feet`.
+The model input accepts a full FBX path, exact filename, or unique product substring. The tracked `data/models.json` keeps the dimensions, side, import correction and Material IDs required by the 16 current FBX files, so the dashboard does not depend on another classifier project at runtime.
 
 An FBX can also be dropped directly onto the model field (or selected with **Choose FBX**). The local dashboard matches its filename against the indexed models, fills the full Windows path, and runs the same inspection. The FBX is not uploaded or copied.
 
@@ -46,17 +46,13 @@ There are no bundled model presets. After a successful render produces images, t
 
 The sectional light-rig scaler and schematic are native parts of the dashboard, using the same controls, typography, colours, and responsive layout as the render workflow. X/Y light positions use one shared scale while every source keeps its original Z coordinate, including height-only changes. It reads the tracked `data/sectionals-indoor.csv` directly in the browser, so the reference also works on the static preview without the local service.
 
-`light-rig-reference.html` remains only as a compatibility page for old direct links. The dashboard does not embed it or use an iframe.
-
-The scaler handoff remains in `handoff/`. Run `npm run handoff` after changing its rig constants.
-
 ## Verification
 
 ```powershell
 npm test
 ```
 
-The suite checks the old T3D golden vectors and UE exports, the cached sectional sheet, five-light job shape, material grouping, and the exact sectional actor-yaw rules.
+The suite checks model metadata, the sectional sheet, fixed-Z five-light jobs, material grouping, the exact actor-yaw rules, the Unreal launcher contract, and the native dashboard surface.
 
 The launcher is stored entirely in this repository. The stock BatchRender plugin already reads `ApiUrl` from `Config/DefaultEditor.ini`, fetches a job with `GET`, and reports events such as `render_finished`, `job_completed`, and `error` with `POST`. The dashboard exposes the same protocol at `http://127.0.0.1:5500/api/unreal` and overrides `ApiUrl` only for the launched process.
 
@@ -70,4 +66,16 @@ The generated job is served once to that process. A render is marked successful 
 
 ## Source and local data
 
-Everything under `local/` is ignored: FBX files, generated jobs, cached sheet data, renders, and the generated catalogue must not be committed. The public/static dashboard remains safe when uploaded, but launching Unreal requires the localhost service.
+Everything under `local/` is ignored. Only `local/models/` is kept as permanent input; `local/jobs/`, `local/renders/` and `local/catalog.json` are created later by the application as working output and must not be committed. The public/static dashboard remains safe when uploaded, but launching Unreal requires the localhost service.
+
+## Project layout
+
+```text
+app.js / app.css / index.html   browser dashboard
+server.cjs                     localhost API and render process control
+lib/                           jobs, models, light data and Unreal launch logic
+data/                          tracked model metadata and light fallback
+test/                          product regression tests
+scripts/deploy.sh              preview deployment
+local/models/                  ignored FBX input only
+```

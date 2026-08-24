@@ -4,10 +4,11 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const os = require("node:os");
 const { parseCsv } = require("../lib/csv.cjs");
 const { buildRig, jobLights, rigScale } = require("../lib/rig.cjs");
 const { buildJob, CAMERA_YAW, groupedMaterials } = require("../lib/jobs.cjs");
-const { componentId } = require("../lib/models.cjs");
+const { ModelStore } = require("../lib/models.cjs");
 const { buildUnrealLaunch } = require("../lib/unreal.cjs");
 
 const root = path.join(__dirname, "..");
@@ -60,8 +61,26 @@ test("equal material names become one BatchRender material group", () => {
   assert.deepEqual(groupedMaterials([{ meshes: ["UPH"], material: "A" }, { meshes: ["Stitches"], material: "A" }])[0].meshes, ["uph", "stitches"]);
 });
 
-test("component IDs are read from the suffix of FBX object names", () => {
-  assert.equal(componentId("SOFA_PART:UPH"), "UPH"); assert.equal(componentId("SOFA_PART:Feet.001"), "Feet");
+test("tracked metadata makes all current models self-contained", () => {
+  const metadata = JSON.parse(fs.readFileSync(path.join(root, "data", "models.json"), "utf8"));
+  assert.equal(Object.keys(metadata.models).length, 16);
+  const name = "BELGIAN_SLIPCOVERED_CLASSIC_SLOPE_ARM_BENCH_SEAT_RIGHT_ARM_L_SECTIONAL_LUXE_prod9910052";
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "rh-local-renders-"));
+  try {
+    fs.writeFileSync(path.join(temp, `${name}.fbx`), "");
+    const inspected = new ModelStore(root, { modelsRoot: temp }).inspect(name);
+    assert.deepEqual(inspected.dimensions, { width: 356.3, depth: 274.7, height: 88.6 });
+    assert.equal(inspected.side, "RIGHT_ARM"); assert.equal(inspected.importYaw, -90); assert.equal(inspected.offsetUniformScale, 2.54);
+    assert.deepEqual(inspected.materialIds, ["UPH", "Stitches", "Feet"]);
+  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+});
+
+test("legacy light-rig project files stay out of the unified project", () => {
+  for (const legacy of ["handoff", "light-rig-reference.html", "comments.php", "ONBOARDING.md", ".claude"]) {
+    assert.equal(fs.existsSync(path.join(root, legacy)), false, legacy);
+  }
+  const scripts = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).scripts;
+  assert.deepEqual(Object.keys(scripts).sort(), ["build", "start", "test"]);
 });
 
 test("Unreal launch points the stock BatchRender plugin at the local API", () => {

@@ -5,6 +5,6 @@ Thumbs.db
 .cache/
 __pycache__/
 
-# Local work area: models, job files, renders, the handoff package.
+# Local work area: FBX models plus generated jobs, renders and catalogue data.
 # Everything under local/ stays on this machine and is never pushed.
 local/

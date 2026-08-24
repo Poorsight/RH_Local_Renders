@@ -36,36 +36,43 @@ right-arm presets only in `TQ-R`. `F` and `FH` renders stay available for every 
 The bundled default preset is `KOPER_LEFT_ARM_L_SECTIONAL_prod39250480`
 with dimensions `384 x 305 x 82`.
 
-> When you enter dimensions equal to the reference ones (453 × 274 × 77), the output matches
+> When you enter dimensions equal to the reference ones (453 × 279 × 79), the output matches
 > the original rig byte for byte — a handy way to verify that nothing has "drifted".
 
 ## Scaling logic
 
+The rig moves as **one rigid body**. The three axis ratios collapse into a single factor and
+nothing is rotated, raised or reshaped.
+
 | What | Rule |
 |---|---|
-| Positions | per-axis `(W/453, D/274, H/77)`, applied **in the sofa's own frame** — on the ¾ shots the sofa is turned ±36°, so its width is not world X. Reduces to a plain `X·(W/453), Y·(D/274), Z·(H/77)` on `F`/`FH` and whenever width and depth scale equally |
-| Aim | pitch/yaw follow the same non-uniform X/Y/Z scaling, keeping each light aimed at the same relative sofa area |
-| Light distance | `k = |new_pos| / |old_pos|` (individual to each light) |
-| Intensity, mode **A** | light sizes `×k`, intensity `×k²` (inverse square holds strictly) |
-| Intensity, mode **B** | sizes unchanged, `I·(k²·d² + R²)/(d² + R²) ≈ I·k^p`, where `p = 2d²/(d²+R²)` |
-| AttenuationRadius | `×k` (follows the distance) |
-| Roll, color, temperature | unchanged (pitch/yaw change only when the axis scales differ) |
+| Rig factor | `k = ∛(sX · sY · sZ)`, where `sX = W/453`, `sY = D/279`, `sZ = H/79` — **the same k for all five lights** |
+| Positions | `p′ = p · k` |
+| Rotations | pitch, yaw, roll — **never recomputed**, copied from the shot's tuned rig |
+| Intensity, mode **B** (default) | sizes unchanged, `I·(k²·d² + R²)/(d² + R²) ≈ I·k^p`, where `p = 2d²/(d²+R²)` |
+| Intensity, mode **A** | light sizes `×k`, intensity `×k²` — an exact similarity transform |
+| AttenuationRadius | **not written** — no effect in the path tracer |
+| Color, temperature, cone angles | unchanged |
 
-- **Axes:** world X ↔ width (453), Y ↔ depth (274), Z ↔ height (77). Determined by
-  the fill: `SourceWidth = 500 ≈ 453`. (`computeAll`'s `swap` flag swaps X↔Y; the UI checkbox for it was removed.)
-- **Mode A** — recommended: preserves the character of the shadows, with predictable `k²`.
-- **Mode B** — explains why "inverse square doesn't work": for large soft
-  lights (fill, left_rim), `R` is comparable to the distance → softer falloff (`~k^1.7`),
-  while for the sharp `main_key` → almost `k²`.
-- **Non-uniform sectionals:** the tool scales each light's direction vector and derives new
-  pitch/yaw, preventing aim drift on unusually wide or deep layouts. At the reference size
-  and under uniform scaling the original rotations remain byte-identical.
+- **Axes:** world X ↔ width (453), Y ↔ depth (279), Z ↔ height (79). Determined by
+  the fill: `SourceWidth = 500 ≈ 453`.
+- **Why one factor and not three:** a per-axis stretch gives every light a different `k` (0.69 to
+  1.30 on a real sectional), which pulls the balance between the five sources apart and forces
+  aim corrections of up to 21°. A single factor keeps the balance and every angle exactly as
+  tuned. It also makes the result **invariant to swapping W and D**, so a mesh authored rotated
+  90° produces the same rig — and `computeAll`'s `swap` flag is now a no-op.
+- **Mode B** — recommended: real studio fixtures keep their real sizes. It also explains why
+  "inverse square doesn't work": for large soft lights (fill, left_rim), `R` is comparable to the
+  distance → softer falloff (`~k^1.7`), while for the sharp `main_key` → almost `k²`.
+- **What it cannot do:** follow the sofa's *shape*. A rigid rig tracks size only, so a sectional
+  whose proportions differ a lot from the reference keeps a residual difference — the tool warns
+  when `max(sX,sY,sZ)/min(sX,sY,sZ) > 1.5` instead of pretending to compensate.
 
 ## Automating this
 
 `handoff/` is a self-contained package for reproducing the rig outside the browser:
-[`handoff/HANDOFF_FORMULA.md`](handoff/HANDOFF_FORMULA.md) (formula incl. the aim transform,
-constants, T3D contract, porting gotchas), machine-readable constants, golden acceptance vectors,
+[`handoff/HANDOFF_FORMULA.md`](handoff/HANDOFF_FORMULA.md) (formula, constants, T3D contract,
+porting gotchas), machine-readable constants, golden acceptance vectors,
 a Python reference implementation, and the UE scene exports the rig is checked against.
 
 ```bash

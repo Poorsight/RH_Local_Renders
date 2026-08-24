@@ -286,41 +286,41 @@
       <input id="Ws" type="range" min="80" max="1000" step="1" value="453" />
     </div>
     <div class="field">
-      <div class="top"><label>Depth · Y</label><input id="D" class="num" type="number" value="274" step="1" min="1" /></div>
-      <input id="Ds" type="range" min="80" max="1000" step="1" value="274" />
+      <div class="top"><label>Depth · Y</label><input id="D" class="num" type="number" value="279" step="1" min="1" /></div>
+      <input id="Ds" type="range" min="80" max="1000" step="1" value="279" />
     </div>
     <div class="field">
-      <div class="top"><label>Height · Z</label><input id="H" class="num" type="number" value="77" step="1" min="1" /></div>
-      <input id="Hs" type="range" min="30" max="160" step="1" value="77" />
+      <div class="top"><label>Height · Z</label><input id="H" class="num" type="number" value="79" step="1" min="1" /></div>
+      <input id="Hs" type="range" min="30" max="160" step="1" value="79" />
     </div>
 
-    <div class="sectionhead"><h2>Light behavior</h2><span class="tag">adaptive aim</span></div>
+    <div class="sectionhead"><h2>Light behavior</h2><span class="tag">rigid rig</span></div>
     <label class="opt">
-      <input type="radio" name="mode" value="A" checked />
+      <input type="radio" name="mode" value="B" checked />
       <span>
-        <span class="t">Proportional rig <span class="tag">recommended</span></span>
-        <span class="d">Moves, aims and sizes every light with the sofa; preserves the original lighting character.</span>
+        <span class="t">Fixed physical sources <span class="tag">recommended</span></span>
+        <span class="d">Moves the rig in or out with the sofa and compensates with intensity; panel and emitter sizes stay exactly as built.</span>
       </span>
     </label>
     <label class="opt">
-      <input type="radio" name="mode" value="B" />
+      <input type="radio" name="mode" value="A" />
       <span>
-        <span class="t">Fixed physical sources</span>
-        <span class="d">Moves and aims the rig, but keeps panel and emitter sizes unchanged.</span>
+        <span class="t">Exact similarity</span>
+        <span class="d">Also scales every source size by the same factor — a true scale model of the rig, so shadow softness is preserved to the letter.</span>
       </span>
     </label>
-    <p class="modehelp"><b>Aim follows proportions:</b> when width, depth or height changes differently, each light keeps pointing at the same relative area of the sectional.</p>
+    <p class="modehelp"><b>The rig moves as one rigid body:</b> a single factor pushes all five lights in or out. Nothing is rotated, raised or reshaped, so the balance between the sources stays exactly as it was tuned.</p>
     <details class="mini">
       <summary>When to use which?</summary>
-      <p class="note">Both modes are identical at the reference size. <b>Proportional</b> is the safe default for an unknown sectional size. Use <b>fixed sources</b> only when the studio fixtures must keep their real dimensions.</p>
+      <p class="note">Both modes are identical at the reference size and differ only in source size — typically a few per cent, which shows up as slightly softer or harder shadow edges. <b>Fixed sources</b> matches what the render pipeline can reproduce with real fixtures; use <b>exact similarity</b> when you want the scale model to be mathematically perfect.</p>
     </details>
 
     <details class="mini">
       <summary>Reference rig dimensions (advanced)</summary>
       <div class="grid3" style="margin-top:10px">
         <div><label>ref X</label><input id="rW" type="number" value="453" step="1" min="1" /></div>
-        <div><label>ref Y</label><input id="rD" type="number" value="274" step="1" min="1" /></div>
-        <div><label>ref Z</label><input id="rH" type="number" value="77" step="1" min="1" /></div>
+        <div><label>ref Y</label><input id="rD" type="number" value="279" step="1" min="1" /></div>
+        <div><label>ref Z</label><input id="rH" type="number" value="79" step="1" min="1" /></div>
       </div>
       <p class="note">The sofa size the rig is tuned for right now. When the input equals the reference, the output matches the source T3D 1:1.</p>
     </details>
@@ -330,8 +330,10 @@
     <details class="mini">
       <summary>How axes &amp; scaling work</summary>
       <p class="note">
-        <b>Axes:</b> world&nbsp;X↔width(453), Y↔depth(274), Z↔height(77) — inferred from the fill (SourceWidth&nbsp;500&nbsp;≈&nbsp;453).
-        Positions and aim directions scale per axis; <b>AttenuationRadius</b> follows the distance. Uniform scaling keeps rotations unchanged.
+        <b>Axes:</b> world&nbsp;X↔width(453), Y↔depth(279), Z↔height(79) — inferred from the fill (SourceWidth&nbsp;500&nbsp;≈&nbsp;453).
+        The three axis ratios collapse into <b>one</b> factor <b>k&nbsp;=&nbsp;∛(s<sub>X</sub>·s<sub>Y</sub>·s<sub>Z</sub>)</b>, so positions scale uniformly and
+        rotations never change. Swapping width and depth leaves k identical, so a mesh authored rotated 90° gives the same rig.
+        <b>AttenuationRadius</b> is passed through untouched — the path tracer ignores it.
       </p>
     </details>
   </section>
@@ -411,12 +413,12 @@
       <div class="tblwrap">
       <table id="tbl">
         <thead>
-          <tr><th>Light</th><th>type</th><th>X</th><th>Y</th><th>Z</th><th>Rot P·Y·R</th><th>Intensity</th><th>Size</th><th>Atten</th><th>k</th><th>p</th></tr>
+          <tr><th>Light</th><th>type</th><th>X</th><th>Y</th><th>Z</th><th>Rot P·Y·R</th><th>Intensity</th><th>Size</th><th>k</th><th>p</th></tr>
         </thead>
         <tbody></tbody>
       </table>
       </div>
-      <p class="note">Every field <code>generateT3D</code> writes. <b>Size</b>: rect = W×H (·b BarnDoorLength), spot = r SourceRadius (·s SoftSourceRadius). <b>Atten</b> = AttenuationRadius. <b>Rot</b> = adaptive Pitch·Yaw plus the original Roll. The grey tag next to Intensity is the source value. <b>p</b> = falloff exponent (mode B); mode A uses k² (p = 2).</p>
+      <p class="note">Every field <code>generateT3D</code> writes. <b>Size</b>: rect = W×H (·b BarnDoorLength), spot = r SourceRadius (·s SoftSourceRadius). <b>Rot</b> = the shot’s tuned Pitch·Yaw·Roll, never recomputed. <b>k</b> is the same for all five lights by construction. The grey tag next to Intensity is the source value. <b>p</b> = falloff exponent (fixed sources); exact similarity uses k² (p = 2). <code>AttenuationRadius</code> is not written at all.</p>
     </details>
   </section>
 
@@ -424,33 +426,38 @@
   <details class="panel formula sec">
     <summary>Calculation formula</summary>
     <div class="fml">
-      <div class="lbl">1. Scale factors (reference rig <span id="fREF">453 × 274 × 77</span>):</div>
-      <div class="eq"><span class="v">s<sub>X</sub></span> = W / <span id="fW1">453</span>&nbsp;&nbsp;&nbsp;&nbsp;<span class="v">s<sub>Y</sub></span> = D / <span id="fD1">274</span>&nbsp;&nbsp;&nbsp;&nbsp;<span class="v">s<sub>Z</sub></span> = H / <span id="fH1">77</span></div>
+      <div class="lbl">1. Axis ratios (reference rig <span id="fREF">453 × 279 × 79</span>):</div>
+      <div class="eq">s<sub>X</sub> = W / <span id="fW1">453</span>&nbsp;&nbsp;&nbsp;&nbsp;s<sub>Y</sub> = D / <span id="fD1">279</span>&nbsp;&nbsp;&nbsp;&nbsp;s<sub>Z</sub> = H / <span id="fH1">79</span></div>
 
-      <div class="lbl">2. New light position and aim:</div>
-      <div class="eq">X′ = X · s<sub>X</sub>&nbsp;&nbsp;&nbsp;&nbsp;Y′ = Y · s<sub>Y</sub>&nbsp;&nbsp;&nbsp;&nbsp;Z′ = Z · s<sub>Z</sub></div>
-      <div class="eq">aim′ = normalize(aim<sub>X</sub>·s<sub>X</sub>, aim<sub>Y</sub>·s<sub>Y</sub>, aim<sub>Z</sub>·s<sub>Z</sub>)</div>
+      <div class="lbl">2. One rig factor — their geometric mean:</div>
+      <div class="eq"><span class="v">k = ∛(s<sub>X</sub> · s<sub>Y</sub> · s<sub>Z</sub>)</span>&nbsp;&nbsp;&nbsp;&nbsp;the same k for all five lights</div>
 
-      <div class="lbl">3. Change in distance to the sofa (per light):</div>
-      <div class="eq">d<sub>0</sub> = √(X² + Y² + Z²)&nbsp;&nbsp;&nbsp;&nbsp;d<sub>1</sub> = √(X′² + Y′² + Z′²)&nbsp;&nbsp;&nbsp;&nbsp;<span class="v">k</span> = d<sub>1</sub> / d<sub>0</sub></div>
+      <div class="lbl">3. New light position — and that is the whole transform:</div>
+      <div class="eq">X′ = X · k&nbsp;&nbsp;&nbsp;&nbsp;Y′ = Y · k&nbsp;&nbsp;&nbsp;&nbsp;Z′ = Z · k</div>
+      <div class="eq">d<sub>0</sub> = √(X² + Y² + Z²)&nbsp;&nbsp;&nbsp;&nbsp;pitch, yaw, roll — unchanged</div>
 
       <div class="lbl">4. Effective source radius:</div>
       <div class="eq">spot:&nbsp;&nbsp;R = SourceRadius&nbsp;&nbsp;&nbsp;&nbsp;rect:&nbsp;&nbsp;R = √(SourceWidth · SourceHeight / π)</div>
 
-      <div class="lbl">5. Mode A — source sizes scale (× k):</div>
-      <div class="eq"><span class="v">Intensity′ = Intensity · k²</span>&nbsp;&nbsp;&nbsp;&nbsp;SourceWidth/Height/Radius/BarnDoorLength · k</div>
-
-      <div class="lbl">5. Mode B — source sizes fixed:</div>
+      <div class="lbl">5. Fixed physical sources — sizes untouched (default):</div>
       <div class="eq"><span class="v">Intensity′ = Intensity · (k²·d<sub>0</sub>² + R²) / (d<sub>0</sub>² + R²)</span>&nbsp;&nbsp;≈&nbsp;&nbsp;Intensity · k<sup>p</sup></div>
       <div class="eq">p = 2·d<sub>0</sub>² / (d<sub>0</sub>² + R²)&nbsp;&nbsp;&nbsp;&nbsp;sharp key → p ≈ 2,&nbsp;&nbsp;soft fill → p ≈ 1.7</div>
 
-      <div class="lbl">6. Attenuation &amp; unchanged params:</div>
-      <div class="eq">AttenuationRadius′ = AttenuationRadius · k</div>
-      <div class="eq">roll, color, temperature — unchanged; pitch/yaw follow the scaled aim vector</div>
+      <div class="lbl">5. Exact similarity — sizes scale too (× k):</div>
+      <div class="eq"><span class="v">Intensity′ = Intensity · k²</span>&nbsp;&nbsp;&nbsp;&nbsp;SourceWidth/Height/Radius/BarnDoorLength · k</div>
+
+      <div class="lbl">6. Never touched:</div>
+      <div class="eq">Pitch, Yaw, Roll, color, temperature, cone angles</div>
+      <div class="eq">AttenuationRadius — not written at all (the path tracer ignores it)</div>
     </div>
     <p class="note">
-      <b>Why not a "pure" inverse square:</b> for large soft sources (fill, left_rim)
-      R is comparable to the distance — the near field — so illuminance falls off gentler than k².
+      <b>Why one factor and not three:</b> stretching the rig per axis gave every light a different k
+      (0.69 to 1.30 on a real sectional), which pulls the balance between the five sources apart and forces
+      pitch/yaw corrections of up to 21° — that is what flattened the render. A single factor moves the rig as a
+      rigid body: the balance and every angle survive untouched, and the only thing that cannot be preserved is a
+      sofa whose proportions differ from the reference.<br />
+      <b>Why not a "pure" inverse square:</b> for large soft sources (fill, left_rim) R is comparable to the
+      distance — the near field — so illuminance falls off gentler than k².
       When the input equals the reference, <code>k = 1</code> → the output matches the source rig 1:1.
     </p>
   </details>
@@ -460,15 +467,16 @@
 "use strict";
 
 /* ── Reference (the rig is tuned for this sofa) ─────────────────── */
-const REF_DEFAULT = { W:453, D:274, H:77 };
+const REF_DEFAULT = { W:453, D:279, H:79 };
 
-/* Per-light constants shared by every view (sizes, attenuation, roll, cone, role color, white-balance K). */
+/* Per-light constants shared by every view (sizes, roll, cone, role color, white-balance K).
+   AttenuationRadius is not here: the path tracer ignores it, so the rig never touches it. */
 const LIGHT_BASE = {
-  front_fill_lgt:   { type:"rect", w:500,        h:500,        barn:0,  atten:null, roll:0,        cone:null, label:"fill",   color:"#7f9fb9", temp:6500 },
-  left_rim_lgt:     { type:"spot", radius:256.0,               soft:25, atten:null, roll:0.382830, cone:90,   label:"L rim",  color:"#a08eae", temp:6500 },
-  main_key_lgt:     { type:"spot", radius:52.479965,           soft:null, atten:null, roll:0,      cone:37,   label:"key",    color:"#d1b477", temp:6500 },
-  right_bounce_lgt: { type:"rect", w:256,        h:256,        barn:25, atten:600,  roll:0,        cone:null, label:"bounce", color:"#88a98c", temp:6000 },
-  right_rim_lgt:    { type:"rect", w:91.440002,  h:60.900002,  barn:0,  atten:600,  roll:0,        cone:null, label:"R rim",  color:"#74a5a2", temp:6000 },
+  front_fill_lgt:   { type:"rect", w:500,        h:500,        barn:0,  roll:0,        cone:null, label:"fill",   color:"#7f9fb9", temp:6500 },
+  left_rim_lgt:     { type:"spot", radius:256.0,               soft:25, roll:0.382830, cone:90,   label:"L rim",  color:"#a08eae", temp:6500 },
+  main_key_lgt:     { type:"spot", radius:52.479965,           soft:null, roll:0,      cone:37,   label:"key",    color:"#d1b477", temp:6500 },
+  right_bounce_lgt: { type:"rect", w:256,        h:256,        barn:25, roll:0,        cone:null, label:"bounce", color:"#88a98c", temp:6000 },
+  right_rim_lgt:    { type:"rect", w:91.440002,  h:60.900002,  barn:0,  roll:0,        cone:null, label:"R rim",  color:"#74a5a2", temp:6000 },
 };
 
 /* Source T3D — only numeric fields are mutated; the structure stays 1:1. */
@@ -656,28 +664,18 @@ function viewLights(view){
 /* ── Logic ──────────────────────────────────────────────────────── */
 const fmt = x => Number(x).toFixed(6);
 const hyp = (a,b,c) => Math.sqrt(a*a + b*b + c*c);
-const rad = deg => deg * Math.PI / 180;
-const deg = angle => angle * 180 / Math.PI;
 
-/* Rotate a vector about world Z, Unreal yaw convention. t === 0 returns the input
-   untouched rather than multiplying by cos 0 / sin 0, so the axis-aligned shots stay
-   bit-for-bit what they were before the sofa frame was introduced. */
-function rotZ(v, t){
-  if (!t) return [v[0], v[1], v[2]];
-  const c = Math.cos(rad(t)), s = Math.sin(rad(t));
-  return [v[0]*c - v[1]*s, v[0]*s + v[1]*c, v[2]];
-}
-
-/* Preserve a light's aim under non-uniform sofa scaling. Unreal lights point along
-   their local X axis, so pitch/yaw define a direction vector. The vector is scaled by
-   the sofa's W/D/H factors *in the sofa's own frame* (see computeAll), which is why
-   sofaYaw is needed: on the ¾ shots the sofa is turned, so its width is not world X. */
-function scaleAim(pitch, yaw, sX, sY, sZ, sofaYaw){
-  if (Math.abs(sX-sY) < 1e-12 && Math.abs(sY-sZ) < 1e-12) return { pitch, yaw };
-  const p = rad(pitch), y = rad(yaw);
-  const v = rotZ([Math.cos(p) * Math.cos(y), Math.cos(p) * Math.sin(y), Math.sin(p)], -(sofaYaw || 0));
-  const s = rotZ([v[0] * sX, v[1] * sY, v[2] * sZ], sofaYaw || 0);
-  return { pitch:deg(Math.atan2(s[2], Math.hypot(s[0], s[1]))), yaw:deg(Math.atan2(s[1], s[0])) };
+/* ONE scale factor for the whole rig — the geometric mean of the three axis ratios.
+   The rig is a studio setup around the subject, not geometry glued to its bounding box,
+   so it is scaled as a rigid whole instead of being stretched per axis. Consequences:
+     • every light gets the SAME k, so the balance between the five sources is preserved
+       exactly (a per-axis stretch gave them k from 0.69 to 1.30 on a real sectional);
+     • pitch/yaw never need correcting — multiplying a position by a scalar leaves the
+       direction from the light to the subject unchanged;
+     • it is invariant to swapping W and D, because sX·sY = W·D / (ref.W·ref.D) either
+       way — a mesh authored rotated 90° produces the same rig. */
+function rigScale(W, D, H, ref){
+  return Math.cbrt((W / ref.W) * (D / ref.D) * (H / ref.H));
 }
 
 /* Expand scene bounds to the viewport aspect without cropping or distorting geometry.
@@ -691,32 +689,21 @@ function fitAspectBounds(minX, maxX, minY, maxY, aspect){
 }
 
 function computeAll(W, D, H, mode, swap, ref, view){
-  const sX = (swap ? D : W) / ref.W;   // scale along the sofa's WIDTH  (rig: 453)
-  const sY = (swap ? W : D) / ref.D;   // scale along the sofa's DEPTH  (rig: 274)
-  const sZ = H / ref.H;                // scale on world Z (height)
+  /* `swap` is accepted for API compatibility and is a no-op: rigScale depends on W·D, which
+     does not change when the two are exchanged. `view` still selects the per-shot rig. */
+  const k  = rigScale(W, D, H, ref);   // the same distance factor for every light
   const LG = viewLights(view);         // merged base + per-view rig for the chosen shot
-
-  /* The sofa is turned by sofa_yaw on the ¾ shots, so its width is NOT world X there and the
-     axis factors must be applied in the sofa's own frame: un-rotate, scale, rotate back.
-     When sX === sY that transform equals a plain multiply (a Z rotation commutes with
-     diag(s,s,sZ)), so we zero the angle and keep the old arithmetic exactly — which is what
-     holds the identity invariant and the F/FH vectors byte-stable. */
-  const sofaYaw = Math.abs(sX - sY) < 1e-12 ? 0 : ((VIEWS[view] || VIEWS.F).rot || 0);
 
   const res = {};
   for (const [name, L] of Object.entries(LG)){
     const [x, y, z] = L.pos;
-    const loc  = rotZ([x, y, z], -sofaYaw);
-    const npos = rotZ([loc[0] * sX, loc[1] * sY, loc[2] * sZ], sofaYaw);
+    const npos = [x * k, y * k, z * k];
     const d0 = hyp(x, y, z);
-    const d1 = hyp(npos[0], npos[1], npos[2]);
-    const k  = d1 / d0;                                   // distance growth for this light
     const R  = L.type === "spot" ? L.radius : Math.sqrt(L.w * L.h / Math.PI); // effective source radius
     const p  = 2 * d0 * d0 / (d0 * d0 + R * R);           // effective falloff exponent (info)
-    const aim = scaleAim(L.pitch, L.yaw, sX, sY, sZ, sofaYaw);
 
     let I_new, sizeK;
-    if (mode === "A"){            // scale sizes → strict k²
+    if (mode === "A"){            // scale sizes → strict k², an exact similarity transform
       I_new = L.I * k * k;
       sizeK = k;
     } else {                      // sizes fixed → k^p (exact form)
@@ -724,9 +711,10 @@ function computeAll(W, D, H, mode, swap, ref, view){
       sizeK = 1;
     }
 
+    /* Rotations are never touched. sourcePitch/sourceYaw are kept in the result for API
+       compatibility and now always equal pitch/yaw. */
     const r = { type:L.type, pos:npos, intensity:I_new, k, p, I0:L.I,
-                atten: L.atten != null ? L.atten * k : null,
-                pitch:aim.pitch, yaw:aim.yaw, roll:L.roll || 0,
+                pitch:L.pitch, yaw:L.yaw, roll:L.roll || 0,
                 sourcePitch:L.pitch, sourceYaw:L.yaw,
                 cone:L.cone, color:L.color, label:L.label, temp:L.temp };
     if (L.type === "rect"){
@@ -758,8 +746,8 @@ function generateT3D(res){
       if (r.soft != null)
         block = block.replace(/^(\s*)SoftSourceRadius=.*$/m, `$1SoftSourceRadius=${fmt(r.soft)}`);
     }
-    if (r.atten != null)
-      block = block.replace(/^(\s*)AttenuationRadius=.*$/m, `$1AttenuationRadius=${fmt(r.atten)}`);
+    /* AttenuationRadius is deliberately NOT rewritten: it has no effect in the path tracer,
+       so the template's authored value is passed through untouched. */
     return block;
   });
 }
@@ -829,7 +817,7 @@ function armBlocksView(arm, view){
 
 /* Export for node tests (no effect in the browser). */
 if (typeof module !== "undefined" && module.exports){
-  module.exports = { REF_DEFAULT, LIGHT_BASE, VIEWS, viewLights, TEMPLATE, computeAll, generateT3D, fmt, hyp, scaleAim, rotZ, fitAspectBounds,
+  module.exports = { REF_DEFAULT, LIGHT_BASE, VIEWS, viewLights, TEMPLATE, computeAll, generateT3D, fmt, hyp, rigScale, fitAspectBounds,
     RB_VIEW_SUFFIXES, rbPrefixVariants, rbCandidateFiles, rbMatchManifest,
     presetArmSide, armRequiredView, armBlocksView };
 }
@@ -947,7 +935,6 @@ if (typeof document !== "undefined"){
       `<button type="button" class="lightchip${name===selectedLight?" active":""}" data-pick="${name}" style="--lc:${colorOf(light)}">${light.label||name.replace(/_lgt$/,"")}</button>`).join("");
     picker.querySelectorAll("[data-pick]").forEach(btn => btn.addEventListener("click", () => selectLight(btn.dataset.pick)));
     const size = r.type === "rect" ? `${Math.round(r.w)} × ${Math.round(r.h)} cm` : `r ${r.radius.toFixed(1)} cm`;
-    const aimChange = Math.max(Math.abs(r.pitch-r.sourcePitch), Math.abs(((r.yaw-r.sourceYaw+180)%360+360)%360-180));
     const stat = (k,v,extra="") => `<div class="lightstat ${extra}"><span class="k">${k}</span><span class="v" title="${v}">${v}</span></div>`;
     inspector.style.setProperty("--lc", colorOf(r));
     inspector.innerHTML =
@@ -956,7 +943,7 @@ if (typeof document !== "undefined"){
       stat("Position X · Y · Z", `${r.pos.map(v=>v.toFixed(1)).join(" · ")} cm`) +
       stat("Pitch · Yaw", `${r.pitch.toFixed(1)}° · ${r.yaw.toFixed(1)}°`) +
       stat("Source size", size) +
-      stat("Adaptation", `${r.k.toFixed(2)}× · aim ${aimChange.toFixed(1)}°`);
+      stat("Rig scale", `${r.k.toFixed(3)}× · same for every light`);
   }
 
   // Top-down schematic (X·Y). World coords map straight to the viewBox; +Y points
@@ -1144,18 +1131,20 @@ if (typeof document !== "undefined"){
   function renderWarnings(W, D, H, mode, ref, res){
     const box = $("warn"); if (!box) return;
     const sX = W/ref.W, sY = D/ref.D, sZ = H/ref.H, ws = [];
-    const scales = [sX,sY,sZ], lo = Math.min(...scales), hi = Math.max(...scales);
-    if (lo < .5 || hi > 1.5) ws.push(`Extreme scale (${lo.toFixed(2)}–${hi.toFixed(2)}×) — use this as a starting point and verify coverage in the render.`);
-    const inAsp = W/D, refAsp = ref.W/ref.D;
-    if (Math.abs(inAsp/refAsp - 1) > 0.25)
-      ws.push(`Unusual footprint (${inAsp.toFixed(2)}:1 vs ${refAsp.toFixed(2)}:1 reference) — adaptive aim is compensating, but check the chaise and outer corners.`);
+    const k = rigScale(W, D, H, ref);
+    if (k < .6 || k > 1.6) ws.push(`Extreme rig scale (×${k.toFixed(2)}) — use this as a starting point and verify coverage in the render.`);
+    /* The residual error this tool cannot remove: a rigid rig can follow the sofa's SIZE but not
+       its SHAPE, so flag how far the proportions have drifted from the reference. */
+    const skew = Math.max(sX,sY,sZ) / Math.min(sX,sY,sZ);
+    if (skew > 1.5)
+      ws.push(`Proportions differ from the reference by ${skew.toFixed(2)}× (${sX.toFixed(2)} / ${sY.toFixed(2)} / ${sZ.toFixed(2)} per axis) — the rig scales as a rigid body, so it follows the size but not the shape. Check the far end and the chaise.`);
     if (W < 150 || D < 120 || H < 45 || H > 130)
       ws.push(`These dimensions are outside a typical sectional range — confirm that the values are in centimetres.`);
     const maxI = Math.max(...Object.values(res).map(r => r.intensity));
     if (maxI > 250) ws.push(`Peak intensity ≈ ${Math.round(maxI)} cd (well above the source) — re-check camera exposure.`);
     box.innerHTML = ws.length
       ? ws.map(w => `<div class="w">⚠ ${w}</div>`).join("")
-      : `<div class="w ok">✓ Within calibrated range · adaptive aim active.</div>`;
+      : `<div class="w ok">✓ Within calibrated range · rig scaled ×${k.toFixed(2)}, rotations untouched.</div>`;
   }
 
   function setRefLabels(ref){
@@ -1165,7 +1154,7 @@ if (typeof document !== "undefined"){
   }
 
   function render(){
-    const ref = { W:num("rW",453), D:num("rD",274), H:num("rH",77) };
+    const ref = { W:num("rW",REF_DEFAULT.W), D:num("rD",REF_DEFAULT.D), H:num("rH",REF_DEFAULT.H) };
     setRefLabels(ref);
     const W = num("W", ref.W), D = num("D", ref.D), H = num("H", ref.H);
     const mode = document.querySelector('input[name=mode]:checked').value;
@@ -1175,12 +1164,8 @@ if (typeof document !== "undefined"){
     const res = computeAll(W, D, H, mode, false, ref, view);
     $("out").value = generateT3D(res);
 
-    const ks = Object.values(res).map(r => r.k);
-    const angleDiff = (a,b) => Math.abs(((a-b+180)%360+360)%360-180);
-    const aimDelta = Math.max(...Object.values(res).map(r =>
-      Math.max(Math.abs(r.pitch-r.sourcePitch), angleDiff(r.yaw,r.sourceYaw))));
     const summary = $("rigSummary");
-    if (summary) summary.textContent = `${W} × ${D} × ${H} cm · 5 lights · ${Math.min(...ks).toFixed(2)}–${Math.max(...ks).toFixed(2)}× distance${aimDelta>.05 ? ` · aim corrected up to ${aimDelta.toFixed(1)}°` : ""}`;
+    if (summary) summary.textContent = `${W} × ${D} × ${H} cm · 5 lights · rig ×${rigScale(W, D, H, ref).toFixed(3)} · rotations untouched`;
 
     renderDiagram(res, W, D, H, (VIEWS[view] || VIEWS.F).rot || 0, (VIEWS[view] || VIEWS.F).label ? view : "");
     renderSideView(res, W, H);
@@ -1196,7 +1181,6 @@ if (typeof document !== "undefined"){
       const size = r.type === "rect"
         ? `${Math.round(r.w)}×${Math.round(r.h)}${r.barn ? " ·b" + Math.round(r.barn) : ""}`
         : `r${r.radius.toFixed(1)}${r.soft != null ? " ·s" + r.soft.toFixed(1) : ""}`;
-      const atten = r.atten != null ? Math.round(r.atten) : "—";
       tr.innerHTML =
         `<td>${name.replace(/_lgt$/,"")}</td>` +
         `<td><span class="tag">${r.type}</span></td>` +
@@ -1204,8 +1188,7 @@ if (typeof document !== "undefined"){
         `<td>${rot}</td>` +
         `<td>${r.intensity.toFixed(2)} <span class="tag">${r.I0}</span></td>` +
         `<td>${size}</td>` +
-        `<td>${atten}</td>` +
-        `<td>${r.k.toFixed(2)}</td>` +
+        `<td>${r.k.toFixed(3)}</td>` +
         `<td>${(mode==="A"?2:r.p).toFixed(2)}</td>`;
       body.appendChild(tr);
     }
@@ -1215,17 +1198,29 @@ if (typeof document !== "undefined"){
   }
 
   /* state → URL hash (shareable link) */
+  /* The rig reference only goes in the link when it is genuinely overridden — a link that pins
+     the default would freeze whatever the default was on the day it was copied. */
+  const SUPERSEDED_REFS = [{ W:453, D:274, H:77 }];   // re-measured 2026-08-24, see ONBOARDING
+  const isRef = (r, t) => +r.W === t.W && +r.D === t.D && +r.H === t.H;
+
   function writeURL(W, D, H, mode, ref){
-    const p = new URLSearchParams({ v:currentView(), W, D, H, m:mode, rW:ref.W, rD:ref.D, rH:ref.H, cb:$("cbTemp").checked?"temp":"role" });
+    const p = new URLSearchParams({ v:currentView(), W, D, H, m:mode, cb:$("cbTemp").checked?"temp":"role" });
+    if (!isRef(ref, REF_DEFAULT)){ p.set("rW", ref.W); p.set("rD", ref.D); p.set("rH", ref.H); }
     history.replaceState(null, "", "#" + p.toString());
   }
   function readURL(){
     const h = new URLSearchParams(location.hash.slice(1));
     const setv = (id, k) => { if (h.has(k)){ const e = $(id); if (e) e.value = h.get(k); } };
-    setv("W","W"); setv("D","D"); setv("H","H"); setv("rW","rW"); setv("rD","rD"); setv("rH","rH");
+    setv("W","W"); setv("D","D"); setv("H","H");
+    /* Links copied before a reference re-measurement carry the old numbers explicitly. Honour a
+       real override, but ignore one that just echoes a superseded default. */
+    const linkRef = { W:h.get("rW"), D:h.get("rD"), H:h.get("rH") };
+    if (linkRef.W && linkRef.D && linkRef.H && !SUPERSEDED_REFS.some(t => isRef(linkRef, t))){
+      setv("rW","rW"); setv("rD","rD"); setv("rH","rH");
+    }
     ["W","D","H"].forEach(n => { $(n+"s").value = $(n).value; });
     if (h.has("v")){ const vr = document.querySelector(`input[name=view][value="${h.get("v")}"]`); if (vr) vr.checked = true; }
-    if (h.get("m") === "B"){ const b = document.querySelector('input[name=mode][value=B]'); if (b) b.checked = true; }
+    if (h.get("m") === "A"){ const a = document.querySelector('input[name=mode][value=A]'); if (a) a.checked = true; }
     if (h.get("cb") === "temp") $("cbTemp").checked = true;
   }
 
@@ -1438,8 +1433,8 @@ if (typeof document !== "undefined"){
   $("reset").addEventListener("click", () => {
     $("preset").value = DEFAULT_PRESET;
     applyDims(BUILTIN[DEFAULT_PRESET]);
-    $("rW").value=453; $("rD").value=274; $("rH").value=77;
-    document.querySelector('input[name=mode][value=A]').checked = true;
+    $("rW").value=REF_DEFAULT.W; $("rD").value=REF_DEFAULT.D; $("rH").value=REF_DEFAULT.H;
+    document.querySelector('input[name=mode][value=B]').checked = true;
     $("cbRole").checked = true;
     $("vF").checked = true;
     render();
@@ -1449,7 +1444,7 @@ if (typeof document !== "undefined"){
     const p = all[$("preset").value]; if (p){ applyDims(p); render(); }
   });
   $("savePreset").addEventListener("click", () => {
-    const W = num("W",453), D = num("D",274), H = num("H",77);
+    const W = num("W",REF_DEFAULT.W), D = num("D",REF_DEFAULT.D), H = num("H",REF_DEFAULT.H);
     const name = prompt("Preset name:", `Sofa ${W}×${D}×${H}`); if (!name) return;
     const u = userPresets(); u[name] = { W, D, H }; setUserPresets(u); refreshPresets(name);
   });

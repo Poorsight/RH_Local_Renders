@@ -65,7 +65,7 @@ def data(name: str = "constants"):
 
 
 def reference() -> dict:
-    """The sofa the rig was tuned for: {'W': 453, 'D': 274, 'H': 77}."""
+    """The sofa the rig was tuned for: {'W': 453, 'D': 279, 'H': 79}."""
     return dict(data()["reference"])
 
 
@@ -112,23 +112,19 @@ def _hyp3(a: float, b: float, c: float) -> float:
     return math.sqrt(a * a + b * b + c * c)
 
 
-def scale_aim(pitch, yaw, sX, sY, sZ):
-    """Adapt a light's aim to non-uniform sofa scaling; returns (pitch, yaw) in degrees.
+def rig_scale(W, D, H, ref=None) -> float:
+    """The single factor the whole rig is scaled by: cbrt(sX * sY * sZ).
 
-    Unreal lights point along their local +X, so pitch/yaw define a direction vector.
-    Scaling that vector by the sofa's axis factors keeps the light aimed at the same
-    relative area. Uniform scaling short-circuits, which keeps the identity invariant exact.
+    The rig is a studio setup around the subject, not geometry glued to its bounding box,
+    so it moves as a rigid body. Every light gets the same factor, which keeps the balance
+    between the five sources intact and means pitch/yaw never have to be recomputed.
+    The factor is also invariant to swapping W and D, because sX*sY = W*D/(refW*refD)
+    either way, so a mesh authored rotated 90 deg produces the same rig.
     """
-    if abs(sX - sY) < 1e-12 and abs(sY - sZ) < 1e-12:
-        return float(pitch), float(yaw)
-    # deg<->rad the same way index.html does it (x*PI/180, not x*(PI/180)) so the
-    # floating-point operation sequence — and therefore the last bit — matches.
-    p, y = pitch * math.pi / 180, yaw * math.pi / 180
-    x = math.cos(p) * math.cos(y) * sX
-    yy = math.cos(p) * math.sin(y) * sY
-    z = math.sin(p) * sZ
-    return (math.atan2(z, math.hypot(x, yy)) * 180 / math.pi,
-            math.atan2(yy, x) * 180 / math.pi)
+    ref = reference() if ref is None else ref
+    return ((float(W) / float(ref["W"])) *
+            (float(D) / float(ref["D"])) *
+            (float(H) / float(ref["H"]))) ** (1.0 / 3.0)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -150,10 +146,10 @@ def view_lights(view: str) -> dict:
 def compute_all(W, D, H, mode="A", swap=False, ref=None, view="F") -> dict:
     """Scale the rig for a sofa of W x D x H cm.
 
-    mode  "A" = scale source sizes, intensity x k^2 (default)
-          "B" = keep source sizes, intensity x (k^2*d0^2 + R^2)/(d0^2 + R^2)
-    swap  True when the sofa stands rotated 90 deg (swaps which input feeds world X / Y)
-    ref   rig reference sofa, defaults to {'W': 453, 'D': 274, 'H': 77}
+    mode  "B" = keep source sizes, intensity x (k^2*d0^2 + R^2)/(d0^2 + R^2)   (default in the UI)
+          "A" = scale source sizes too, intensity x k^2 (an exact similarity transform)
+    swap  accepted for API compatibility; it has no effect (see rig_scale)
+    ref   rig reference sofa, defaults to {'W': 453, 'D': 279, 'H': 79}
     view  "F" | "FH" | "TQR" | "TQL"
 
     Returns {light_name: {...}} with the values the T3D fields are written from.
@@ -163,22 +159,16 @@ def compute_all(W, D, H, mode="A", swap=False, ref=None, view="F") -> dict:
     if view not in data()["views"]:
         view = "F"
 
-    sX = (D if swap else W) / float(ref["W"])   # world X <- sofa width  (rig: 453 along X)
-    sY = (W if swap else D) / float(ref["D"])   # world Y <- sofa depth  (rig: 274 along Y)
-    sZ = H / float(ref["H"])                    # world Z <- sofa height (rig:  77 along Z)
+    k = rig_scale(W, D, H, ref)                 # one factor for the whole rig
 
     res = {}
     for name, L in view_lights(view).items():
         x, y, z = (float(c) for c in L["pos"])
-        npos = [x * sX, y * sY, z * sZ]
+        npos = [x * k, y * k, z * k]
         d0 = _hyp3(x, y, z)                                  # distance to origin, source rig
-        d1 = _hyp3(*npos)                                    # distance to origin, scaled rig
-        k = d1 / d0                                          # per-light distance growth
         R = (float(L["radius"]) if L["type"] == "spot"
              else math.sqrt(float(L["w"]) * float(L["h"]) / math.pi))   # effective source radius
         p = 2.0 * d0 * d0 / (d0 * d0 + R * R)                # effective falloff exponent (info)
-
-        aim_pitch, aim_yaw = scale_aim(float(L["pitch"]), float(L["yaw"]), sX, sY, sZ)
 
         I0 = float(L["I"])
         if mode == "A":
@@ -194,11 +184,10 @@ def compute_all(W, D, H, mode="A", swap=False, ref=None, view="F") -> dict:
             "k": k,
             "p": p,
             "I0": I0,
-            "atten": float(L["atten"]) * k if L.get("atten") is not None else None,
-            "pitch": aim_pitch,                              # aim adapted to the axis scales
-            "yaw": aim_yaw,
-            "sourcePitch": float(L["pitch"]),                # the shot's own rotation
-            "sourceYaw": float(L["yaw"]),
+            "pitch": float(L["pitch"]),                      # never recomputed
+            "yaw": float(L["yaw"]),
+            "sourcePitch": float(L["pitch"]),                # kept for API compatibility
+            "sourceYaw": float(L["yaw"]),                    # (always equal to pitch / yaw now)
             "roll": float(L.get("roll") or 0.0),             # roll is never scaled
             "cone": L.get("cone"),                           # static (template) — for reference only
             "temp": L.get("temp"),                           # static (template) — for reference only
@@ -259,8 +248,8 @@ def generate_t3d(res: dict, template: str = None) -> str:
             block = _set_field(block, "SourceRadius", fmt(r["radius"]))
             if r.get("soft") is not None:
                 block = _set_field(block, "SoftSourceRadius", fmt(r["soft"]))
-        if r.get("atten") is not None:
-            block = _set_field(block, "AttenuationRadius", fmt(r["atten"]))
+        # AttenuationRadius is deliberately not written: the path tracer ignores it, so the
+        # template's authored value passes through untouched.
         return block
 
     return _ACTOR.sub(actor, tmpl)
@@ -285,7 +274,6 @@ def as_dict(res: dict, W, D, H, view: str, mode: str, swap: bool, ref: dict) -> 
             "rotation": {"pitch": round(r["pitch"], 6), "yaw": round(r["yaw"], 6), "roll": round(r["roll"], 6)},
             "source_rotation": {"pitch": r["sourcePitch"], "yaw": r["sourceYaw"], "roll": round(r["roll"], 6)},
             "intensity": round(r["intensity"], 6),
-            "attenuation_radius": None if r["atten"] is None else round(r["atten"], 6),
             "k": round(r["k"], 9),
             "p": round(r["p"], 9),
             "static": {"temperature": r["temp"], "outer_cone_angle": r["cone"], "intensity_units": "Candelas"},
@@ -367,15 +355,26 @@ def selftest(verbose=True) -> int:
     for value, want in _FMT_VECTORS:
         check("fmt(%r) == %r" % (value, want), fmt(value) == want)
 
-    # aim adaptation (same vectors as test/sanity.cjs in the repo)
-    up, uy = scale_aim(-25, -11, 2, 2, 2)
-    check("scale_aim: uniform scaling passes pitch/yaw through", up == -25 and uy == -11)
-    wp, wy = scale_aim(0, 45, 2, 1, 1)
-    check("scale_aim: wider sofa adapts yaw (45 -> 26.565051)",
-          abs(wp) < 1e-12 and abs(wy - 26.565051) < 1e-5)
-    tp, ty = scale_aim(45, 0, 1, 1, 2)
-    check("scale_aim: taller sofa adapts pitch (45 -> 63.434949)",
-          abs(tp - 63.434949) < 1e-5 and abs(ty) < 1e-12)
+    # rigid-rig invariants (same vectors as test/sanity.cjs in the repo)
+    r0 = reference()
+    check("rig_scale: geometric mean of the three axis ratios",
+          abs(rig_scale(r0["W"] * 2, r0["D"] * 2, r0["H"] * 2, r0) - 2) < 1e-12 and
+          abs(rig_scale(r0["W"] * 2, r0["D"], r0["H"], r0) - 2 ** (1.0 / 3.0)) < 1e-12 and
+          rig_scale(r0["W"], r0["D"], r0["H"], r0) == 1.0)
+    check("rig_scale: invariant to swapping W and D",
+          abs(rig_scale(274.583, 355.499, 86.860, r0) -
+              rig_scale(355.499 * r0["W"] / r0["D"], 274.583 * r0["D"] / r0["W"], 86.860, r0)) < 1e-12)
+    for v in data()["views"]:
+        rr = compute_all(274.583, 355.499, 86.860, mode="B", ref=r0, view=v)
+        src = view_lights(v)
+        check("%s: pitch/yaw are never recomputed" % v,
+              all(rr[n]["pitch"] == float(src[n]["pitch"]) and rr[n]["yaw"] == float(src[n]["yaw"])
+                  for n in rr))
+        ks = [rr[n]["k"] for n in rr]
+        check("%s: k is identical for all five lights" % v, max(ks) - min(ks) == 0.0)
+    check("the legacy `swap` argument is a no-op",
+          scale_rig(274.583, 355.499, 86.860, view="TQR", mode="B", swap=False) ==
+          scale_rig(274.583, 355.499, 86.860, view="TQR", mode="B", swap=True))
 
     ref = reference()
     for mode in ("A", "B"):
@@ -405,8 +404,6 @@ def selftest(verbose=True) -> int:
                 got["source_radius"] = fmt(r["radius"])
                 if r["soft"] is not None:
                     got["soft_source_radius"] = fmt(r["soft"])
-            if r["atten"] is not None:
-                got["attenuation_radius"] = fmt(r["atten"])
             for field, expected in want.items():
                 if got.get(field) != expected:
                     bad.append("%s.%s: got %r want %r" % (name, field, got.get(field), expected))
@@ -435,7 +432,7 @@ def _cli(argv=None) -> int:
     ap.add_argument("--mode", default="A", choices=["A", "B"], help="intensity model (default A)")
     ap.add_argument("--swap", action="store_true", help="sofa stands rotated 90 deg (swap X/Y inputs)")
     ap.add_argument("--ref", nargs=3, type=float, metavar=("W", "D", "H"),
-                    help="override the rig reference sofa (default 453 274 77)")
+                    help="override the rig reference sofa (default 453 279 79)")
     ap.add_argument("--emit", default="t3d", choices=["t3d", "json"], help="output format")
     ap.add_argument("-o", "--out", help="write to this file instead of stdout")
     ap.add_argument("--list-presets", action="store_true", help="print the built-in presets and exit")

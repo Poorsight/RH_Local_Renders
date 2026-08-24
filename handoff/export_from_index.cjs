@@ -51,7 +51,6 @@ function buildConstants({ L, BUILTIN }) {
     const o = { type: b.type };
     if (b.type === "rect") { o.w = b.w; o.h = b.h; o.barn = b.barn || 0; }
     else { o.radius = b.radius; o.soft = b.soft != null ? b.soft : null; }
-    o.atten = b.atten != null ? b.atten : null;
     o.roll = b.roll || 0;
     o.cone = b.cone != null ? b.cone : null;   // documentation / diagram only — never written to T3D
     o.temp = b.temp;                           // documentation / diagram only — never written to T3D
@@ -97,15 +96,15 @@ function buildConstants({ L, BUILTIN }) {
       A: "sizes x k, intensity x k^2 (default; strict inverse square)",
       B: "sizes unchanged, intensity x (k^2*d0^2 + R^2)/(d0^2 + R^2)  ~=  intensity x k^p, p = 2*d0^2/(d0^2 + R^2)",
     },
-    aim: {
-      rule: "pitch/yaw are re-derived so each light keeps aiming at the same relative sofa area under non-uniform scaling; roll is never touched",
-      steps: [
-        "v = (cos(pitch)*cos(yaw), cos(pitch)*sin(yaw), sin(pitch))   # Unreal lights aim along local +X",
-        "v' = (v.x*sX, v.y*sY, v.z*sZ)",
-        "pitch' = atan2(v'.z, hypot(v'.x, v'.y));  yaw' = atan2(v'.y, v'.x)   # degrees",
+    rig_scale: {
+      rule: "the three axis ratios collapse into ONE factor: k = cbrt(sX * sY * sZ). Every light gets the same k, positions are p * k, and pitch/yaw/roll are never recomputed.",
+      why: [
+        "a per-axis stretch gave each light its own k (0.69 to 1.30 on a real sectional), which pulls the balance between the five sources apart",
+        "a per-axis stretch also forces pitch/yaw corrections of up to 21 deg, which is what flattened the render",
+        "k is invariant to swapping W and D, because sX*sY = W*D/(refW*refD) either way - a mesh authored rotated 90 deg produces the same rig",
       ],
-      uniform_shortcut: "if |sX-sY| < 1e-12 and |sY-sZ| < 1e-12, pitch/yaw pass through unchanged (keeps the identity invariant exact)",
-      source_fields: "computeAll also returns sourcePitch / sourceYaw = the unscaled shot rotation",
+      rotations: "pitch, yaw and roll are passed through verbatim from the shot rig; computeAll still returns sourcePitch / sourceYaw, now always equal to pitch / yaw",
+      legacy_swap: "the `swap` argument of computeAll is accepted for API compatibility and has no effect",
     },
     light_order: Object.keys(LIGHT_BASE),
     lights,
@@ -114,8 +113,9 @@ function buildConstants({ L, BUILTIN }) {
       rewritten_always: ["RelativeLocation", "RelativeRotation (Pitch/Yaw from `aim`, Roll unchanged)", "Intensity"],
       rewritten_rect: ["SourceWidth", "SourceHeight", "BarnDoorLength"],
       rewritten_spot: ["SourceRadius", "SoftSourceRadius (only when soft != null)"],
-      rewritten_optional: ["AttenuationRadius (only when the light defines atten)"],
+      rewritten_optional: [],
       never_touched: [
+        "AttenuationRadius (no effect in the path tracer - the template value is passed through)",
         "Temperature", "bUseTemperature", "IntensityUnits", "BarnDoorAngle",
         "InnerConeAngle", "OuterConeAngle", "LightingChannels", "CastRaytracedShadow",
         "SamplesPerPixel", "Mobility", "ActorLabel", "FolderPath", "ExportPath",
@@ -124,8 +124,8 @@ function buildConstants({ L, BUILTIN }) {
       match_rule: "per `Begin Actor … End Actor` block, keyed by ActorLabel; first matching `^<indent><Field>=…` line only",
     },
     validation: {
-      scale_magnitude: "warn when max(|sX-1|,|sY-1|,|sZ-1|) > 0.5",
-      aspect_mismatch: "warn when |(W/D)/(refW/refD) - 1| > 0.25",
+      scale_magnitude: "warn when k < 0.6 or k > 1.6",
+      shape_mismatch: "warn when max(sX,sY,sZ)/min(sX,sY,sZ) > 1.5 - a rigid rig follows the sofa's size but not its shape",
       peak_intensity: "warn when max intensity > 250 cd",
     },
     preset_tq_rule: {
@@ -139,13 +139,15 @@ function buildConstants({ L, BUILTIN }) {
   };
 }
 
-/* Golden cases: the contract a port has to reproduce byte-for-byte. */
+/* Golden cases: the contract a port has to reproduce byte-for-byte.
+   Omitting W/D/H means "the rig reference sofa", so re-measuring the reference cannot
+   silently turn an identity case into a scaled one. */
 const CASES = [
-  { id: "identity-F-A",      view: "F",   mode: "A", swap: false, W: 453, D: 274, H: 77 },
-  { id: "identity-F-B",      view: "F",   mode: "B", swap: false, W: 453, D: 274, H: 77 },
-  { id: "ref-FH-A",          view: "FH",  mode: "A", swap: false, W: 453, D: 274, H: 77 },
-  { id: "ref-TQR-A",         view: "TQR", mode: "A", swap: false, W: 453, D: 274, H: 77 },
-  { id: "ref-TQL-A",         view: "TQL", mode: "A", swap: false, W: 453, D: 274, H: 77 },
+  { id: "identity-F-A",      view: "F",   mode: "A", swap: false },
+  { id: "identity-F-B",      view: "F",   mode: "B", swap: false },
+  { id: "ref-FH-A",          view: "FH",  mode: "A", swap: false },
+  { id: "ref-TQR-A",         view: "TQR", mode: "A", swap: false },
+  { id: "ref-TQL-A",         view: "TQL", mode: "A", swap: false },
   { id: "koper39250480-F-A", view: "F",   mode: "A", swap: false, W: 384, D: 305, H: 82 },
   { id: "koper39250480-TQL-A", view: "TQL", mode: "A", swap: false, W: 384, D: 305, H: 82 },
   { id: "borgo39250511-TQR-B", view: "TQR", mode: "B", swap: false, W: 381, D: 310, H: 80 },
@@ -153,7 +155,7 @@ const CASES = [
   { id: "masson39250419-F-A-swap", view: "F", mode: "A", swap: true, W: 312, D: 246, H: 77 },
   { id: "big-F-A",           view: "F",   mode: "A", swap: false, W: 600, D: 300, H: 80 },
   { id: "small-TQR-A",       view: "TQR", mode: "A", swap: false, W: 200, D: 150, H: 60 },
-  { id: "custom-ref-F-A",    view: "F",   mode: "A", swap: false, W: 453, D: 274, H: 77, ref: { W: 400, D: 250, H: 75 } },
+  { id: "custom-ref-F-A",    view: "F",   mode: "A", swap: false, W: 453, D: 279, H: 79, ref: { W: 400, D: 250, H: 75 } },
 ];
 
 function buildVectors({ L }) {
@@ -161,7 +163,8 @@ function buildVectors({ L }) {
 
   const cases = CASES.map(c => {
     const ref = c.ref || REF_DEFAULT;
-    const res = computeAll(c.W, c.D, c.H, c.mode, c.swap, ref, c.view);
+    const W = c.W != null ? c.W : ref.W, D = c.D != null ? c.D : ref.D, H = c.H != null ? c.H : ref.H;
+    const res = computeAll(W, D, H, c.mode, c.swap, ref, c.view);
     const t3d = generateT3D(res);
 
     const lights = {};
@@ -169,19 +172,18 @@ function buildVectors({ L }) {
       const o = {
         location: r.pos.map(fmt),
         rotation: [fmt(r.pitch), fmt(r.yaw), fmt(r.roll)],                  // what the T3D gets
-        source_rotation: [fmt(r.sourcePitch), fmt(r.sourceYaw), fmt(r.roll)], // before aim scaling
+        source_rotation: [fmt(r.sourcePitch), fmt(r.sourceYaw), fmt(r.roll)], // always equal to `rotation` now
         intensity: fmt(r.intensity),
         k: r.k.toFixed(9),
       };
       if (r.type === "rect") { o.source_width = fmt(r.w); o.source_height = fmt(r.h); o.barn_door_length = fmt(r.barn); }
       else { o.source_radius = fmt(r.radius); if (r.soft != null) o.soft_source_radius = fmt(r.soft); }
-      if (r.atten != null) o.attenuation_radius = fmt(r.atten);
       lights[name] = o;
     }
 
     return {
       id: c.id, view: c.view, mode: c.mode, swap: c.swap,
-      input: { W: c.W, D: c.D, H: c.H },
+      input: { W, D, H },
       ref: { W: ref.W, D: ref.D, H: ref.H },
       t3d_sha256: sha256(t3d),
       lights,

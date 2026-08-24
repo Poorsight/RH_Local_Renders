@@ -17,10 +17,11 @@ constant, the exact T3D output contract, and golden vectors. **A port that passe
 ## 1. What the rig is, and what "scaling" means
 
 Five lights (2 × SpotLight, 3 × RectLight) were hand-tuned in Unreal for **one** reference sofa —
-`453 × 274 × 77 cm` — in **four** camera shots. For a differently-sized sectional the rig is not
-re-tuned; it is *scaled*: positions move proportionally to the sofa, intensity / source size /
-attenuation follow from how much further each light ended up from the subject, and each light's
-**aim (pitch/yaw) is re-derived** so it still points at the same relative area of the sofa.
+`453 × 279 × 79 cm` — in **four** camera shots. For a differently-sized sectional the rig is not
+re-tuned; it is *scaled*: the whole rig moves in or out **as one rigid body** by a single factor,
+and intensity (plus, optionally, source size) follows from how much further the lights ended up
+from the subject. **Nothing is rotated, raised or reshaped** — the angles a lighting artist tuned
+are the angles that get written out.
 
 Output is Unreal **T3D** text: 5 actors in folder `Lights`, pasted into the level with `Ctrl + V`.
 
@@ -69,9 +70,9 @@ node handoff/export_from_index.cjs
 |---|---|---|---|
 | `W`, `D`, `H` | float > 0, cm | — | sofa bounding box: width, depth, height (UPH mesh bounds) |
 | `view` | `F` \| `FH` \| `TQR` \| `TQL` | `F` | camera shot; each shot is its own rig |
-| `mode` | `A` \| `B` | `A` | intensity model — **A is production**, B is analysis (§5.5) |
-| `swap` | bool | `false` | sofa stands rotated 90°: `W` feeds world Y and `D` feeds world X. Still part of the `computeAll` API, but its UI checkbox was removed from the tool — leave it `false` unless you know you need it |
-| `ref` | `{W,D,H}` | `453 × 274 × 77` | the sofa the rig was tuned for; only change if the rig is re-tuned |
+| `mode` | `A` \| `B` | `B` | source-size model — **B is production** (real fixtures keep their size); A also scales the sizes, an exact similarity transform (§5.5) |
+| `swap` | bool | `false` | **no-op**, kept only so existing call sites keep compiling: `k` depends on `W · D`, which a swap does not change (§5.2) |
+| `ref` | `{W,D,H}` | `453 × 279 × 79` | the sofa the rig was tuned for; only change if the rig is re-tuned or the reference mesh is re-measured (it was, on 2026-08-24: `274 × 77` → `279 × 79`) |
 
 Unknown `view` falls back to `F`. `W = D = H = ref` reproduces the source rig exactly (§11).
 
@@ -80,53 +81,52 @@ Unknown `view` falls back to `F`. `W = D = H = ref` reproduces the source rig ex
 Applied **per light**, independently. Symbols: `p₀ = (x, y, z)` source position from the shot,
 `I₀` source intensity, `R` effective source radius.
 
-### 5.1 Axis scales
+### 5.1 Axis ratios
 
 ```
-sX = (swap ? D : W) / ref.W        # 453
-sY = (swap ? W : D) / ref.D        # 274
-sZ =  H / ref.H                    #  77
+sX = W / ref.W        # 453
+sY = D / ref.D        # 279
+sZ = H / ref.H        #  79
 ```
 
-### 5.2 Position — per-axis, in the sofa's frame
+The `swap` input of the reference implementations is accepted for API compatibility only — it has
+no effect, see 5.2.
 
-`sX` and `sY` are factors along the sofa's **width** and **depth**, which coincide with world X and
-Y only while the sofa is not turned. Un-rotate into the sofa's frame, scale, rotate back:
-
-```
-θ  = sofa_yaw of the shot          # 0 for F and FH, +36 for TQR, −36 for TQL
-p₁ = Rz(θ) · diag(sX, sY, sZ) · Rz(−θ) · p₀
-
-Rz(t):  x' = x·cos t − y·sin t
-        y' = x·sin t + y·cos t
-        z' = z
-```
-
-**Collapse to the plain multiply whenever the two frames coincide** — treat `θ` as 0 when
-`|sX − sY| < 1e−12`. A rotation about Z commutes with `diag(s, s, sZ)`, so the result is identical
-either way, and taking the short path keeps it *bit*-identical. Combined with `θ = 0` on `F`/`FH`,
-this is what holds the identity invariant and every `F`/`FH` vector byte-stable.
-
-So the transform reduces to `p₁ = (x·sX, y·sY, z·sZ)` for: any `F` or `FH` shot, any sofa whose
-width and depth scale equally, and the reference sofa itself. It differs only for a
-**non-proportional sofa on a ¾ shot** — which is precisely the case the plain multiply got wrong.
-
-> Applied to the whole rig, including `front_fill`, which sits on the camera axis at `x = 0` and
-> therefore moves off it once the sofa is turned. The five lights were tuned around the sofa as one
-> unit, so they scale with it as one unit. If the fill is ever meant to stay locked to the camera
-> axis instead, that is a deliberate exception and must be written down here — do not introduce it
-> silently.
-
-### 5.3 Distance ratio `k` — per light, from the origin
+### 5.2 One rig factor `k` — the same for all five lights
 
 ```
-d₀ = ‖p₀‖ = √(x² + y² + z²)
-d₁ = ‖p₁‖
-k  = d₁ / d₀
+k = ∛(sX · sY · sZ)
 ```
 
-`k` is *not* a global factor: a light in front of the sofa grows with depth, a side light with
-width. This is the whole point — one scalar per light, derived from how far it moved.
+The rig is a **studio setup around** the subject, not geometry glued to its bounding box, so it is
+scaled as a **rigid body**: one factor, no per-axis stretch, no rotation. Three consequences, and
+they are the reason this replaced the old per-axis transform:
+
+* **The balance between the five sources survives.** A per-axis stretch gave every light its own
+  `k` — on a real 274.6 × 355.5 × 86.9 sectional they ranged from 0.690 to 1.297, a factor of 1.9.
+  Each source then changed brightness by a different amount and the tuned look fell apart.
+* **`pitch` / `yaw` never need correcting.** Multiplying a position by a scalar leaves the direction
+  from the light to the subject unchanged. The per-axis stretch forced aim corrections of up to
+  21° on that same sectional, which is what flattened the render.
+* **Swapping `W` and `D` changes nothing**, because `sX · sY = W · D / (ref.W · ref.D)` either way.
+  A mesh authored rotated 90° produces the same rig — an entire class of pipeline bug disappears.
+
+What it cannot do is follow the subject's **shape**: a rigid rig tracks size only. When the
+proportions differ a lot from the reference (see 10), that residual is real and is not a bug.
+
+### 5.3 Position — a plain scalar multiple
+
+```
+p₁ = (x · k, y · k, z · k)
+d₀ = ‖p₀‖ = √(x² + y² + z²)          # still needed for the mode-B intensity
+```
+
+No sofa frame, no `Rz(θ)`: a uniform scale commutes with any rotation, so the ¾ shots need no
+special handling. At the reference sofa `k = 1` and every position is reproduced exactly — that is
+the identity invariant.
+
+> Applied to the whole rig, including `front_fill`. The five lights were tuned around the sofa as
+> one unit, so they scale with it as one unit.
 
 ### 5.4 Effective source radius `R`
 
@@ -161,96 +161,82 @@ rect:  SourceWidth·sizeK,  SourceHeight·sizeK,  BarnDoorLength·sizeK
 spot:  SourceRadius·sizeK, SoftSourceRadius·sizeK   (skip when the light has no soft radius)
 ```
 
-### 5.6 Aim — adapted `pitch` / `yaw`
+### 5.6 Rotations — not touched
 
-An Unreal light aims along its **local +X**, so `pitch`/`yaw` are a direction vector. Under
-non-uniform scaling (a sofa that is relatively wider or deeper than the reference) the same angles
-would no longer point at the same part of the sofa, so the direction vector is scaled by the same
-axis factors and the angles are read back:
+`Pitch`, `Yaw` and `Roll` are copied verbatim from the shot rig. There is no aim transform any
+more: with a single scale factor the direction from a light to the subject is unchanged, so
+re-deriving the angles could only introduce error. `compute_all` still returns
+`sourcePitch` / `sourceYaw` for API compatibility; they are now always equal to `pitch` / `yaw`.
 
-```
-v      = (cos(pitch)·cos(yaw),  cos(pitch)·sin(yaw),  sin(pitch))
-v′     = Rz(θ) · diag(sX, sY, sZ) · Rz(−θ) · v    # same sofa frame as §5.2, same θ
-pitch′ = atan2(v′.z, hypot(v′.x, v′.y))          # degrees
-yaw′   = atan2(v′.y, v′.x)                        # degrees
-```
+> Revisions between `10d1383` and this one re-derived `pitch`/`yaw` from a per-axis-scaled aim
+> vector (`scale_aim`). That function is gone. Older ports and notes describing it are obsolete.
 
-The aim must be scaled in the same frame as the position, or the correction compensates along the
-wrong axes. With `θ = 0` this is the plain `(v.x·sX, v.y·sY, v.z·sZ)` it has always been.
+### 5.7 Attenuation radius — not written
 
-**Uniform-scale shortcut (required, not an optimisation):** if
-`|sX − sY| < 1e−12` and `|sY − sZ| < 1e−12`, return `pitch`/`yaw` untouched. This is what keeps the
-identity invariant byte-exact and keeps proportional sofas rotation-stable.
-
-`roll` never participates. `computeAll` also returns `sourcePitch` / `sourceYaw` — the shot's
-original angles — for diagnostics; the T3D always gets the adapted pair.
-
-### 5.7 Attenuation radius
-
-```
-AttenuationRadius · k          # only for lights that define one (bounce, right rim)
-```
+`AttenuationRadius` is left at whatever the template carries (600 on `right_bounce_lgt` and
+`right_rim_lgt`, the UE class default of 1000 on the other three). It has no effect in the path
+tracer, which is the only renderer this rig is used with, so scaling it was pure noise.
 
 ### 5.8 Never scaled
 
 `Roll`, `Temperature`, cone angles, `BarnDoorAngle`, `IntensityUnits`, shadow/sample settings,
-asset paths, actor labels, folder. (`Pitch`/`Yaw` *are* transformed — §5.6. Before revision
-`10d1383` they were not; older ports and notes may still say "rotations are never scaled".)
+asset paths, actor labels, folder — **and `Pitch`/`Yaw`/`Roll`** (§5.6) and `AttenuationRadius`
+(§5.7). Between revisions `10d1383` and this one `Pitch`/`Yaw` *were* transformed; that is no
+longer the case.
 
 ### 5.9 Pseudocode
 
 ```
-theta = abs(sX - sY) < 1e-12 ? 0 : VIEWS[view].sofa_yaw          # §5.2
+k = cbrt((W/ref.W) * (D/ref.D) * (H/ref.H))                      # §5.2 — one factor, all lights
 for name, L in merge(LIGHT_BASE, VIEWS[view].lights):
     x, y, z = L.pos
-    loc  = rotZ((x, y, z), -theta)
-    pos  = rotZ((loc.x*sX, loc.y*sY, loc.z*sZ), theta)
-    d0   = hypot3(x, y, z);  d1 = hypot3(pos)
-    k    = d1 / d0
+    pos  = (x*k, y*k, z*k)
+    d0   = hypot3(x, y, z)
     R    = L.type == "spot" ? L.radius : sqrt(L.w * L.h / PI)
-    pitch, yaw = scaleAim(L.pitch, L.yaw, sX, sY, sZ, theta)     # §5.6
     if mode == "A":  I = L.I * k*k;                             sizeK = k
     else:            I = L.I * (k*k*d0*d0 + R*R)/(d0*d0 + R*R);  sizeK = 1
-    atten = L.atten == null ? null : L.atten * k
-    emit(name, pos, I, atten, sizes * sizeK, pitch, yaw, L.roll)
+    emit(name, pos, I, sizes * sizeK, L.pitch, L.yaw, L.roll)    # rotations verbatim
 ```
 
 ### 5.10 Worked example
 
-`main_key_lgt`, sofa `384 × 305 × 82` (Koper 39250480), shot `TQL`, mode `A`. This sofa is
-relatively deeper than the reference (`sX ≠ sY`) and `TQL` turns it −36°, so the sofa frame is
-live — a good case to test a port against, because a world-axis implementation gets it wrong:
+`main_key_lgt`, sofa `384 × 305 × 82` (Koper 39250480), shot `TQL`, mode `A`:
 
 ```
-sX = 384/453 = 0.847682119   sY = 305/274 = 1.113138686   sZ = 82/77 = 1.064935065
-θ  = −36  (sofa_yaw of TQL; not collapsed to 0 because sX ≠ sY)
+sX = 384/453 = 0.847682119   sY = 305/279 = 1.093189964   sZ = 82/79 = 1.037974684
+k  = ∛(sX · sY · sZ) = 0.987124217            # the same k for all five lights
 p₀ = (−474, −19, 168)        I₀ = 60      R = 52.479965 (SourceRadius)
-p₁ = Rz(−36)·diag(sX,sY,sZ)·Rz(36)·p₀ = (−447.671691, −79.241103, 178.909091)
-d₀ = 503.250435   d₁ = 488.566841   k = 0.970822492
-aim:     pitch −25 → −27.312176      yaw 3 → 10.759179      (roll stays 0)
-mode A:  Intensity = 60 · k²   = 56.549779      SourceRadius = 52.479965 · k = 50.948730
-mode B:  Intensity = 56.586895  (p = 1.978485 → nearly k², this source is small)
+p₁ = p₀ · k = (−467.896879, −18.755360, 165.836868)
+d₀ = 503.250435
+rotations: pitch −25, yaw 3, roll 0 — unchanged
+mode A:  Intensity = 60 · k² = 58.464853       SourceRadius = 52.479965 · k = 51.804244
+mode B:  Intensity = 58.481368  (p = 1.978485 → nearly k², this source is small)
 ```
 
-The same sofa, `front_fill_lgt`: `p₁ = (87.857541, 710.912286, 55.376623)`, `k = 1.029398098`,
-`Intensity = 6.357963`, `SourceWidth = SourceHeight = 514.699049`, aim `pitch 4 → 4.138425`,
-`yaw −90 → −97.045132`. Note the fill no longer stays at `x = 0`: once the sofa is turned it
-travels with it (§5.2). Full expected output: `acceptance_vectors.json` → `koper39250480-TQL-A`.
+Note how mild `k` is even though the axis ratios span 0.85–1.11: the geometric mean cancels a
+sofa that is narrower but deeper. That is the intended behaviour — the rig follows overall size,
+not shape.
 
-Aim sanity vectors (independent of the rig): `scaleAim(0, 45, 2, 1, 1) → yaw 26.565051`,
-`scaleAim(45, 0, 1, 1, 2) → pitch 63.434949`, `scaleAim(−25, −11, 2, 2, 2) → (−25, −11)` exactly.
+The same sofa, `front_fill_lgt`: `p₁ = (0, 687.038455, 51.330459)`, `Intensity = 5.846485`,
+`SourceWidth = SourceHeight = 493.562108`, rotations `pitch 4`, `yaw −90` unchanged. The fill stays
+on `x = 0` — a uniform scale cannot move it off the camera axis. Full expected output:
+`acceptance_vectors.json` → `koper39250480-TQL-A`.
+
+Invariance vectors worth pinning in a port: `rigScale` at the reference is exactly `1`;
+`rigScale(2·ref.W, 2·ref.D, 2·ref.H) = 2`; and swapping `W` with `D` (rescaled by
+`ref.W/ref.D`) leaves `k` bit-identical.
 
 ## 6. Constants
 
 ### 6.1 Per-light base — shared by all four shots
 
-| light | class | source size | soft | barn | atten | roll | outer cone † | temp K † |
-|---|---|---|---|---|---|---|---|---|
-| `front_fill_lgt` | RectLight | 500 × 500 | — | 0 | — | 0 | — | 6500 |
-| `left_rim_lgt` | SpotLight | radius 256 | 25 | — | — | 0.382830 | 90 | 6500 |
-| `main_key_lgt` | SpotLight | radius 52.479965 | — | — | — | 0 | 37 | 6500 |
-| `right_bounce_lgt` | RectLight | 256 × 256 | — | 25 | 600 | 0 | — | 6000 |
-| `right_rim_lgt` | RectLight | 91.440002 × 60.900002 | — | 0 | 600 | 0 | — | 6000 |
+| light | class | source size | soft | barn | roll | outer cone † | temp K † |
+|---|---|---|---|---|---|---|---|
+| `front_fill_lgt` | RectLight | 500 × 500 | — | 0 | 0 | — | 6500 |
+| `left_rim_lgt` | SpotLight | radius 256 | 25 | — | 0.382830 | 90 | 6500 |
+| `main_key_lgt` | SpotLight | radius 52.479965 | — | — | 0 | 37 | 6500 |
+| `right_bounce_lgt` | RectLight | 256 × 256 | — | 25 | 0 | — | 6000 |
+| `right_rim_lgt` | RectLight | 91.440002 × 60.900002 | — | 0 | 0 | — | 6000 |
 
 † documentation only — cone angles and temperature live in the template and are never rewritten.
 `main_key_lgt` also has `InnerConeAngle = 1` in the template.
@@ -318,14 +304,13 @@ Algorithm:
 | Field | Written from | When |
 |---|---|---|
 | `RelativeLocation=(X=…,Y=…,Z=…)` | `p₁` | always |
-| `RelativeRotation=(Pitch=…,Yaw=…,Roll=…)` | adapted aim (§5.6); `Roll` from §6.1, unscaled | always |
+| `RelativeRotation=(Pitch=…,Yaw=…,Roll=…)` | the shot’s tuned angles (§5.6), unchanged | always |
 | `Intensity=…` | §5.5 | always |
 | `SourceWidth=…`, `SourceHeight=…`, `BarnDoorLength=…` | sizes · `sizeK` | rect lights |
 | `SourceRadius=…` | radius · `sizeK` | spot lights |
 | `SoftSourceRadius=…` | soft · `sizeK` | only `left_rim_lgt` (the only one with a soft radius) |
-| `AttenuationRadius=…` | atten · `k` | only `right_bounce_lgt`, `right_rim_lgt` |
 
-Never touched: `Temperature`, `bUseTemperature`, `IntensityUnits`, `BarnDoorAngle`,
+Never touched: `AttenuationRadius`, `Temperature`, `bUseTemperature`, `IntensityUnits`, `BarnDoorAngle`,
 `InnerConeAngle`, `OuterConeAngle`, `LightingChannels`, `CastRaytracedShadow`, `SamplesPerPixel`,
 `Mobility`, `ActorLabel`, `FolderPath`, `ExportPath`, `Archetype`, and the block structure.
 
@@ -422,28 +407,29 @@ measures bounds itself, round the same way to reproduce these numbers.
 | Check | Condition | Meaning |
 |---|---|---|
 | scale magnitude | `max(|sX−1|, |sY−1|, |sZ−1|) > 0.5` | rig stretched >150% — eyeball the look |
-| aspect mismatch | `|(W/D)/(ref.W/ref.D) − 1| > 0.25` | footprint shape differs — check framing |
+| shape mismatch | `max(sX,sY,sZ)/min(sX,sY,sZ) > 1.5` | the rig follows size, not shape — check the far end and the chaise |
 | peak intensity | `max(intensity) > 250 cd` | re-check camera exposure |
 
 ## 11. Acceptance — proving a port is correct
 
-1. **Identity invariant.** `view=F`, `W×D×H = 453×274×77`, either mode → output must equal
+1. **Identity invariant.** `view=F`, `W×D×H = ref` (453×279×79), either mode → output must equal
    `rig_template.t3d` **byte for byte** (`k = 1` everywhere). If this fails, nothing else matters.
 2. **Golden vectors.** For each case in `acceptance_vectors.json`: recompute, compare the
    per-light strings (`location`, `rotation`, `source_rotation`, `intensity`, source sizes,
-   `attenuation_radius` — already formatted to 6 decimals, so no float comparison) and the SHA-256
+   already formatted to 6 decimals, so no float comparison) and the SHA-256
    of the full T3D. `template_sha256` pins the skeleton itself. `rotation` vs `source_rotation`
-   isolates aim bugs: if only `rotation` differs, §5.6 is what you got wrong.
-3. **Aim vectors.** The three `scaleAim` cases in §5.10 — including that uniform scaling returns
-   the input angles *exactly*, not approximately.
+   must always be equal now (§5.6); if they are not, your port still has an aim transform in it.
+3. **Invariance vectors.** §5.10: `k = 1` at the reference *exactly*, `k = 2` at double the
+   reference, and a `W`↔`D` swap leaving `k` bit-identical.
 4. The reference implementation runs all of it:
 
 ```bash
 python handoff/light_rig.py --selftest
 ```
 
-Cases cover: identity (modes A and B), all four shots at reference, two presets, mode B, `swap`,
-oversized/undersized sofas, and a non-default `ref`.
+Cases cover: identity (modes A and B), all four shots at reference, two presets, mode B, `swap`
+(which must now produce output identical to `swap = false`), oversized/undersized sofas, and a
+non-default `ref`.
 
 ### 11.5 Checking the constants against the UE scene
 
@@ -514,7 +500,8 @@ fields only — everything static still comes from `rig_template.t3d`.
 7. **UE property names** = the T3D field names, snake_cased in Python (`SourceWidth` →
    `source_width`, on the *component*, not the actor). Verify against your engine version.
 8. **Mode A is production.** Only use B when explicitly asked; it drifts further from the tuned rig.
-9. **`swap` describes the sofa, not the shot** — it only decides which input feeds world X vs Y,
+9. **`swap` is dead** — kept in the signature for compatibility, it cannot change the output because
+   `k` depends on `W · D`. Historically it decided which input fed world X vs Y,
    and the tool no longer exposes it in the UI (§4).
 10. **Angles in degrees**, positions in cm; no unit conversion anywhere.
 11. **LF, no trailing newline** (§7.2). Writing files on Windows: open in binary or disable

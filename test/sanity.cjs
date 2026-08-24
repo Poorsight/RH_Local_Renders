@@ -24,7 +24,7 @@ try {
 }
 
 const { REF_DEFAULT, TEMPLATE, VIEWS, computeAll, generateT3D, viewLights,
-        scaleAim, rotZ, fitAspectBounds, rbCandidateFiles, rbMatchManifest, presetArmSide, armRequiredView, armBlocksView } = L;
+        rigScale, fitAspectBounds, rbCandidateFiles, rbMatchManifest, presetArmSide, armRequiredView, armBlocksView } = L;
 
 let failed = 0;
 function check(name, cond) {
@@ -33,7 +33,8 @@ function check(name, cond) {
 }
 
 const tmplLines = TEMPLATE.split("\n").length;
-const gen = (v, mode) => generateT3D(computeAll(453, 274, 77, mode || "A", false, REF_DEFAULT, v));
+const R0 = REF_DEFAULT;
+const gen = (v, mode) => generateT3D(computeAll(R0.W, R0.D, R0.H, mode || "A", false, R0, v));
 
 // 1. F view at reference reproduces the source skeleton byte-for-byte (both modes).
 check("identity F / mode A === TEMPLATE", gen("F", "A") === TEMPLATE);
@@ -103,64 +104,75 @@ check("scaled F (600x300x80) differs from reference", big !== scaled);
 check("scaled F keeps 5 actors + line count",
   (big.match(/Begin Actor/g) || []).length === 5 && big.split("\n").length === tmplLines);
 
-// 5. Aim follows non-uniform sofa proportions, but uniform scaling is rotation-stable.
-const uniformAim = scaleAim(-25, -11, 2, 2, 2);
-const wideAim = scaleAim(0, 45, 2, 1, 1);
-const tallAim = scaleAim(45, 0, 1, 1, 2);
-check("uniform scaling preserves pitch/yaw exactly",
-  uniformAim.pitch === -25 && uniformAim.yaw === -11);
-check("non-uniform XY scaling adapts yaw",
-  Math.abs(wideAim.pitch) < 1e-12 && Math.abs(wideAim.yaw - 26.565051) < 1e-5);
-check("non-uniform Z scaling adapts pitch",
-  Math.abs(tallAim.pitch - 63.434949) < 1e-5 && Math.abs(tallAim.yaw) < 1e-12);
-const adapted = computeAll(600, 300, 80, "A", false, REF_DEFAULT, "F");
-check("scaled rig exposes source aim and corrects the main key",
-  adapted.main_key_lgt.sourceYaw === -11 && adapted.main_key_lgt.sourcePitch === -25 &&
-  adapted.main_key_lgt.yaw !== -11 && adapted.main_key_lgt.pitch !== -25);
-for (const mode of ["A", "B"]) {
-  const extreme = computeAll(1000, 80, 30, mode, false, REF_DEFAULT, "TQL");
-  check(`extreme valid dimensions stay finite in mode ${mode}`,
-    Object.values(extreme).every(r => [
-      ...r.pos, r.intensity, r.k, r.p, r.pitch, r.yaw,
-      ...(r.atten == null ? [] : [r.atten]),
-      r.type === "rect" ? r.w : r.radius,
-    ].every(Number.isFinite)));
-}
-
-// 5b. Scaling happens in the SOFA's frame, not the world's. On the ¾ shots the sofa is turned
-// by sofa_yaw, so its width is not world X; applying the axis factors to world coordinates
-// there stretches the rig along the wrong direction. The transform must collapse to a plain
-// per-axis multiply everywhere the two frames coincide, or the identity invariant and every
-// F/FH vector would move.
+// 5. The rig scales as a rigid body: one factor for all five lights, no rotation, no shape
+// following. These are the invariants that replaced the old per-axis stretch + adaptive aim.
 {
-  const plain = (view, W, D, H) => {
-    const sx = W / REF_DEFAULT.W, sy = D / REF_DEFAULT.D, sz = H / REF_DEFAULT.H;
-    const src = viewLights(view), out = {};
-    for (const n of Object.keys(src)) out[n] = [src[n].pos[0]*sx, src[n].pos[1]*sy, src[n].pos[2]*sz];
-    return out;
-  };
+  const dims = [[600,300,80], [274.583,355.499,86.860], [312,246,77], [1000,80,30]];
+
+  check("rigScale is the geometric mean of the three axis ratios",
+    Math.abs(rigScale(R0.W*2, R0.D*2, R0.H*2, R0) - 2) < 1e-12 &&
+    Math.abs(rigScale(R0.W*2, R0.D, R0.H, R0) - Math.cbrt(2)) < 1e-12 &&
+    rigScale(R0.W, R0.D, R0.H, R0) === 1);
+
+  check("rigScale is invariant to swapping W and D (a mesh rotated 90° gives the same rig)",
+    dims.every(([W,D,H]) =>
+      Math.abs(rigScale(W, D, H, REF_DEFAULT) - rigScale(D * REF_DEFAULT.W / REF_DEFAULT.D,
+                                                         W * REF_DEFAULT.D / REF_DEFAULT.W, H, REF_DEFAULT)) < 1e-12));
+
+  check("the legacy `swap` argument is a no-op",
+    dims.every(([W,D,H]) => ["A","B"].every(mode =>
+      generateT3D(computeAll(W, D, H, mode, false, REF_DEFAULT, "TQR")) ===
+      generateT3D(computeAll(W, D, H, mode, true,  REF_DEFAULT, "TQR")))));
+
+  for (const v of views) {
+    const r = computeAll(274.583, 355.499, 86.860, "B", false, REF_DEFAULT, v);
+    const src = viewLights(v);
+    check(`${v}: pitch/yaw/roll are never recomputed`,
+      Object.keys(r).every(n => r[n].pitch === src[n].pitch && r[n].yaw === src[n].yaw &&
+                                r[n].sourcePitch === src[n].pitch && r[n].sourceYaw === src[n].yaw));
+    const ks = Object.values(r).map(x => x.k);
+    check(`${v}: k is identical for all five lights`,
+      Math.max(...ks) - Math.min(...ks) === 0 &&
+      Math.abs(ks[0] - rigScale(274.583, 355.499, 86.860, REF_DEFAULT)) < 1e-12);
+  }
+
+  // Positions are a plain scalar multiple of the source rig on every shot, including the
+  // turned ¾ ones — a uniform scale commutes with any rotation, so no sofa frame is needed.
   const maxDelta = (view, W, D, H) => {
-    const got = computeAll(W, D, H, "A", false, REF_DEFAULT, view), want = plain(view, W, D, H);
-    return Math.max(...Object.keys(want).flatMap(n => [0,1,2].map(i => Math.abs(got[n].pos[i] - want[n][i]))));
+    const k = rigScale(W, D, H, REF_DEFAULT);
+    const got = computeAll(W, D, H, "A", false, REF_DEFAULT, view), src = viewLights(view);
+    return Math.max(...Object.keys(src).flatMap(n => [0,1,2].map(i => Math.abs(got[n].pos[i] - src[n].pos[i] * k))));
   };
-
-  check("axis-aligned shots are untouched: F/FH stay a plain per-axis multiply",
-    maxDelta("F", 600, 300, 80) === 0 && maxDelta("FH", 312, 246, 77) === 0);
-  check("proportional sofas are untouched on the ¾ shots (a Z rotation commutes with diag(s,s,sZ))",
-    maxDelta("TQR", 453*1.3, 274*1.3, 77*1.3) === 0 && maxDelta("TQL", 453*0.7, 274*0.7, 77*0.7) === 0);
+  check("positions are exactly source · k on every shot",
+    views.every(v => dims.every(([W,D,H]) => maxDelta(v, W, D, H) === 0)));
   check("every shot reproduces its source rig exactly at the reference sofa",
-    ["F","FH","TQR","TQL"].every(v => maxDelta(v, 453, 274, 77) === 0));
+    views.every(v => maxDelta(v, R0.W, R0.D, R0.H) === 0));
 
-  // A sofa that is relatively deeper than the reference, on a shot where it is turned 36°.
-  const turned = maxDelta("TQR", 430.31, 336.30, 83.67);
-  check("a non-proportional sofa on a ¾ shot IS corrected for the sofa's rotation",
-    turned > 50 && Number.isFinite(turned));
+  check("AttenuationRadius is gone from the result and never written",
+    Object.values(computeAll(600, 300, 80, "A", false, REF_DEFAULT, "F")).every(r => r.atten === undefined) &&
+    generateT3D(computeAll(600, 300, 80, "A", false, REF_DEFAULT, "F")).includes("AttenuationRadius=600.000000"));
 
-  check("rotZ(v, 0) returns the vector untouched; ±t round-trips",
-    JSON.stringify(rotZ([1,2,3], 0)) === JSON.stringify([1,2,3]) &&
-    Math.abs(rotZ(rotZ([10,20,30], 36), -36)[0] - 10) < 1e-12);
-  check("scaleAim without a sofa yaw behaves exactly as before",
-    JSON.stringify(scaleAim(0, 45, 2, 1, 1)) === JSON.stringify(scaleAim(0, 45, 2, 1, 1, 0)));
+  check("mode A is an exact similarity: sizes · k, intensity · k²",
+    (() => {
+      const r = computeAll(600, 300, 80, "A", false, REF_DEFAULT, "F"), src = viewLights("F"), k = r.front_fill_lgt.k;
+      return Math.abs(r.front_fill_lgt.w - src.front_fill_lgt.w * k) < 1e-9 &&
+             Math.abs(r.front_fill_lgt.intensity - src.front_fill_lgt.I * k * k) < 1e-9;
+    })());
+  check("mode B keeps source sizes untouched",
+    (() => {
+      const r = computeAll(600, 300, 80, "B", false, REF_DEFAULT, "F"), src = viewLights("F");
+      return r.front_fill_lgt.w === src.front_fill_lgt.w && r.right_bounce_lgt.barn === src.right_bounce_lgt.barn &&
+             r.left_rim_lgt.radius === src.left_rim_lgt.radius && r.left_rim_lgt.soft === src.left_rim_lgt.soft;
+    })());
+
+  for (const mode of ["A", "B"]) {
+    const extreme = computeAll(1000, 80, 30, mode, false, REF_DEFAULT, "TQL");
+    check(`extreme valid dimensions stay finite in mode ${mode}`,
+      Object.values(extreme).every(r => [
+        ...r.pos, r.intensity, r.k, r.p, r.pitch, r.yaw,
+        r.type === "rect" ? r.w : r.radius,
+      ].every(Number.isFinite)));
+  }
 }
 
 // 6. The automation handoff package still matches index.html (see handoff/HANDOFF_FORMULA.md).

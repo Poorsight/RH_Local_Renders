@@ -60,6 +60,28 @@ test("job lights scale X/Y with one factor and never move in Z", () => {
   for (const light of heightOnly) assert.equal(light.Location.Z, source[light.name].position[2]);
 });
 
+test("Shadow overrides main key intensity and cones before the existing size correction", () => {
+  for (const scene of ["Sectional_Indoor_R", "Sectional_Indoor_L", "Sectional_Indoor_U"]) for (const camera of ["F", "FH", "TQ"]) {
+    const fabric = jobLights(rig, scene, camera, baseInput.dimensions, "B");
+    const shadow = jobLights(rig, scene, camera, baseInput.dimensions, "B", "Shadow");
+    const fabricKey = fabric.find(light => light.name === "main_key_lgt"), shadowKey = shadow.find(light => light.name === "main_key_lgt");
+    assert.equal(fabricKey.intensity, camera === "TQ" ? 60 : 45, `${scene}/${camera} Fabric intensity`);
+    assert.equal(fabricKey.InnerConeAngle, -1); assert.equal(fabricKey.OuterConeAngle, -1);
+    assert.equal(shadowKey.intensity, 100, `${scene}/${camera} Shadow intensity`);
+    assert.equal(shadowKey.InnerConeAngle, 45); assert.equal(shadowKey.OuterConeAngle, 60);
+    assert.deepEqual(shadowKey.Location, fabricKey.Location); assert.deepEqual(shadowKey.rotation, fabricKey.rotation);
+    for (const fabricLight of fabric.filter(light => light.name !== "main_key_lgt")) {
+      const shadowLight = shadow.find(light => light.name === fabricLight.name);
+      assert.equal(shadowLight.intensity, fabricLight.intensity); assert.deepEqual(shadowLight.Location, fabricLight.Location);
+    }
+  }
+
+  const large = { width: 700, depth: 500, height: 300 };
+  const fabricKey = jobLights(rig, "Sectional_Indoor_R", "F", large, "B").find(light => light.name === "main_key_lgt");
+  const shadowKey = jobLights(rig, "Sectional_Indoor_R", "F", large, "B", "Shadow").find(light => light.name === "main_key_lgt");
+  assert.ok(Math.abs((shadowKey.intensity / fabricKey.intensity) - (100 / 45)) < 0.000001, "both base intensities use the same size correction");
+});
+
 test("equal material names become one BatchRender material group", () => {
   assert.deepEqual(groupedMaterials([{ meshes: ["UPH"], material: "A" }, { meshes: ["Stitches"], material: "A" }])[0].meshes, ["uph", "stitches"]);
 });
@@ -192,6 +214,13 @@ test("Fabric and Shadow become ordered Unreal phases with the required Substrate
   assert.deepEqual(plan[1].job.tasks[0].layers.map(layer => layer.name), ["Shadow"]);
   assert.ok(plan[0].job.tasks[0].sequence.cameras.every(camera => camera.LayerResolutions.length === 1 && camera.LayerResolutions[0].Name === "Fabric"));
   assert.ok(plan[1].job.tasks[0].sequence.cameras.every(camera => camera.LayerResolutions.length === 1 && camera.LayerResolutions[0].Name === "Shadow"));
+  const parentCamera = job.tasks[0].sequence.cameras[0], fabricCamera = plan[0].job.tasks[0].sequence.cameras[0], shadowCamera = plan[1].job.tasks[0].sequence.cameras[0];
+  assert.equal(parentCamera._rhLocalShadowLights.find(light => light.name === "main_key_lgt").intensity, 100);
+  assert.equal(fabricCamera.lights.find(light => light.name === "main_key_lgt").intensity, 45);
+  assert.equal(shadowCamera.lights.find(light => light.name === "main_key_lgt").intensity, 100);
+  assert.equal(shadowCamera.lights.find(light => light.name === "main_key_lgt").InnerConeAngle, 45);
+  assert.equal(shadowCamera.lights.find(light => light.name === "main_key_lgt").OuterConeAngle, 60);
+  assert.ok(!("_rhLocalShadowLights" in fabricCamera)); assert.ok(!("_rhLocalShadowLights" in shadowCamera));
   assert.equal(plan[0].job.jobId, `${job.jobId}__fabric`); assert.equal(plan[1].job.jobId, `${job.jobId}__shadow`);
   assert.equal(JSON.stringify(job), original, "the saved parent job stays unchanged");
 });
@@ -226,6 +255,8 @@ test("local render service completes Fabric before restarting for Substrate-off 
     const launches = fs.readFileSync(fakeLog, "utf8").trim().split(/\r?\n/).map(line => JSON.parse(line));
     assert.deepEqual(launches.map(item => item.phase), ["Fabric", "Shadow"]);
     assert.match(launches[0].substrateArgument, /r\.Substrate=True$/); assert.match(launches[1].substrateArgument, /r\.Substrate=False$/);
+    assert.equal(launches[0].keyLight.intensity, 45); assert.equal(launches[0].keyLight.InnerConeAngle, -1); assert.equal(launches[0].keyLight.OuterConeAngle, -1);
+    assert.equal(launches[1].keyLight.intensity, 100); assert.equal(launches[1].keyLight.InnerConeAngle, 45); assert.equal(launches[1].keyLight.OuterConeAngle, 60);
     assert.match(status.log, /Fabric is complete\. Restarting Unreal for Shadow with Substrate OFF/);
   } finally {
     service.kill();

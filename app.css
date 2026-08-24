@@ -22,3 +22,5 @@
 /* Use the available desktop canvas; the responsive cap below 980 px remains intentional. */
 @media(min-width:981px){main{width:calc(100% - 48px);max-width:none}}
 .material-id{height:auto;min-height:43px;padding:8px 12px;display:grid;grid-template-columns:6px minmax(0,1fr);column-gap:8px;font:inherit}.material-id:before{grid-row:1/span 2}.material-id b{font:600 11px/1.25 monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.material-id small{font-size:8px;color:var(--muted);margin-top:3px}
+.material-row{grid-template-columns:minmax(220px,.75fr) minmax(180px,1fr);align-items:start}.material-id:has(.material-id-full):before{grid-row:1/span 3}.material-id-full{grid-column:2;margin-top:7px;padding-top:7px;border-top:1px solid var(--line-soft);color:#727b73;font:8px/1.4 Consolas,monospace;overflow-wrap:anywhere;user-select:text}.material-row>input{margin-top:0}
+@media(max-width:620px){.material-row{grid-template-columns:1fr}}

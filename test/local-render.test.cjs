@@ -143,6 +143,8 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(client, /droppedFilePath/);
   assert.match(client, /dropTarget\.addEventListener\("drop"/);
   assert.match(client, /useDroppedModels/);
+  assert.match(client, /const shortMaterialId = id =>/);
+  assert.match(client, /class="material-id-full"/);
   assert.match(html, /id="modelBatch"/);
   assert.match(client, /LOCAL_MODELS_ROOT = "D:\\\\GitHub\\\\RH_Local_Renders\\\\local\\\\models"/);
   assert.match(client, /const metadataModel = query =>/);

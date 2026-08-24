@@ -34,6 +34,12 @@
   };
   const selected = (name) => [...document.querySelectorAll(`input[name=${name}]:checked`)].map(node => node.value);
   const materialRows = () => [...document.querySelectorAll("[data-material-id]")].map(node => ({ meshes: [node.dataset.materialId], material: node.value.trim() }));
+  const shortMaterialId = id => {
+    const value = String(id || ""); if (value.length <= 32) return value;
+    const semantic = value.match(/(?:^|_)(\d{5,})_(UPH|STITCHES|FEET)(\d*)$/i);
+    if (semantic) return `…${semantic[1]}_${semantic[2]}${semantic[3]}`;
+    return `…${value.split("_").slice(-4).join("_")}`;
+  };
   const sideFromModel = () => {
     const value = $("sceneSide").value;
     if (value !== "auto") return value;
@@ -66,7 +72,10 @@
     }));
     const ids = [...grouped.values()];
     $("materialsEmpty").hidden = !!ids.length;
-    $("materialsList").innerHTML = ids.map(item => `<label class="material-row"><span class="material-id"><b>${escapeHtml(item.id)}</b><small>${item.models} model${item.models === 1 ? "" : "s"}</small></span><input data-material-id="${escapeHtml(item.id)}" value="${escapeHtml(previous.get(item.id.toLowerCase()) || "")}" placeholder="RH material name" autocomplete="off"></label>`).join("");
+    $("materialsList").innerHTML = ids.map(item => {
+      const shortId = shortMaterialId(item.id), fullId = shortId === item.id ? "" : `<code class="material-id-full">${escapeHtml(item.id)}</code>`;
+      return `<label class="material-row"><span class="material-id" title="${escapeHtml(item.id)}"><b>${escapeHtml(shortId)}</b><small>${item.models} model${item.models === 1 ? "" : "s"}</small>${fullId}</span><input data-material-id="${escapeHtml(item.id)}" value="${escapeHtml(previous.get(item.id.toLowerCase()) || "")}" placeholder="Replace with RH material name" autocomplete="off"></label>`;
+    }).join("");
     document.querySelectorAll("[data-material-id]").forEach(input => input.addEventListener("input", validate));
   };
   const renderBatch = () => {

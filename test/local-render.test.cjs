@@ -113,5 +113,9 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(html, /id="modelFileInput" type="file" accept="\.fbx"/);
   assert.match(client, /droppedFilePath/);
   assert.match(client, /dropTarget\.addEventListener\("drop"/);
+  assert.match(client, /LOCAL_MODELS_ROOT = "D:\\\\GitHub\\\\RH_Local_Renders\\\\local\\\\models"/);
+  assert.match(client, /const metadataModel = query =>/);
+  assert.match(client, /await loadModelMetadata\(\)/);
+  assert.doesNotMatch(client, /Open the local dashboard with npm start to resolve full model paths/);
   assert.match(styles, /@media\(min-width:981px\)\{main\{width:calc\(100% - 48px\);max-width:none\}\}/);
 });

@@ -40,6 +40,8 @@ The model input accepts a full FBX path, exact filename, or unique product subst
 
 An FBX can also be dropped directly onto the model field (or selected with **Choose FBX**). The local dashboard matches its filename against the indexed models, fills the full Windows path, and runs the same inspection. The FBX is not uploaded or copied.
 
+The static preview uses the same tracked `data/models.json`: dropping one of the 16 known FBX files restores its expected `D:\GitHub\RH_Local_Renders\local\models\…` path and shows dimensions and Material IDs without uploading the file. Generating a job or launching Unreal still requires `Start_RH_Local_Renders.bat` because a public web page cannot start a local process.
+
 There are no bundled model presets. After a successful render produces images, the service adds that model to ignored `local/catalog.json` with its measured dimensions and render files. The UI then displays it under **Rendered models**.
 
 ## Light reference

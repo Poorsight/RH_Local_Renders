@@ -1,7 +1,8 @@
 (() => {
   const $ = (id) => document.getElementById(id);
-  const state = { status: null, models: [], model: null, jobPath: null, poll: null, rig: null };
+  const state = { status: null, models: [], metadata: null, model: null, jobPath: null, poll: null, rig: null };
   const canReachLocalService = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
+  const LOCAL_MODELS_ROOT = "D:\\GitHub\\RH_Local_Renders\\local\\models";
   const RIG_REFERENCE = { width: 453, depth: 279, height: 79 };
   const RIG_GEOMETRY = {
     front_fill_lgt: { type: "rect", width: 500, height: 500, radius: 282.094791774 },
@@ -49,7 +50,7 @@
     cameras: selected("camera"), layers: selected("layer"), materials: materialRows()
   });
   const validate = () => {
-    const ready = !!state.model && materialRows().length > 0 && materialRows().every(row => row.material) && selected("camera").length && selected("layer").length;
+    const ready = canReachLocalService && !!state.model && materialRows().length > 0 && materialRows().every(row => row.material) && selected("camera").length && selected("layer").length;
     $("generateJob").disabled = !ready;
     if (!ready) state.jobPath = null;
     $("launchRender").disabled = !state.jobPath;
@@ -58,6 +59,35 @@
     $("materialsEmpty").hidden = !!ids.length;
     $("materialsList").innerHTML = ids.map(id => `<label class="material-row"><span class="material-id">${escapeHtml(id)}</span><input data-material-id="${escapeHtml(id)}" placeholder="RH material name" autocomplete="off"></label>`).join("");
     document.querySelectorAll("[data-material-id]").forEach(input => input.addEventListener("input", validate));
+  };
+  const applyModel = model => {
+    state.model = model; state.jobPath = null;
+    $("modelEmpty").hidden = true; $("modelDetails").hidden = false;
+    $("inspectedName").textContent = model.name; $("modelSide").textContent = model.side || "Unknown side";
+    $("width").value = model.dimensions.width; $("depth").value = model.dimensions.depth; $("height").value = model.dimensions.height; $("importYaw").value = model.importYaw;
+    $("modelWarning").hidden = !model.warning; $("modelWarning").textContent = model.warning || "";
+    renderMaterials(model.materialIds);
+    $("rigUseModel").disabled = false; syncRigFromModel();
+    const uph = document.querySelector('[data-material-id="UPH"], [data-material-id="uph"]'); if (uph) uph.focus();
+    validate(); toast(`Read ${model.materialIds.length} Material IDs from ${model.name}`);
+  };
+  const metadataModel = query => {
+    const value = String(query || "").trim(), needle = value.split(/[\\/]/).pop().replace(/\.fbx$/i, "").toLowerCase();
+    const entries = Object.entries(state.metadata?.models || {});
+    const match = entries.find(([name]) => name.toLowerCase() === needle) || entries.filter(([name]) => name.toLowerCase().includes(needle))[0];
+    if (!match) throw new Error("This FBX is not listed in data/models.json. Add its model metadata before using it.");
+    const [name, record] = match, materialIds = state.metadata.profiles?.[record.ids];
+    if (!materialIds) throw new Error(`Material ID profile ${record.ids} is missing for ${name}`);
+    const [width, depth, height] = record.dimensions;
+    return { name, path: `${LOCAL_MODELS_ROOT}\\${name}.fbx`, side: record.side, materialIds: [...materialIds], dimensions: { width, depth, height }, importYaw: record.yaw, offsetUniformScale: record.scale, warning: record.warning || "" };
+  };
+  const loadModelMetadata = async () => {
+    const response = await fetch("data/models.json", { cache: "no-store" });
+    if (!response.ok) throw new Error(`Model metadata returned ${response.status}`);
+    state.metadata = await response.json();
+    state.models = Object.keys(state.metadata.models || {}).map(name => ({ name, path: `${LOCAL_MODELS_ROOT}\\${name}.fbx` }));
+    $("modelCount").textContent = state.models.length;
+    $("modelOptions").innerHTML = state.models.map(model => `<option value="${escapeHtml(model.path)}">${escapeHtml(model.name)}</option>`).join("");
   };
   const escapeHtml = (value) => String(value).replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[ch]);
   const parseCsv = (text) => {
@@ -206,27 +236,19 @@
     const fullPath = droppedFilePath(file, transfer);
     if (!fullPath) {
       status.dataset.state = "error";
-      status.textContent = canReachLocalService ? "This FBX is not in the indexed models folder. Add it there or paste its full path." : "Open the local dashboard with npm start to resolve full model paths.";
+      status.textContent = canReachLocalService ? "This FBX is not in the indexed models folder. Add it there or paste its full path." : "This FBX is not listed in the project model metadata.";
       return toast(status.textContent, true);
     }
     $("modelPath").value = fullPath; status.dataset.state = "success"; status.textContent = fullPath;
     toast("Full FBX path added");
-    if (canReachLocalService) await inspect();
+    await inspect();
   };
   const inspect = async () => {
     const query = $("modelPath").value.trim(); if (!query) return toast("Enter a model name or path", true);
     $("inspectModel").disabled = true; $("inspectModel").textContent = "Inspecting…";
     try {
-      const model = await api("/api/models/inspect", { method: "POST", body: JSON.stringify({ modelPath: query }) });
-      state.model = model; state.jobPath = null;
-      $("modelEmpty").hidden = true; $("modelDetails").hidden = false;
-      $("inspectedName").textContent = model.name; $("modelSide").textContent = model.side || "Unknown side";
-      $("width").value = model.dimensions.width; $("depth").value = model.dimensions.depth; $("height").value = model.dimensions.height; $("importYaw").value = model.importYaw;
-      $("modelWarning").hidden = !model.warning; $("modelWarning").textContent = model.warning || "";
-      renderMaterials(model.materialIds);
-      $("rigUseModel").disabled = false; syncRigFromModel();
-      const uph = document.querySelector('[data-material-id="UPH"], [data-material-id="uph"]'); if (uph) uph.focus();
-      validate(); toast(`Read ${model.materialIds.length} Material IDs from ${model.name}`);
+      const model = canReachLocalService ? await api("/api/models/inspect", { method: "POST", body: JSON.stringify({ modelPath: query }) }) : metadataModel(query);
+      applyModel(model);
     } catch (error) { toast(error.message, true); }
     finally { $("inspectModel").disabled = false; $("inspectModel").textContent = "Inspect model"; }
   };
@@ -269,6 +291,7 @@
   };
   const init = async () => {
     loadRig();
+    try { await loadModelMetadata(); } catch (error) { console.warn(`Model metadata unavailable: ${error.message}`); }
     if (!canReachLocalService) { setConnection(false); $("sheetState").textContent = "STATIC"; $("unrealState").textContent = "OFFLINE"; return; }
     try {
       const status = await api("/api/status"); state.status = status; state.models = status.models; setConnection(true);

@@ -10,7 +10,7 @@ const { ModelStore } = require("./lib/models.cjs");
 const { writeBatchJob } = require("./lib/jobs.cjs");
 const { buildRenderPlan, cameraStateKey, applyCameraHandoff } = require("./lib/render-plan.cjs");
 const { buildUnrealLaunch } = require("./lib/unreal.cjs");
-const { history } = require("./lib/history.cjs");
+const { history, expectedRenders } = require("./lib/history.cjs");
 
 const ROOT = __dirname;
 const HOST = "127.0.0.1";
@@ -35,6 +35,7 @@ const RUNTIME_STARTED_AT = new Date().toISOString();
 const RUNTIME_SOURCE_TOKEN = runtimeSourceToken();
 let render = { state: "idle", pid: null, jobPath: null, startedAt: null, finishedAt: null, exitCode: null, log: "" };
 let child = null, bridge = null, activeRun = null, lastUnrealContactAt = null;
+let unrealMaterialCache = null;
 
 const json = (response, status, body) => { response.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" }); response.end(JSON.stringify(body)); };
 const error = (response, status, message) => json(response, status, { error: message });
@@ -135,6 +136,75 @@ function scanImages(folder) {
   return found.sort();
 }
 
+function unrealMaterials() {
+  if (unrealMaterialCache) return unrealMaterialCache;
+  const roots = [path.join(path.dirname(UNREAL_PROJECT), "Content"), path.join(path.dirname(UNREAL_PROJECT), "Plugins")];
+  const records = [], stack = roots.filter(fs.existsSync);
+  while (stack.length) {
+    const current = stack.pop();
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const full = path.join(current, entry.name);
+      if (entry.isDirectory()) stack.push(full);
+      else if (entry.isFile() && entry.name.toLowerCase().endsWith(".uasset")) records.push({ name: path.basename(entry.name, ".uasset"), path: full });
+    }
+  }
+  unrealMaterialCache = records.sort((left, right) => left.name.localeCompare(right.name));
+  return unrealMaterialCache;
+}
+
+function latestModified(root, extensions) {
+  if (!fs.existsSync(root)) return 0;
+  let latest = 0, stack = [root];
+  while (stack.length) {
+    const current = stack.pop();
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const full = path.join(current, entry.name);
+      if (entry.isDirectory()) stack.push(full);
+      else if (extensions.some(extension => entry.name.toLowerCase().endsWith(extension))) latest = Math.max(latest, fs.statSync(full).mtimeMs);
+    }
+  }
+  return latest;
+}
+
+async function preflight(input) {
+  const selections = input.models?.length ? input.models : input.modelPath ? [{ modelPath: input.modelPath }] : [];
+  const checks = [], inspected = [];
+  if (!selections.length) checks.push({ id: "models", level: "error", label: "Models", detail: "Add at least one FBX model." });
+  for (const selection of selections) {
+    try {
+      const model = await models.inspect(selection.modelPath), side = input.side === "auto" || !input.side ? model.side : String(input.side).toUpperCase();
+      inspected.push(model);
+      if (!fs.existsSync(model.path)) checks.push({ id: `model:${model.name}`, level: "error", label: model.name, detail: "FBX file is missing." });
+      else if (!["R", "L", "U"].includes(side)) checks.push({ id: `model:${model.name}`, level: "error", label: model.name, detail: "L/R/U form factor could not be determined." });
+    } catch (modelError) { checks.push({ id: `model:${selection.modelPath}`, level: "error", label: path.basename(String(selection.modelPath || "Model")), detail: modelError.message }); }
+  }
+  if (inspected.length) checks.push({ id: "models", level: "ok", label: "Models", detail: `${inspected.length} FBX file${inspected.length === 1 ? "" : "s"} found; dimensions and form factors are ready.` });
+  const cameras = Array.isArray(input.cameras) ? input.cameras.filter(value => ["F", "FH", "TQ"].includes(value)) : [];
+  const layers = Array.isArray(input.layers) ? input.layers.filter(value => ["Fabric", "Shadow"].includes(value)) : [];
+  checks.push(cameras.length ? { id: "cameras", level: "ok", label: "Cameras", detail: cameras.join(" · ") } : { id: "cameras", level: "error", label: "Cameras", detail: "Select at least one camera." });
+  const shadowOnly = layers.includes("Shadow") && !layers.includes("Fabric");
+  checks.push(layers.length ? { id: "layers", level: "ok", label: "Layers", detail: shadowOnly ? "Shadow · automatic 500×500 Fabric camera prefit" : layers.join(" → ") } : { id: "layers", level: "error", label: "Layers", detail: "Select at least one layer." });
+  const assets = unrealMaterials(), assetNames = new Map(assets.map(asset => [asset.name.toLowerCase(), asset]));
+  const assigned = Array.isArray(input.materials) ? input.materials : [];
+  if (!assigned.length || assigned.some(row => !String(row.material || "").trim())) checks.push({ id: "materials", level: "error", label: "Materials", detail: "Complete every material assignment." });
+  else {
+    const missing = assigned.map(row => String(row.material).trim()).filter(name => !assetNames.has(name.toLowerCase()));
+    checks.push(missing.length ? { id: "materials", level: "error", label: "Materials", detail: `Not found in Unreal: ${missing.join(", ")}` } : { id: "materials", level: "ok", label: "Materials", detail: `${assigned.length} assignment${assigned.length === 1 ? "" : "s"} found in Unreal Content.` });
+  }
+  checks.push(sheet.status().rows ? { id: "lights", level: sheet.status().source === "live" ? "ok" : "warning", label: "Light data", detail: `${sheet.status().rows} Sectionals / Indoor rows · ${sheet.status().source}` } : { id: "lights", level: "error", label: "Light data", detail: "No light rows are available." });
+  const pluginRoot = path.join(path.dirname(UNREAL_PROJECT), "Plugins", "BatchRender"), markerFile = path.join(pluginRoot, "Source", "BatchRenderEditor", "Public", "JobModel.h");
+  const bridgeSource = fs.existsSync(markerFile) && fs.readFileSync(markerFile, "utf8").includes("CameraFocalHandoffVersion");
+  const sourceTime = latestModified(path.join(pluginRoot, "Source"), [".h", ".cpp"]), binaryFiles = [path.join(pluginRoot, "Binaries", "Win64", "UnrealEditor-BatchRender.dll"), path.join(pluginRoot, "Binaries", "Win64", "UnrealEditor-BatchRenderEditor.dll")];
+  const binariesCurrent = binaryFiles.every(file => fs.existsSync(file) && fs.statSync(file).mtimeMs >= sourceTime);
+  const bridgeReady = bridgeSource && binariesCurrent;
+  const bridgeDetail = !bridgeSource ? "BatchRender camera handoff is not installed." : !binariesCurrent ? "BatchRender camera handoff must be rebuilt." : "Editor, project, and Fabric camera handoff are ready.";
+  checks.push(fs.existsSync(UNREAL_EDITOR) && fs.existsSync(UNREAL_PROJECT) ? { id: "unreal", level: bridgeReady ? "ok" : "error", label: "Unreal", detail: bridgeDetail } : { id: "unreal", level: "error", label: "Unreal", detail: "Editor or project file is missing." });
+  try { fs.accessSync(path.join(ROOT, "local", "renders"), fs.constants.W_OK); checks.push({ id: "output", level: "ok", label: "Output", detail: "Local render folder is writable." }); }
+  catch { checks.push({ id: "output", level: "error", label: "Output", detail: "Local render folder is not writable." }); }
+  const expected = inspected.length * cameras.length * layers.length;
+  return { ok: !checks.some(check => check.level === "error"), checks, counts: { models: inspected.length, cameras: cameras.length, layers: layers.length, expectedRenders: expected }, materials: assets.length };
+}
+
 function updateCatalog(jobPath) {
   try {
     const job = JSON.parse(fs.readFileSync(jobPath, "utf8")), metadata = job._rhLocal || {};
@@ -142,7 +212,7 @@ function updateCatalog(jobPath) {
     const catalog = fs.existsSync(catalogPath) ? JSON.parse(fs.readFileSync(catalogPath, "utf8")) : { models: [] };
     const records = metadata.models || [metadata];
     for (const record of records) {
-      const images = scanImages(record.outputFolder); if (!images.length) continue;
+      const images = scanImages(record.outputFolder).filter(file => !file.split(path.sep).includes("_camera_prefit")); if (!images.length) continue;
       const entry = { name: record.name || path.basename(record.modelPath, path.extname(record.modelPath)), modelPath: record.modelPath, dimensions: record.dimensions, side: record.side, renders: images, updatedAt: new Date().toISOString() };
       const index = catalog.models.findIndex(item => item.modelPath === entry.modelPath); if (index >= 0) catalog.models[index] = entry; else catalog.models.unshift(entry);
     }
@@ -169,7 +239,16 @@ async function api(request, response, url) {
     lastUnrealContactAt = new Date().toISOString();
     const event = await body(request), eventName = String(event.event || "unknown"), data = event.data || {};
     appendRenderLog(`BatchRender event ${eventName}: ${JSON.stringify(data).slice(0, 4000)}\n`);
-    if (bridge && eventName === "render_finished") render.rendered = Number(render.rendered || 0) + 1;
+    if (bridge) {
+      if (data.taskId) {
+        render.currentTask = data.taskId;
+        render.queue = (render.queue || []).map(item => ({ ...item, state: item.name === data.taskId ? "active" : item.state === "active" ? "complete" : item.state }));
+      }
+      const sequenceName = data.sequenceName || data.camera?.sequenceName || data.camera?.name || "";
+      if (sequenceName) render.currentCamera = String(sequenceName).split("_").pop();
+      if (data.message) render.message = data.message;
+      if (eventName === "render_finished") render.rendered = Number(render.rendered || 0) + 1;
+    }
     const matchesJob = bridge && (!data.jobId || data.jobId === bridge.job.jobId || data.jobId === activeRun?.job?.jobId);
     if (matchesJob && bridge?.phase?.name === "Fabric" && eventName === "sequence_camera_data") {
       const camera = data.camera || {}, focalLength = Number(camera.FocalLength ?? camera.focalLength);
@@ -182,7 +261,10 @@ async function api(request, response, url) {
         });
       }
     }
-    if (matchesJob && eventName === "job_completed") finishBridge("success", `job ${data.jobId || bridge.job.jobId} completed`);
+    if (matchesJob && eventName === "job_completed") {
+      render.queue = (render.queue || []).map(item => ({ ...item, state: item.state === "active" ? "complete" : item.state }));
+      finishBridge("success", `job ${data.jobId || bridge.job.jobId} completed`);
+    }
     if (matchesJob && eventName === "error") finishBridge("failed", data.error || "plugin reported an error");
     return json(response, 200, { ok: true });
   }
@@ -192,6 +274,8 @@ async function api(request, response, url) {
     runtime: { startedAt: RUNTIME_STARTED_AT, sourceToken: RUNTIME_SOURCE_TOKEN, stale: RUNTIME_SOURCE_TOKEN !== runtimeSourceToken() }
   });
   if (request.method === "POST" && url.pathname === "/api/models/inspect") return json(response, 200, await models.inspect((await body(request)).modelPath));
+  if (request.method === "GET" && url.pathname === "/api/materials") return json(response, 200, { materials: unrealMaterials() });
+  if (request.method === "POST" && url.pathname === "/api/preflight") return json(response, 200, await preflight(await body(request)));
   if (request.method === "POST" && url.pathname === "/api/sheet/refresh") return json(response, 200, await sheet.refresh());
   if (request.method === "POST" && url.pathname === "/api/jobs") {
     const input = await body(request), selections = input.models?.length ? input.models : [{ modelPath: input.modelPath, dimensions: input.dimensions, importYaw: input.importYaw }];
@@ -216,7 +300,9 @@ async function api(request, response, url) {
     if (!within(outputFolder, rendersRoot)) return error(response, 400, "Job output must stay inside RH_Local_Renders/local/renders");
     const phases = buildRenderPlan(job);
     activeRun = { job, jobPath, outputFolder, before: imageSnapshot(outputFolder), phases, index: 0, cameraStates: new Map() };
-    render = { state: "running", pid: null, jobPath, startedAt: new Date().toISOString(), finishedAt: null, exitCode: null, rendered: 0, phase: null, phaseIndex: 0, phaseCount: phases.length, substrate: null, log: `Queued ${phases.map(phase => phase.name).join(" → ")} render plan.\nLocal BatchRender API: http://${HOST}:${PORT}/api/unreal\n` };
+    const queue = (job.tasks || []).map(task => ({ name: task.taskId, state: "queued" }));
+    const totalRenders = (job.tasks || []).reduce((total, task) => total + expectedRenders(task) + (task.layers || []).filter(layer => layer._rhLocalPrefit && !layer.doNotRender).length * (task.sequence?.cameras?.length || 0), 0);
+    render = { state: "running", pid: null, jobPath, startedAt: new Date().toISOString(), finishedAt: null, exitCode: null, rendered: 0, totalRenders, currentTask: null, currentCamera: null, message: "Queued", queue, phase: null, phaseIndex: 0, phaseCount: phases.length, substrate: null, log: `Queued ${phases.map(phase => phase.name).join(" → ")} render plan.\nLocal BatchRender API: http://${HOST}:${PORT}/api/unreal\n` };
     startRenderPhase();
     return json(response, 202, currentRender());
   }

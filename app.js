@@ -1,6 +1,6 @@
 (() => {
   const $ = (id) => document.getElementById(id);
-  const state = { status: null, models: [], metadata: null, batch: [], model: null, jobPath: null, poll: null, rig: null, history: [], historyBatch: null, rigBatch: null, historyModel: null };
+  const state = { status: null, models: [], metadata: null, materialAssets: [], preflight: null, preflightTimer: null, batch: [], model: null, jobPath: null, poll: null, rig: null, history: [], historyBatch: null, historySelection: new Set(), rigBatch: null, historyModel: null };
   const canReachLocalService = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
   const LOCAL_MODELS_ROOT = "D:\\GitHub\\RH_Local_Renders\\local\\models";
   const RIG_REFERENCE = { width: 453, depth: 279, height: 79 };
@@ -34,6 +34,7 @@
   };
   const selected = (name) => [...document.querySelectorAll(`input[name=${name}]:checked`)].map(node => node.value);
   const materialRows = () => [...document.querySelectorAll("[data-material-ids]")].map(node => ({ meshes: JSON.parse(node.dataset.materialIds), material: node.value.trim() }));
+  const materialAsset = name => state.materialAssets.find(asset => asset.name.toLowerCase() === String(name || "").trim().toLowerCase());
   const normalizedMaterialId = id => {
     const value = String(id || ""), last = value.split(/[:_]/).filter(Boolean).pop() || value;
     return last.replace(/\d/g, "") || last;
@@ -64,11 +65,46 @@
     importYaw: +$("importYaw").value || 0,
     cameras: selected("camera"), layers: selected("layer"), materials: materialRows()
   });
-  const validate = () => {
+  const updatePipelineSummary = () => {
+    const cameras = selected("camera").length, layers = selected("layer"), models = state.batch.length;
+    const expected = models * cameras * layers.length;
+    $("pipelineSummary").textContent = models ? `${models} model${models === 1 ? "" : "s"} · ${expected} render${expected === 1 ? "" : "s"}` : "No models selected";
+    $("pipelineDetail").textContent = models ? `${selected("renderProfile")[0] === "low" ? "Low" : "High"} · ${layers.join(" → ") || "No layers"} · ${state.preflight?.ok ? "Ready" : "Preflight required"}` : "Add FBX models to prepare a render job.";
+  };
+  const syncActionButtons = basicReady => {
+    const ready = basicReady && state.preflight?.ok === true;
+    $("generateJob").disabled = !ready; $("stickyGenerate").disabled = !ready;
+    $("launchRender").disabled = !state.jobPath; $("stickyLaunch").disabled = !state.jobPath;
+    updatePipelineSummary();
+  };
+  const renderPreflight = result => {
+    const panel = $("preflight"), checks = result?.checks || [];
+    panel.dataset.state = result?.waiting ? "idle" : !result ? "checking" : result.ok ? "ready" : checks.some(check => check.level === "error") ? "error" : "warning";
+    $("preflightState").textContent = result?.waiting ? "Waiting for setup" : !result ? "Checking…" : result.ok ? `${result.counts.expectedRenders} renders ready` : `${checks.filter(check => check.level === "error").length} issue${checks.filter(check => check.level === "error").length === 1 ? "" : "s"}`;
+    $("preflightChecks").innerHTML = checks.length ? checks.map(check => `<span data-level="${escapeHtml(check.level)}"><b>${escapeHtml(check.label)}</b><small>${escapeHtml(check.detail)}</small></span>`).join("") : `<span>${result?.waiting ? "Add models and material assignments to validate the job." : "Checking models, materials, lights, output, and Unreal…"}</span>`;
+  };
+  const refreshPreflight = async () => {
+    const basicReady = canReachLocalService && state.batch.length > 0 && materialRows().length > 0 && materialRows().every(row => row.material) && selected("camera").length && selected("layer").length;
+    if (!basicReady) return false;
+    renderPreflight(null);
+    try { state.preflight = await api("/api/preflight", { method: "POST", body: JSON.stringify(payload()) }); }
+    catch (error) { state.preflight = { ok: false, checks: [{ level: "error", label: "Local service", detail: error.message }], counts: { expectedRenders: 0 } }; }
+    renderPreflight(state.preflight); syncActionButtons(basicReady); return state.preflight.ok;
+  };
+  const validate = (runCheck = true) => {
     const ready = canReachLocalService && state.batch.length > 0 && materialRows().length > 0 && materialRows().every(row => row.material) && selected("camera").length && selected("layer").length;
-    $("generateJob").disabled = !ready;
+    if (!ready) { state.preflight = null; renderPreflight({ waiting: true, ok: false, checks: [], counts: { expectedRenders: 0 } }); }
+    else if (runCheck) {
+      state.preflight = null; renderPreflight(null); clearTimeout(state.preflightTimer);
+      state.preflightTimer = setTimeout(refreshPreflight, 260);
+    }
     if (!ready) state.jobPath = null;
-    $("launchRender").disabled = !state.jobPath;
+    syncActionButtons(ready);
+  };
+  const updateMaterialStatus = input => {
+    const asset = materialAsset(input.value), status = input.closest(".material-row")?.querySelector("[data-material-status]");
+    input.dataset.assetState = !input.value.trim() ? "empty" : asset ? "found" : "missing";
+    if (status) { status.dataset.state = input.dataset.assetState; status.textContent = !input.value.trim() ? "Enter material" : asset ? "Found" : "Missing"; status.title = asset?.path || "No matching .uasset in the Unreal project"; }
   };
   const renderMaterials = () => {
     const previous = new Map([...document.querySelectorAll("[data-material-key]")].map(node => [node.dataset.materialKey, node.value]));
@@ -83,9 +119,9 @@
     $("materialsEmpty").hidden = !!ids.length;
     $("materialsList").innerHTML = ids.map(item => {
       const sourceIds = [...item.ids], modelCount = item.models.size;
-      return `<label class="material-row"><span class="material-id"><b>${escapeHtml(item.label)}</b><small>${modelCount} model${modelCount === 1 ? "" : "s"} · ${sourceIds.length} component ID${sourceIds.length === 1 ? "" : "s"}</small></span><input data-material-key="${escapeHtml(item.key)}" data-material-ids="${escapeHtml(JSON.stringify(sourceIds))}" value="${escapeHtml(previous.get(item.key) || "")}" placeholder="Replace with RH material name" autocomplete="off"></label>`;
+      return `<label class="material-row"><span class="material-id"><b>${escapeHtml(item.label)}</b><small>${modelCount} model${modelCount === 1 ? "" : "s"} · ${sourceIds.length} component ID${sourceIds.length === 1 ? "" : "s"}</small></span><span class="material-input-wrap"><input list="materialOptions" data-material-key="${escapeHtml(item.key)}" data-material-ids="${escapeHtml(JSON.stringify(sourceIds))}" value="${escapeHtml(previous.get(item.key) || "")}" placeholder="Search Unreal materials" autocomplete="off"><em data-material-status>Enter material</em></span></label>`;
     }).join("");
-    document.querySelectorAll("[data-material-key]").forEach(input => input.addEventListener("input", validate));
+    document.querySelectorAll("[data-material-key]").forEach(input => { updateMaterialStatus(input); input.addEventListener("input", () => { updateMaterialStatus(input); validate(); }); });
   };
   const renderBatch = () => {
     $("modelBatch").hidden = !state.batch.length; $("batchCount").textContent = `${state.batch.length} model${state.batch.length === 1 ? "" : "s"}`;
@@ -132,6 +168,12 @@
     $("modelCount").textContent = state.models.length;
     $("modelOptions").innerHTML = state.models.map(model => `<option value="${escapeHtml(model.path)}">${escapeHtml(model.name)}</option>`).join("");
   };
+  const loadMaterialAssets = async () => {
+    if (!canReachLocalService) return;
+    const result = await api("/api/materials"); state.materialAssets = result.materials || [];
+    $("materialOptions").innerHTML = state.materialAssets.map(asset => `<option value="${escapeHtml(asset.name)}">${escapeHtml(asset.path)}</option>`).join("");
+    document.querySelectorAll("[data-material-key]").forEach(updateMaterialStatus);
+  };
   const escapeHtml = (value) => String(value).replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[ch]);
   const parseCsv = (text) => {
     const rows = []; let row = [], cell = "", quoted = false;
@@ -157,7 +199,16 @@
         name: row.light_name,
         position: [+row.default_x, +row.default_y, +row.default_z],
         rotation: { pitch: +row.default_pitch, yaw: +row.default_yaw, roll: +row.default_roll },
-        intensity: +row.default_intensity
+        intensity: +row.default_intensity,
+        innerCone: row.default_InnerConeAngle === "" ? -1 : +row.default_InnerConeAngle,
+        outerCone: row.default_OuterConeAngle === "" ? -1 : +row.default_OuterConeAngle,
+        shadow: {
+          position: row.shadow_x === "" ? null : [+row.shadow_x, +row.shadow_y, +row.shadow_z],
+          rotation: row.shadow_pitch === "" ? null : { pitch: +row.shadow_pitch, yaw: +row.shadow_yaw, roll: +row.shadow_roll },
+          intensity: row.shadow_intensity === "" ? null : +row.shadow_intensity,
+          innerCone: row.shadow_InnerConeAngle === "" ? null : +row.shadow_InnerConeAngle,
+          outerCone: row.shadow_OuterConeAngle === "" ? null : +row.shadow_OuterConeAngle
+        }
       };
       listValues(row.sequence_prefix).forEach(scene => listValues(row.camera).forEach(camera => {
         if (!["F", "FH", "TQ"].includes(camera)) return;
@@ -180,7 +231,7 @@
     height: Math.max(1, +$("rigHeight").value || RIG_REFERENCE.height)
   });
   const currentRig = () => {
-    const shot = currentRigShot(), dimensions = rigDimensions(), mode = $("rigMode").value;
+    const shot = currentRigShot(), dimensions = rigDimensions(), mode = $("rigMode").value, layer = selected("rigLayer")[0] || "Fabric";
     const side = shot === "TQR" ? "R" : shot === "TQL" ? "L" : sideFromModel();
     const camera = shot.startsWith("TQ") ? "TQ" : shot;
     const scene = `Sectional_Indoor_${side}`;
@@ -189,12 +240,14 @@
     const raw = Math.cbrt((dimensions.width / RIG_REFERENCE.width) * (dimensions.depth / RIG_REFERENCE.depth) * (dimensions.height / RIG_REFERENCE.height));
     const scale = Math.max(1, raw);
     const lights = Object.entries(source).map(([name, light]) => {
-      const geometry = RIG_GEOMETRY[name] || {}, [x, y, z] = light.position;
+      const shadow = layer === "Shadow" ? light.shadow || {} : {}, basePosition = shadow.position || light.position, baseRotation = shadow.rotation || light.rotation;
+      const baseIntensity = shadow.intensity ?? light.intensity, innerCone = shadow.innerCone ?? light.innerCone, outerCone = shadow.outerCone ?? light.outerCone;
+      const geometry = RIG_GEOMETRY[name] || {}, [x, y, z] = basePosition;
       const distance2 = x * x + y * y + z * z, radius2 = (geometry.radius || 0) ** 2;
-      const intensity = mode === "A" ? light.intensity * scale * scale : light.intensity * ((scale * scale * distance2 + radius2) / (distance2 + radius2));
-      return { ...light, name, position: [x * scale, y * scale, z], intensity, geometry, meta: RIG_META[name] };
+      const intensity = mode === "A" ? baseIntensity * scale * scale : baseIntensity * ((scale * scale * distance2 + radius2) / (distance2 + radius2));
+      return { ...light, name, rotation: baseRotation, position: [x * scale, y * scale, z], intensity, innerCone, outerCone, changedForShadow: layer === "Shadow" && (shadow.intensity != null || shadow.innerCone != null || shadow.outerCone != null || shadow.position || shadow.rotation), geometry, meta: RIG_META[name] };
     });
-    return { shot, side, camera, dimensions, mode, raw, scale, lights, sofaYaw: shot === "TQR" ? -36 : shot === "TQL" ? 36 : 0 };
+    return { shot, side, camera, dimensions, mode, layer, raw, scale, lights, sofaYaw: shot === "TQR" ? -36 : shot === "TQL" ? 36 : 0 };
   };
   const svgGrid = (minX, maxX, minY, maxY, step = 100) => {
     let markup = "";
@@ -236,12 +289,13 @@
     const preview = currentRig(); if (!preview) return;
     $("rigLoading").hidden = true; $("rigViews").hidden = false;
     $("rigScale").textContent = `${preview.scale.toFixed(3)}×`;
-    $("rigScaleNote").textContent = preview.scale === 1 ? "Reference footprint" : `Raw ${preview.raw.toFixed(3)}×`;
+    $("rigScaleNote").textContent = `${preview.layer} · ${preview.scale === 1 ? "Reference footprint" : `Raw ${preview.raw.toFixed(3)}×`}`;
     $("rigShotHint").textContent = ({ F: "Front", FH: "Front high", TQR: "Three-quarter · right", TQL: "Three-quarter · left" })[preview.shot];
     renderRigPlan(preview); renderRigElevation(preview);
     $("rigLights").innerHTML = preview.lights.map(light => {
       const color = rigColor(light), size = light.geometry.type === "rect" ? `${Math.round(light.geometry.width * (preview.mode === "A" ? preview.scale : 1))} × ${Math.round(light.geometry.height * (preview.mode === "A" ? preview.scale : 1))}` : `r ${Math.round(light.geometry.radius * (preview.mode === "A" ? preview.scale : 1))}`;
-      return `<article class="rig-light-card"><div class="rig-light-name"><i class="rig-light-dot" style="color:${color};background:${color}"></i><strong>${escapeHtml(light.meta.label)}</strong></div><div class="rig-light-values"><span>${light.intensity.toFixed(light.intensity < 10 ? 2 : 1)} cd · ${size} cm</span><span>${light.position.map(value => Math.round(value)).join(" · ")} cm</span></div></article>`;
+      const cones = light.innerCone >= 0 || light.outerCone >= 0 ? ` · cones ${light.innerCone}/${light.outerCone}` : "";
+      return `<article class="rig-light-card${light.changedForShadow ? " changed" : ""}"><div class="rig-light-name"><i class="rig-light-dot" style="color:${color};background:${color}"></i><strong>${escapeHtml(light.meta.label)}</strong>${light.changedForShadow ? "<em>Shadow override</em>" : ""}</div><div class="rig-light-values"><span>${light.intensity.toFixed(light.intensity < 10 ? 2 : 1)} cd · ${size} cm${escapeHtml(cones)}</span><span>${light.position.map(value => Math.round(value)).join(" · ")} cm</span></div></article>`;
     }).join("");
   };
   const updateRigRange = range => {
@@ -306,13 +360,14 @@
     finally { $("inspectModel").disabled = false; $("inspectModel").textContent = "Inspect model"; }
   };
   const generate = async () => {
+    if (!(await refreshPreflight())) return toast("Preflight found issues that must be fixed first", true);
     $("generateJob").disabled = true; $("generateJob").textContent = "Generating…";
     try {
       const result = await api("/api/jobs", { method: "POST", body: JSON.stringify(payload()) });
       state.jobPath = result.jobPath; $("jobResult").hidden = false; $("copyJobPath").textContent = result.jobPath;
       $("launchRender").disabled = false; toast(`Job ready: ${result.modelCount || 1} model${result.modelCount === 1 ? "" : "s"} · ${result.cameraCount} views · ${result.lightSource}`); loadHistory();
     } catch (error) { toast(error.message, true); }
-    finally { $("generateJob").disabled = false; $("generateJob").textContent = "Generate job"; validate(); }
+    finally { $("generateJob").textContent = "Generate job"; validate(false); }
   };
   const launch = async () => {
     try {
@@ -322,13 +377,21 @@
   };
   const updateRender = (render) => {
     state.status ||= {}; state.status.render = render;
-    const badge = $("renderBadge"), box = $("renderStatus"), log = $("renderLog");
+    const badge = $("renderBadge"), box = $("renderStatus"), log = $("renderLog"), progress = $("renderProgress");
     badge.dataset.state = render.state; badge.textContent = render.state === "running" && render.phase ? render.phase : ({running:"Rendering",success:"Complete",failed:"Failed",idle:"Idle"})[render.state] || render.state;
     box.dataset.state = render.state;
     const phase = render.phase ? ` · ${render.phase}${render.phaseCount > 1 ? ` (${render.phaseIndex}/${render.phaseCount})` : ""}` : "";
     const title = render.state === "running" ? `Unreal is rendering${phase}` : render.state === "success" ? "Render completed" : render.state === "failed" ? "Render stopped with an error" : "No active render";
     const substrate = render.state === "running" && typeof render.substrate === "boolean" ? `Substrate ${render.substrate ? "ON" : "OFF"} · ` : "";
-    box.querySelector("strong").textContent = title; box.querySelector("span").textContent = render.jobPath ? `${substrate}${render.jobPath}` : "Generate a job, then launch it in Unreal Engine 5.6.";
+    const current = [render.currentTask, render.currentCamera].filter(Boolean).join(" · ");
+    box.querySelector("strong").textContent = title; box.querySelector("span").textContent = current || (render.jobPath ? `${substrate}${render.jobPath}` : "Generate a job, then launch it in Unreal Engine 5.6.");
+    const total = Number(render.totalRenders || 0), rendered = Number(render.rendered || 0), percent = total ? Math.min(100, rendered / total * 100) : render.state === "success" ? 100 : 0;
+    progress.hidden = render.state === "idle" && !render.jobPath;
+    $("renderProgressLabel").textContent = total ? `${rendered} / ${total} frames` : `${rendered} frames`;
+    $("renderProgressMeta").textContent = `${substrate}${render.message || render.phase || "Waiting"}`;
+    $("renderProgressBar").style.width = `${percent}%`;
+    $("renderQueue").innerHTML = (render.queue || []).map((item, index) => `<span data-state="${escapeHtml(item.state || "queued")}"><b>${String(index + 1).padStart(2, "0")}</b>${escapeHtml(item.name)}</span>`).join("");
+    $("retryRender").hidden = render.state !== "failed" || !render.jobPath;
     log.hidden = !render.log; log.textContent = render.log || "";
     if (render.state !== "running" && state.poll) { clearInterval(state.poll); state.poll = null; loadHistory(); }
   };
@@ -339,14 +402,17 @@
   };
   const historyStateLabel = value => ({ complete: "Complete", partial: "Partial", running: "Rendering", failed: "Failed", ready: "Job ready", invalid: "Invalid" })[value] || value;
   const renderHistoryList = () => {
-    $("historyCount").textContent = `${state.history.length} job${state.history.length === 1 ? "" : "s"}`;
-    $("historyList").innerHTML = state.history.length ? state.history.map(batch => `<button class="history-card${state.historyBatch?.id === batch.id ? " active" : ""}" type="button" data-history-id="${escapeHtml(batch.id)}"><span class="history-card-top"><strong>${escapeHtml(batch.id)}</strong><i class="history-state" data-state="${escapeHtml(batch.state)}">${escapeHtml(historyStateLabel(batch.state))}</i></span><span class="history-card-meta"><b>${batch.modelCount} model${batch.modelCount === 1 ? "" : "s"}</b><b>${batch.renderCount}/${batch.expectedRenders} renders</b></span><small>${escapeHtml(formatDate(batch.updatedAt || batch.generatedAt))}</small></button>`).join("") : '<div class="empty-state">No saved jobs yet. Generated jobs will appear here automatically.</div>';
+    const query = $("historySearch").value.trim().toLowerCase(), filter = $("historyFilter").value;
+    const batches = state.history.filter(batch => (filter === "all" || batch.state === filter) && (!query || batch.id.toLowerCase().includes(query) || (batch.models || []).some(model => model.name.toLowerCase().includes(query))));
+    $("historyCount").textContent = batches.length === state.history.length ? `${state.history.length} job${state.history.length === 1 ? "" : "s"}` : `${batches.length} of ${state.history.length}`;
+    $("historyList").innerHTML = batches.length ? batches.map(batch => `<button class="history-card${state.historyBatch?.id === batch.id ? " active" : ""}" type="button" data-history-id="${escapeHtml(batch.id)}"><span class="history-card-top"><strong>${escapeHtml(batch.id)}</strong><i class="history-state" data-state="${escapeHtml(batch.state)}">${escapeHtml(historyStateLabel(batch.state))}</i></span><span class="history-card-meta"><b>${batch.modelCount} model${batch.modelCount === 1 ? "" : "s"}</b><b>${batch.renderCount}/${batch.expectedRenders} renders</b></span><small>${escapeHtml(formatDate(batch.updatedAt || batch.generatedAt))}</small></button>`).join("") : '<div class="empty-state">No jobs match this filter.</div>';
   };
   const renderHistoryDetail = () => {
     const batch = state.historyBatch;
     if (!batch) { $("historyDetail").innerHTML = '<div class="empty-state">Choose a saved job to inspect its models, JSON, and render output.</div>'; return; }
-    const models = batch.models?.length ? `<div class="history-model-list" aria-label="Models in ${escapeHtml(batch.id)}">${batch.models.map((model, index) => `<button type="button" class="history-model-row" data-history-action="review" data-model-index="${index}" title="Review ${escapeHtml(model.name)} in Sectional light rig"><span>${String(index + 1).padStart(2, "0")}</span><strong>${escapeHtml(model.name)}</strong><small>${escapeHtml(model.side || "UNKNOWN")} · ${model.dimensions ? `${model.dimensions.width} × ${model.dimensions.depth} × ${model.dimensions.height} cm` : "No dimensions"} · ${model.renders.length}/${model.expectedRenders}</small></button>`).join("")}</div>` : '<div class="empty-state history-model-empty">No models stored in this job.</div>';
-    $("historyDetail").innerHTML = `<div class="history-detail-heading"><div><span>SAVED JOB</span><strong>${escapeHtml(batch.id)}</strong><small>${escapeHtml(formatDate(batch.generatedAt))}</small></div><i class="history-state" data-state="${escapeHtml(batch.state)}">${escapeHtml(historyStateLabel(batch.state))}</i></div><div class="history-summary"><div><span>MODELS</span><strong>${batch.modelCount}</strong></div><div><span>RENDERS</span><strong>${batch.renderCount}/${batch.expectedRenders}</strong></div><div><span>OUTPUT</span><strong>${batch.renderCount ? "On disk" : "Empty"}</strong></div></div>${models}${batch.error ? `<p class="inline-warning">${escapeHtml(batch.error)}</p>` : ""}<code class="history-path" title="${escapeHtml(batch.jobPath)}">${escapeHtml(batch.jobPath)}</code><div class="history-actions"><button class="primary-button" type="button" data-history-action="edit"${batch.modelCount ? "" : " disabled"}>Load & edit</button><button class="secondary-button" type="button" data-history-action="review"${batch.modelCount ? "" : " disabled"}>Review rig</button><button class="secondary-button" type="button" data-history-action="rerun"${batch.state === "invalid" ? " disabled" : ""}>Run again</button><button class="quiet-button" type="button" data-history-action="viewJob">View JSON</button><button class="quiet-button" type="button" data-history-action="showJob">Show JSON</button><button class="quiet-button" type="button" data-history-action="openRenders"${batch.renderCount ? "" : " disabled"}>Open renders</button></div>`;
+    const models = batch.models?.length ? `<div class="history-model-list" aria-label="Models in ${escapeHtml(batch.id)}">${batch.models.map((model, index) => `<div class="history-model-row"><label><input type="checkbox" data-history-model-select="${escapeHtml(model.name)}"${state.historySelection.has(model.name) ? " checked" : ""}><span>${String(index + 1).padStart(2, "0")}</span><strong>${escapeHtml(model.name)}</strong><small>${escapeHtml(model.side || "UNKNOWN")} · ${model.dimensions ? `${model.dimensions.width} × ${model.dimensions.depth} × ${model.dimensions.height} cm` : "No dimensions"} · ${model.renders.length}/${model.expectedRenders}</small></label><button type="button" data-history-action="review" data-model-index="${index}" title="Review in light rig">Rig</button></div>`).join("")}</div>` : '<div class="empty-state history-model-empty">No models stored in this job.</div>';
+    const selective = `<div class="selective-controls"><div><span>SELECTIVE RENDER</span><button type="button" data-history-action="selectAll">All</button><button type="button" data-history-action="selectNone">None</button></div><div class="selective-options"><label><input type="checkbox" data-select-camera value="F" checked>F</label><label><input type="checkbox" data-select-camera value="FH" checked>FH</label><label><input type="checkbox" data-select-camera value="TQ" checked>TQ</label><i></i><label><input type="checkbox" data-select-layer value="Fabric" checked>Fabric</label><label><input type="checkbox" data-select-layer value="Shadow" checked>Shadow</label></div></div>`;
+    $("historyDetail").innerHTML = `<div class="history-detail-heading"><div><span>SAVED JOB</span><strong>${escapeHtml(batch.id)}</strong><small>${escapeHtml(formatDate(batch.generatedAt))}</small></div><i class="history-state" data-state="${escapeHtml(batch.state)}">${escapeHtml(historyStateLabel(batch.state))}</i></div><div class="history-summary"><div><span>MODELS</span><strong>${batch.modelCount}</strong></div><div><span>RENDERS</span><strong>${batch.renderCount}/${batch.expectedRenders}</strong></div><div><span>OUTPUT</span><strong>${batch.renderCount ? "On disk" : "Empty"}</strong></div></div>${selective}${models}${batch.error ? `<p class="inline-warning">${escapeHtml(batch.error)}</p>` : ""}<code class="history-path" title="${escapeHtml(batch.jobPath)}">${escapeHtml(batch.jobPath)}</code><div class="history-actions"><button class="primary-button" type="button" data-history-action="selective"${batch.modelCount ? "" : " disabled"}>Load selection</button><button class="secondary-button" type="button" data-history-action="edit"${batch.modelCount ? "" : " disabled"}>Load all & edit</button><button class="secondary-button" type="button" data-history-action="review"${batch.modelCount ? "" : " disabled"}>Review rig</button><button class="secondary-button" type="button" data-history-action="rerun"${batch.state === "invalid" ? " disabled" : ""}>Run again</button><button class="quiet-button" type="button" data-history-action="viewJob">View JSON</button><button class="quiet-button" type="button" data-history-action="showJob">Show JSON</button><button class="quiet-button" type="button" data-history-action="openRenders"${batch.renderCount ? "" : " disabled"}>Open renders</button></div>`;
   };
   const renderRigHistoryModels = () => {
     const batch = state.rigBatch, group = $("rigBatchGroup");
@@ -360,7 +426,15 @@
     gallery.hidden = !model;
     if (!model) return;
     $("rigRenderModel").textContent = model.name; $("rigRenderCount").textContent = `${model.renders.length} file${model.renders.length === 1 ? "" : "s"}`;
-    $("rigRenderImages").innerHTML = model.renders.length ? model.renders.map(render => `<a href="${escapeHtml(render.url)}" target="_blank" rel="noreferrer"><img src="${escapeHtml(render.url)}" alt="${escapeHtml(model.name)} ${escapeHtml(render.camera || "render")}" loading="lazy"><span>${escapeHtml(render.camera || render.name)}</span></a>`).join("") : '<div class="empty-state">This model has no render files on disk yet.</div>';
+    const cameraRank = { F: 0, FH: 1, TQ: 2 }, cameras = [...new Set(model.renders.map(render => render.camera || "Other"))].sort((left, right) => (cameraRank[left] ?? 9) - (cameraRank[right] ?? 9));
+    const card = render => {
+      const diagnostics = [render.width && render.height ? `${render.width}×${render.height}` : "Unknown size", render.alpha === true ? "Alpha" : render.alpha === false ? "No alpha" : "Alpha unknown", ...(render.issues || [])];
+      return `<a class="${render.issues?.length ? "render-warning" : ""}" data-layer="${escapeHtml(render.layer || "Fabric")}" href="${escapeHtml(render.url)}" target="_blank" rel="noreferrer"><img src="${escapeHtml(render.url)}" alt="${escapeHtml(model.name)} ${escapeHtml(render.camera || "render")} ${escapeHtml(render.layer || "")}" loading="lazy"><span>${escapeHtml(render.layer || render.camera || render.name)}${render.issues?.length ? " · Check" : ""}</span><small>${escapeHtml(diagnostics.join(" · "))}</small></a>`;
+    };
+    $("rigRenderImages").innerHTML = model.renders.length ? cameras.map(camera => {
+      const renders = model.renders.filter(render => (render.camera || "Other") === camera).sort((left, right) => (left.layer === "Shadow" ? 1 : 0) - (right.layer === "Shadow" ? 1 : 0) || left.name.localeCompare(right.name));
+      return `<section class="render-camera-group"><div><strong>${escapeHtml(camera)}</strong><span>${renders.length} files · Fabric then Shadow</span></div><div>${renders.map(card).join("")}</div></section>`;
+    }).join("") : '<div class="empty-state">This model has no render files on disk yet.</div>';
   };
   const selectHistoryModel = model => {
     if (!model) return;
@@ -376,14 +450,20 @@
     selectHistoryModel(batch.models[Math.max(0, Math.min(modelIndex, batch.models.length - 1))]);
     document.querySelector(".rig-section").scrollIntoView({ behavior: "smooth", block: "start" });
   };
-  const selectHistoryBatch = batch => { state.historyBatch = batch; renderHistoryList(); renderHistoryDetail(); };
+  const selectHistoryBatch = batch => {
+    state.historyBatch = batch; state.historySelection = new Set((batch.models || []).map(model => model.name));
+    state.rigBatch = batch; renderHistoryList(); renderHistoryDetail(); renderRigHistoryModels();
+    if (batch.models?.length) selectHistoryModel(batch.models[0]);
+  };
   const viewHistoryJob = async batch => {
     const rawJsonTab = window.open(batch.jobUrl, "_blank");
     if (rawJsonTab) { rawJsonTab.opener = null; return; }
     const job = await api(batch.jobUrl); $("jobDialogTitle").textContent = batch.id; $("jobJson").textContent = JSON.stringify(job, null, 2); $("jobDialog").showModal();
   };
-  const editHistoryJob = async batch => {
-    const job = await api(batch.jobUrl), tasks = job.tasks || [];
+  const editHistoryJob = async (batch, options = {}) => {
+    const job = await api(batch.jobUrl), sourceTasks = job.tasks || [];
+    const names = options.modelNames?.length ? new Set(options.modelNames) : null;
+    const tasks = names ? sourceTasks.filter(task => names.has(task.taskId)) : sourceTasks;
     if (!tasks.length) throw new Error("This job has no models to edit");
     const metadataRows = job._rhLocal?.models || (job._rhLocal?.name ? [job._rhLocal] : []);
     const metadata = new Map(metadataRows.map(record => [record.name, record]));
@@ -408,12 +488,13 @@
       if (!materialValues.has(key)) materialValues.set(key, new Set());
       materialValues.get(key).add(String(material.name || ""));
     }))));
-    const cameras = new Set(tasks.flatMap(task => (task.sequence?.cameras || []).map(camera => camera.name)));
-    const layers = new Set(tasks.flatMap(task => (task.layers || []).filter(layer => !layer.doNotRender).map(layer => layer.name)));
+    const cameras = new Set(options.cameras?.length ? options.cameras : tasks.flatMap(task => (task.sequence?.cameras || []).map(camera => camera.name)));
+    const recordedLayers = metadataRows.flatMap(record => record.selectedLayers || []);
+    const layers = new Set(options.layers?.length ? options.layers : recordedLayers.length ? recordedLayers : tasks.flatMap(task => (task.layers || []).filter(layer => !layer.doNotRender && !layer._rhLocalPrefit).map(layer => layer.name)));
     state.batch = restored; state.jobPath = null; state.historyModel = null;
     $("materialsList").innerHTML = ""; renderMaterials(); selectModel(restored[0]);
     document.querySelectorAll("[data-material-key]").forEach(input => {
-      const values = materialValues.get(input.dataset.materialKey); input.value = values?.size === 1 ? [...values][0] : "";
+      const values = materialValues.get(input.dataset.materialKey); input.value = values?.size === 1 ? [...values][0] : ""; updateMaterialStatus(input);
     });
     document.querySelectorAll('input[name="camera"]').forEach(input => input.checked = cameras.has(input.value));
     document.querySelectorAll('input[name="layer"]').forEach(input => input.checked = layers.has(input.value));
@@ -431,8 +512,11 @@
   const loadHistory = async () => {
     try {
       const selectedId = state.historyBatch?.id, { batches } = await api("/api/history"); state.history = batches;
-      state.historyBatch = batches.find(batch => batch.id === selectedId) || batches[0] || null;
+      const selectedBatch = batches.find(batch => batch.id === selectedId) || batches[0] || null, changedBatch = state.historyBatch?.id !== selectedBatch?.id;
+      state.historyBatch = selectedBatch;
+      if (changedBatch || !state.historySelection.size) state.historySelection = new Set((selectedBatch?.models || []).map(model => model.name));
       renderHistoryList(); renderHistoryDetail();
+      if (!state.rigBatch && selectedBatch?.models?.length) { state.rigBatch = selectedBatch; renderRigHistoryModels(); selectHistoryModel(selectedBatch.models[0]); }
       if (state.rigBatch) state.rigBatch = batches.find(batch => batch.id === state.rigBatch.id) || null;
       if (state.historyModel && state.rigBatch) {
         const updated = state.rigBatch.models.find(model => model.name === state.historyModel.name); if (updated) selectHistoryModel(updated);
@@ -448,6 +532,7 @@
   const init = async () => {
     loadRig();
     try { await loadModelMetadata(); } catch (error) { console.warn(`Model metadata unavailable: ${error.message}`); }
+    try { await loadMaterialAssets(); } catch (error) { console.warn(`Unreal materials unavailable: ${error.message}`); }
     if (!canReachLocalService) { setConnection(false); $("sheetState").textContent = "STATIC"; $("unrealState").textContent = "OFFLINE"; return; }
     try {
       const status = await api("/api/status"); state.status = status; state.models = status.models; setConnection(true);
@@ -477,7 +562,8 @@
   });
   [["width", "width"], ["depth", "depth"], ["height", "height"]].forEach(([id, key]) => $(id).addEventListener("input", () => { if (state.model && +$(id).value > 0) { state.model.dimensions[key] = +$(id).value; renderBatch(); validate(); } }));
   $("importYaw").addEventListener("input", () => { if (state.model) { state.model.importYaw = +$("importYaw").value || 0; validate(); } });
-  $("generateJob").addEventListener("click", generate); $("launchRender").addEventListener("click", launch); $("refreshSheet").addEventListener("click", refreshSheet);
+  $("generateJob").addEventListener("click", generate); $("launchRender").addEventListener("click", launch); $("stickyGenerate").addEventListener("click", generate); $("stickyLaunch").addEventListener("click", launch); $("refreshSheet").addEventListener("click", refreshSheet);
+  $("retryRender").addEventListener("click", launch);
   document.querySelectorAll('input[name="renderProfile"]').forEach(input => input.addEventListener("change", () => {
     const low = input.checked && input.value === "low";
     $("fabricResolutionLabel").textContent = low ? "Path Trace · 500" : "Path Trace · 5K";
@@ -498,25 +584,39 @@
     updateRigRange(range);
   });
   $("rigMode").addEventListener("change", renderRig);
-  document.querySelectorAll('input[name="rigShot"], input[name="rigColor"]').forEach(node => node.addEventListener("change", renderRig));
+  document.querySelectorAll('input[name="rigShot"], input[name="rigColor"], input[name="rigLayer"]').forEach(node => node.addEventListener("change", renderRig));
   document.querySelectorAll('input[name="rigLayout"]').forEach(node => node.addEventListener("change", () => { $("rigViews").dataset.layout = node.value; requestAnimationFrame(renderRig); }));
   $("sceneSide").addEventListener("change", renderRig);
   $("refreshHistory").addEventListener("click", loadHistory);
+  $("historySearch").addEventListener("input", renderHistoryList); $("historyFilter").addEventListener("change", renderHistoryList);
   $("historyList").addEventListener("click", event => {
     const card = event.target.closest("[data-history-id]"); if (!card) return;
     const batch = state.history.find(item => item.id === card.dataset.historyId); if (batch) selectHistoryBatch(batch);
   });
   $("historyDetail").addEventListener("click", async event => {
     const button = event.target.closest("[data-history-action]"), batch = state.historyBatch; if (!button || !batch) return;
+    event.preventDefault();
     const action = button.dataset.historyAction;
     try {
       if (action === "edit") await editHistoryJob(batch);
       else if (action === "review") reviewHistoryBatch(batch, +(button.dataset.modelIndex || 0));
+      else if (action === "selectAll") { state.historySelection = new Set((batch.models || []).map(model => model.name)); renderHistoryDetail(); }
+      else if (action === "selectNone") { state.historySelection.clear(); renderHistoryDetail(); }
+      else if (action === "selective") {
+        const cameras = [...document.querySelectorAll("[data-select-camera]:checked")].map(input => input.value), layers = [...document.querySelectorAll("[data-select-layer]:checked")].map(input => input.value);
+        if (!state.historySelection.size) throw new Error("Select at least one model");
+        if (!cameras.length || !layers.length) throw new Error("Select at least one camera and layer");
+        await editHistoryJob(batch, { modelNames: [...state.historySelection], cameras, layers });
+      }
       else if (action === "rerun") { state.jobPath = batch.jobPath; $("jobResult").hidden = false; $("copyJobPath").textContent = batch.jobPath; await launch(); }
       else if (action === "viewJob") await viewHistoryJob(batch);
       else if (action === "showJob") { await openLocal("showJob", batch.jobPath); toast("JSON selected in Explorer"); }
       else if (action === "openRenders") { await openLocal("openRenders", batch.outputFolder); toast("Render folder opened"); }
     } catch (error) { toast(error.message, true); }
+  });
+  $("historyDetail").addEventListener("change", event => {
+    const input = event.target.closest("[data-history-model-select]"); if (!input) return;
+    if (input.checked) state.historySelection.add(input.dataset.historyModelSelect); else state.historySelection.delete(input.dataset.historyModelSelect);
   });
   $("rigBatchModels").addEventListener("click", event => {
     const button = event.target.closest("[data-history-model-index]"); if (!button || !state.rigBatch) return;

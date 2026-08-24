@@ -256,6 +256,16 @@ test("Shadow receives the exact Fabric transform and focal length with fit disab
   }
 });
 
+test("a Shadow-only request inserts a low-res Fabric camera prefit before Shadow", () => {
+  const job = buildJob({ ...baseInput, layers: ["Shadow"], renderProfile: "high" }, { ...model, materialIds: ["UPH", "Stitches", "Feet"] }, rig, "D:\\renders\\shadow-only");
+  const [fabric, shadow] = job.tasks[0].sequence.cameras[0].LayerResolutions;
+  assert.deepEqual(fabric.Resolution, { X: 500, Y: 500 });
+  assert.deepEqual(shadow.Resolution, { X: 15000, Y: 5000 });
+  assert.equal(job.tasks[0].layers[0]._rhLocalPrefit, true);
+  assert.equal(job._rhLocal.cameraPrefit, true);
+  assert.deepEqual(buildRenderPlan(job).map(phase => phase.name), ["Fabric", "Shadow"]);
+});
+
 test("local render service completes Fabric before restarting for Substrate-off Shadow", async () => {
   const suffix = `${process.pid}_${Date.now()}`, port = 56000 + process.pid % 5000;
   const jobsRoot = path.join(root, "local", "jobs", "generated"), output = path.join(root, "local", "renders", `test_phases_${suffix}`);
@@ -374,7 +384,7 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(client, /const loadHistory = async/);
   assert.match(client, /data-history-action="rerun"/);
   assert.match(client, /data-history-action="edit"/);
-  assert.match(client, /const editHistoryJob = async batch =>/);
+  assert.match(client, /const editHistoryJob = async \(batch, options = \{\}\) =>/);
   assert.match(client, /window\.open\(batch\.jobUrl, "_blank"\)/);
   assert.match(client, /rawJsonTab\.opener = null/);
   assert.match(client, /const job = await api\(batch\.jobUrl\)/);
@@ -384,7 +394,7 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(client, /openLocal\("showJob"/);
   assert.match(client, /selectHistoryModel/);
   assert.match(client, /state\.rigBatch/);
-  assert.match(client, /model\.renders\.map\(render =>/);
+  assert.match(client, /const card = render =>/);
   assert.doesNotMatch(client, /batch\.models\.slice\(0, 6\)/);
   assert.match(styles, /\.rig-render-images img\{height:auto;aspect-ratio:auto;object-fit:contain\}/);
   assert.match(styles, /\.history-model-list\{max-height:206px;overflow:auto/);
@@ -393,6 +403,11 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(html, /Shadow runs in a fresh Unreal process with Substrate disabled/);
   assert.match(html, /name="renderProfile" value="low"/);
   assert.match(html, /name="renderProfile" value="high" checked/);
+  assert.match(html, /id="preflight"/);
+  assert.match(html, /id="pipelineBar"/);
+  assert.match(html, /name="rigLayer" value="Shadow"/);
+  assert.match(client, /data-history-action="selective"/);
+  assert.match(client, /render-camera-group/);
   assert.match(client, /renderProfile: selected\("renderProfile"\)\[0\] \|\| "high"/);
   assert.match(client, /Substrate \$\{render\.substrate \? "ON" : "OFF"\}/);
   assert.doesNotMatch(client, /Open the local dashboard with npm start to resolve full model paths/);

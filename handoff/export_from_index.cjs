@@ -97,7 +97,8 @@ function buildConstants({ L, BUILTIN }) {
       B: "sizes unchanged, intensity x (k^2*d0^2 + R^2)/(d0^2 + R^2)  ~=  intensity x k^p, p = 2*d0^2/(d0^2 + R^2)",
     },
     rig_scale: {
-      rule: "the three axis ratios collapse into ONE factor: k = cbrt(sX * sY * sZ). Every light gets the same k, positions are p * k, and pitch/yaw/roll are never recomputed.",
+      rule: "the three axis ratios collapse into ONE factor: k = max(1, cbrt(sX * sY * sZ)). Every light gets the same k, positions are p * k, and pitch/yaw/roll are never recomputed.",
+      clamp: "k is clamped at 1 - the rig is only ever pushed OUT, never pulled in. A sofa that fits inside the tuned rig is emitted with the rig exactly as built (k = 1). Measured over the 15-preset catalogue that beats scaling down: exposure spread 1.21x static vs 1.26x scaled, and evenness improves the smaller the sofa gets. Above the reference the picture inverts (evenness 1.32x worse at 1.2 scale, 3.47x at 1.5), which is what the clamp lets through.",
       why: [
         "a per-axis stretch gave each light its own k (0.69 to 1.30 on a real sectional), which pulls the balance between the five sources apart",
         "a per-axis stretch also forces pitch/yaw corrections of up to 21 deg, which is what flattened the render",
@@ -154,6 +155,8 @@ const CASES = [
   { id: "borgo39250513-FH-B",  view: "FH",  mode: "B", swap: false, W: 453, D: 280, H: 80 },
   { id: "masson39250419-F-A-swap", view: "F", mode: "A", swap: true, W: 312, D: 246, H: 77 },
   { id: "big-F-A",           view: "F",   mode: "A", swap: false, W: 600, D: 300, H: 80 },
+  { id: "xl-TQL-B",          view: "TQL", mode: "B", swap: false, W: 600, D: 340, H: 95 },
+  { id: "clamped-F-A",       view: "F",   mode: "A", swap: false, W: 312, D: 246, H: 77 },
   { id: "small-TQR-A",       view: "TQR", mode: "A", swap: false, W: 200, D: 150, H: 60 },
   { id: "custom-ref-F-A",    view: "F",   mode: "A", swap: false, W: 453, D: 279, H: 79, ref: { W: 400, D: 250, H: 75 } },
 ];

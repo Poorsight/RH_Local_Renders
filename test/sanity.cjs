@@ -24,7 +24,7 @@ try {
 }
 
 const { REF_DEFAULT, TEMPLATE, VIEWS, computeAll, generateT3D, viewLights,
-        rigScale, fitAspectBounds, rbCandidateFiles, rbMatchManifest, presetArmSide, armRequiredView, armBlocksView } = L;
+        rigScale, rigScaleRaw, fitAspectBounds, rbCandidateFiles, rbMatchManifest, presetArmSide, armRequiredView, armBlocksView } = L;
 
 let failed = 0;
 function check(name, cond) {
@@ -109,10 +109,22 @@ check("scaled F keeps 5 actors + line count",
 {
   const dims = [[600,300,80], [274.583,355.499,86.860], [312,246,77], [1000,80,30]];
 
-  check("rigScale is the geometric mean of the three axis ratios",
-    Math.abs(rigScale(R0.W*2, R0.D*2, R0.H*2, R0) - 2) < 1e-12 &&
-    Math.abs(rigScale(R0.W*2, R0.D, R0.H, R0) - Math.cbrt(2)) < 1e-12 &&
-    rigScale(R0.W, R0.D, R0.H, R0) === 1);
+  check("rigScaleRaw is the geometric mean of the three axis ratios",
+    Math.abs(rigScaleRaw(R0.W*2, R0.D*2, R0.H*2, R0) - 2) < 1e-12 &&
+    Math.abs(rigScaleRaw(R0.W*2, R0.D, R0.H, R0) - Math.cbrt(2)) < 1e-12 &&
+    Math.abs(rigScaleRaw(R0.W/2, R0.D, R0.H, R0) - Math.cbrt(0.5)) < 1e-12 &&
+    rigScaleRaw(R0.W, R0.D, R0.H, R0) === 1);
+
+  /* The rig is only ever pushed OUT. Anything that fits inside the tuned setup is emitted as
+     tuned — measured on the preset catalogue that beats pulling the lights in. */
+  check("rigScale clamps at 1: the rig is never pulled in",
+    rigScale(R0.W/2, R0.D/2, R0.H/2, R0) === 1 &&
+    rigScale(R0.W, R0.D, R0.H, R0) === 1 &&
+    rigScale(312, 246, 77, R0) === 1 &&
+    rigScale(R0.W*2, R0.D*2, R0.H*2, R0) === 2);
+  check("a sofa smaller than the reference reproduces the rig byte-for-byte",
+    ["A","B"].every(mode => views.every(v =>
+      generateT3D(computeAll(312, 246, 77, mode, false, R0, v)) === gen(v, mode))));
 
   check("rigScale is invariant to swapping W and D (a mesh rotated 90° gives the same rig)",
     dims.every(([W,D,H]) =>

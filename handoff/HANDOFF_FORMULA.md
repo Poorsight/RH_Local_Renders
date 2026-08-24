@@ -95,7 +95,7 @@ no effect, see 5.2.
 ### 5.2 One rig factor `k` — the same for all five lights
 
 ```
-k = ∛(sX · sY · sZ)
+k = max(1, ∛(sX · sY · sZ))
 ```
 
 The rig is a **studio setup around** the subject, not geometry glued to its bounding box, so it is
@@ -110,6 +110,19 @@ they are the reason this replaced the old per-axis transform:
   21° on that same sectional, which is what flattened the render.
 * **Swapping `W` and `D` changes nothing**, because `sX · sY = W · D / (ref.W · ref.D)` either way.
   A mesh authored rotated 90° produces the same rig — an entire class of pipeline bug disappears.
+
+**The clamp at 1 is deliberate: the rig is only ever pushed OUT, never pulled in.** A sofa that
+fits inside the tuned rig is emitted with the rig exactly as built. Measured over the 15-preset
+catalogue that beats scaling down — exposure spread `1.21×` leaving the rig alone against `1.26×`
+scaling it, and evenness *improves* the smaller the sofa gets (`0.92×` the reference error at 0.9
+scale, `0.60×` at 0.6), because a smaller subject sits deeper inside the light field. Pulling the
+lights in only amplifies the error: the shallow chaises in the catalogue are already 4–6 % hot with
+the rig untouched, and their raw factor of 0.85–0.89 would add another 3 %.
+
+Above the reference the picture inverts — a sofa outgrows the light field and its edges fall off
+(evenness `1.32×` worse at 1.2 scale, `3.47×` at 1.5) — and that is exactly the case the clamp
+lets through. In practice, for the current catalogue (largest model `459 × 276 × 83`, raw factor
+`1.017`) the rig is emitted as tuned for every model but one, and that one moves by 1.7 %.
 
 What it cannot do is follow the subject's **shape**: a rigid rig tracks size only. When the
 proportions differ a lot from the reference (see 10), that residual is real and is not a bug.
@@ -187,7 +200,7 @@ longer the case.
 ### 5.9 Pseudocode
 
 ```
-k = cbrt((W/ref.W) * (D/ref.D) * (H/ref.H))                      # §5.2 — one factor, all lights
+k = max(1, cbrt((W/ref.W) * (D/ref.D) * (H/ref.H)))              # §5.2 — one factor, all lights
 for name, L in merge(LIGHT_BASE, VIEWS[view].lights):
     x, y, z = L.pos
     pos  = (x*k, y*k, z*k)
@@ -198,33 +211,43 @@ for name, L in merge(LIGHT_BASE, VIEWS[view].lights):
     emit(name, pos, I, sizes * sizeK, L.pitch, L.yaw, L.roll)    # rotations verbatim
 ```
 
-### 5.10 Worked example
+### 5.10 Worked examples
 
-`main_key_lgt`, sofa `384 × 305 × 82` (Koper 39250480), shot `TQL`, mode `A`:
+**A sofa that fits inside the rig — the clamp fires.** Koper 39250480, `384 × 305 × 82`:
 
 ```
 sX = 384/453 = 0.847682119   sY = 305/279 = 1.093189964   sZ = 82/79 = 1.037974684
-k  = ∛(sX · sY · sZ) = 0.987124217            # the same k for all five lights
-p₀ = (−474, −19, 168)        I₀ = 60      R = 52.479965 (SourceRadius)
-p₁ = p₀ · k = (−467.896879, −18.755360, 165.836868)
-d₀ = 503.250435
-rotations: pitch −25, yaw 3, roll 0 — unchanged
-mode A:  Intensity = 60 · k² = 58.464853       SourceRadius = 52.479965 · k = 51.804244
-mode B:  Intensity = 58.481368  (p = 1.978485 → nearly k², this source is small)
+raw = ∛(sX · sY · sZ) = 0.987124217
+k   = max(1, raw)      = 1.000000000        <- clamped
 ```
 
-Note how mild `k` is even though the axis ratios span 0.85–1.11: the geometric mean cancels a
-sofa that is narrower but deeper. That is the intended behaviour — the rig follows overall size,
-not shape.
+Output is the shot's rig **byte for byte**, in both modes. Every preset in the catalogue except
+`Koper · U (39250483)` behaves this way, so a port that forgets the clamp fails immediately and
+loudly — which is the point.
 
-The same sofa, `front_fill_lgt`: `p₁ = (0, 687.038455, 51.330459)`, `Intensity = 5.846485`,
-`SourceWidth = SourceHeight = 493.562108`, rotations `pitch 4`, `yaw −90` unchanged. The fill stays
-on `x = 0` — a uniform scale cannot move it off the camera axis. Full expected output:
-`acceptance_vectors.json` → `koper39250480-TQL-A`.
+**A sofa that outgrows the rig — the clamp lets it through.** `550 × 300 × 85`, shot `TQL`:
 
-Invariance vectors worth pinning in a port: `rigScale` at the reference is exactly `1`;
-`rigScale(2·ref.W, 2·ref.D, 2·ref.H) = 2`; and swapping `W` with `D` (rescaled by
-`ref.W/ref.D`) leaves `k` bit-identical.
+```
+sX = 550/453 = 1.214128035   sY = 300/279 = 1.075268817   sZ = 85/79 = 1.075949367
+k  = ∛(sX · sY · sZ) = 1.119930634            # > 1, so no clamp; same k for all five lights
+
+main_key_lgt   p₀ = (−474, −19, 168)   I₀ = 60   R = 52.479965
+               p₁ = p₀ · k = (−530.847121, −21.278682, 188.148347)      # 62 cm further out
+               rotations: pitch −25, yaw 3, roll 0 — unchanged
+  mode B:      Intensity = 75.090572   SourceRadius = 52.479965 (untouched)   p = 1.978485
+  mode A:      Intensity = 75.254678   SourceRadius = 58.773920 (· k)
+
+front_fill_lgt p₁ = (0, 779.471722, 58.236393)                              # 84 cm further out
+  mode B:      Intensity = 7.311257    SourceWidth = SourceHeight = 500 (untouched)
+  mode A:      Intensity = 7.525468    SourceWidth = SourceHeight = 559.965317
+```
+
+Note the fill stays on `x = 0` — a uniform scale cannot move it off the camera axis. Full expected
+output for both cases: `acceptance_vectors.json` → `clamped-F-A` and `xl-TQL-B`.
+
+Invariance vectors worth pinning in a port: `raw` at the reference is exactly `1`;
+`raw(2·ref.W, 2·ref.D, 2·ref.H) = 2`; `raw(ref.W/2, ref.D, ref.H) = ∛0.5` while `k` for the same
+input is exactly `1`; and swapping `W` with `D` (rescaled by `ref.W/ref.D`) leaves `raw` bit-identical.
 
 ## 6. Constants
 

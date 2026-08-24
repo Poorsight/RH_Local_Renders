@@ -309,7 +309,7 @@
         <span class="d">Also scales every source size by the same factor — a true scale model of the rig, so shadow softness is preserved to the letter.</span>
       </span>
     </label>
-    <p class="modehelp"><b>The rig moves as one rigid body:</b> a single factor pushes all five lights in or out. Nothing is rotated, raised or reshaped, so the balance between the sources stays exactly as it was tuned.</p>
+    <p class="modehelp"><b>The rig moves as one rigid body:</b> a single factor pushes all five lights out when a sofa outgrows the tuned setup, and leaves them exactly where they are otherwise. Nothing is rotated, raised or reshaped, so the balance between the sources stays as tuned.</p>
     <details class="mini">
       <summary>When to use which?</summary>
       <p class="note">Both modes are identical at the reference size and differ only in source size — typically a few per cent, which shows up as slightly softer or harder shadow edges. <b>Fixed sources</b> matches what the render pipeline can reproduce with real fixtures; use <b>exact similarity</b> when you want the scale model to be mathematically perfect.</p>
@@ -331,8 +331,9 @@
       <summary>How axes &amp; scaling work</summary>
       <p class="note">
         <b>Axes:</b> world&nbsp;X↔width(453), Y↔depth(279), Z↔height(79) — inferred from the fill (SourceWidth&nbsp;500&nbsp;≈&nbsp;453).
-        The three axis ratios collapse into <b>one</b> factor <b>k&nbsp;=&nbsp;∛(s<sub>X</sub>·s<sub>Y</sub>·s<sub>Z</sub>)</b>, so positions scale uniformly and
-        rotations never change. Swapping width and depth leaves k identical, so a mesh authored rotated 90° gives the same rig.
+        The three axis ratios collapse into <b>one</b> factor <b>k&nbsp;=&nbsp;max(1,&nbsp;∛(s<sub>X</sub>·s<sub>Y</sub>·s<sub>Z</sub>))</b>, so positions scale uniformly and
+        rotations never change. Anything that fits inside the tuned rig gets <b>k&nbsp;=&nbsp;1</b> — the rig as built.
+        Swapping width and depth leaves k identical, so a mesh authored rotated 90° gives the same rig.
         <b>AttenuationRadius</b> is passed through untouched — the path tracer ignores it.
       </p>
     </details>
@@ -429,8 +430,9 @@
       <div class="lbl">1. Axis ratios (reference rig <span id="fREF">453 × 279 × 79</span>):</div>
       <div class="eq">s<sub>X</sub> = W / <span id="fW1">453</span>&nbsp;&nbsp;&nbsp;&nbsp;s<sub>Y</sub> = D / <span id="fD1">279</span>&nbsp;&nbsp;&nbsp;&nbsp;s<sub>Z</sub> = H / <span id="fH1">79</span></div>
 
-      <div class="lbl">2. One rig factor — their geometric mean:</div>
-      <div class="eq"><span class="v">k = ∛(s<sub>X</sub> · s<sub>Y</sub> · s<sub>Z</sub>)</span>&nbsp;&nbsp;&nbsp;&nbsp;the same k for all five lights</div>
+      <div class="lbl">2. One rig factor — their geometric mean, clamped at 1:</div>
+      <div class="eq"><span class="v">k = max(1, ∛(s<sub>X</sub> · s<sub>Y</sub> · s<sub>Z</sub>))</span>&nbsp;&nbsp;&nbsp;&nbsp;the same k for all five lights</div>
+      <div class="eq">sofa fits inside the tuned rig → <b>k = 1</b>, the rig is emitted exactly as tuned</div>
 
       <div class="lbl">3. New light position — and that is the whole transform:</div>
       <div class="eq">X′ = X · k&nbsp;&nbsp;&nbsp;&nbsp;Y′ = Y · k&nbsp;&nbsp;&nbsp;&nbsp;Z′ = Z · k</div>
@@ -456,6 +458,9 @@
       pitch/yaw corrections of up to 21° — that is what flattened the render. A single factor moves the rig as a
       rigid body: the balance and every angle survive untouched, and the only thing that cannot be preserved is a
       sofa whose proportions differ from the reference.<br />
+      <b>Why the clamp:</b> a sofa smaller than the reference sits deeper inside the light field, which makes the
+      light <i>more</i> even, not less — measured over the whole preset catalogue, leaving the rig alone beats
+      pulling it in (exposure spread 1.21× vs 1.26×). Only a sofa that outgrows the rig needs it to back off.<br />
       <b>Why not a "pure" inverse square:</b> for large soft sources (fill, left_rim) R is comparable to the
       distance — the near field — so illuminance falls off gentler than k².
       When the input equals the reference, <code>k = 1</code> → the output matches the source rig 1:1.
@@ -674,8 +679,20 @@ const hyp = (a,b,c) => Math.sqrt(a*a + b*b + c*c);
        direction from the light to the subject unchanged;
      • it is invariant to swapping W and D, because sX·sY = W·D / (ref.W·ref.D) either
        way — a mesh authored rotated 90° produces the same rig. */
-function rigScale(W, D, H, ref){
+function rigScaleRaw(W, D, H, ref){
   return Math.cbrt((W / ref.W) * (D / ref.D) * (H / ref.H));
+}
+
+/* … and it is clamped at 1: the rig is only ever pushed OUT, never pulled in.
+   Measured over the 15-preset catalogue, a sofa that fits inside the tuned rig is lit better by
+   leaving the rig alone — exposure spread 1.21× static vs 1.26× scaled, and evenness improves
+   monotonically the smaller the sofa gets (0.92× the reference error at 0.9 scale, 0.60× at 0.6).
+   Pulling the lights in only amplifies the error: the shallow chaises are already 4–6 % hot
+   statically, and their raw k of 0.85–0.89 would add another 3 %. Above the reference the picture
+   inverts — a sofa outgrows the light field and its edges fall off (evenness 1.32× worse at 1.2
+   scale, 3.47× at 1.5) — so there the rig does have to back off. */
+function rigScale(W, D, H, ref){
+  return Math.max(1, rigScaleRaw(W, D, H, ref));
 }
 
 /* Expand scene bounds to the viewport aspect without cropping or distorting geometry.
@@ -817,7 +834,7 @@ function armBlocksView(arm, view){
 
 /* Export for node tests (no effect in the browser). */
 if (typeof module !== "undefined" && module.exports){
-  module.exports = { REF_DEFAULT, LIGHT_BASE, VIEWS, viewLights, TEMPLATE, computeAll, generateT3D, fmt, hyp, rigScale, fitAspectBounds,
+  module.exports = { REF_DEFAULT, LIGHT_BASE, VIEWS, viewLights, TEMPLATE, computeAll, generateT3D, fmt, hyp, rigScale, rigScaleRaw, fitAspectBounds,
     RB_VIEW_SUFFIXES, rbPrefixVariants, rbCandidateFiles, rbMatchManifest,
     presetArmSide, armRequiredView, armBlocksView };
 }
@@ -943,7 +960,7 @@ if (typeof document !== "undefined"){
       stat("Position X · Y · Z", `${r.pos.map(v=>v.toFixed(1)).join(" · ")} cm`) +
       stat("Pitch · Yaw", `${r.pitch.toFixed(1)}° · ${r.yaw.toFixed(1)}°`) +
       stat("Source size", size) +
-      stat("Rig scale", `${r.k.toFixed(3)}× · same for every light`);
+      stat("Rig scale", r.k === 1 ? "1.000× · as tuned" : `${r.k.toFixed(3)}× · same for every light`);
   }
 
   // Top-down schematic (X·Y). World coords map straight to the viewBox; +Y points
@@ -1131,8 +1148,8 @@ if (typeof document !== "undefined"){
   function renderWarnings(W, D, H, mode, ref, res){
     const box = $("warn"); if (!box) return;
     const sX = W/ref.W, sY = D/ref.D, sZ = H/ref.H, ws = [];
-    const k = rigScale(W, D, H, ref);
-    if (k < .6 || k > 1.6) ws.push(`Extreme rig scale (×${k.toFixed(2)}) — use this as a starting point and verify coverage in the render.`);
+    const k = rigScale(W, D, H, ref), raw = rigScaleRaw(W, D, H, ref);
+    if (k > 1.6) ws.push(`Extreme rig scale (×${k.toFixed(2)}) — this sofa is far larger than the rig was tuned for; verify coverage in the render.`);
     /* The residual error this tool cannot remove: a rigid rig can follow the sofa's SIZE but not
        its SHAPE, so flag how far the proportions have drifted from the reference. */
     const skew = Math.max(sX,sY,sZ) / Math.min(sX,sY,sZ);
@@ -1142,9 +1159,12 @@ if (typeof document !== "undefined"){
       ws.push(`These dimensions are outside a typical sectional range — confirm that the values are in centimetres.`);
     const maxI = Math.max(...Object.values(res).map(r => r.intensity));
     if (maxI > 250) ws.push(`Peak intensity ≈ ${Math.round(maxI)} cd (well above the source) — re-check camera exposure.`);
+    const okMsg = k === 1
+      ? `✓ Sofa fits inside the tuned rig (∛· = ${raw.toFixed(3)}) · lights emitted exactly as tuned.`
+      : `✓ Within calibrated range · rig pushed out ×${k.toFixed(3)}, rotations untouched.`;
     box.innerHTML = ws.length
       ? ws.map(w => `<div class="w">⚠ ${w}</div>`).join("")
-      : `<div class="w ok">✓ Within calibrated range · rig scaled ×${k.toFixed(2)}, rotations untouched.</div>`;
+      : `<div class="w ok">${okMsg}</div>`;
   }
 
   function setRefLabels(ref){
@@ -1165,7 +1185,8 @@ if (typeof document !== "undefined"){
     $("out").value = generateT3D(res);
 
     const summary = $("rigSummary");
-    if (summary) summary.textContent = `${W} × ${D} × ${H} cm · 5 lights · rig ×${rigScale(W, D, H, ref).toFixed(3)} · rotations untouched`;
+    const kNow = rigScale(W, D, H, ref);
+    if (summary) summary.textContent = `${W} × ${D} × ${H} cm · 5 lights · ${kNow === 1 ? "rig as tuned" : `rig ×${kNow.toFixed(3)}`} · rotations untouched`;
 
     renderDiagram(res, W, D, H, (VIEWS[view] || VIEWS.F).rot || 0, (VIEWS[view] || VIEWS.F).label ? view : "");
     renderSideView(res, W, H);

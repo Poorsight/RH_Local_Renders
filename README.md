@@ -46,7 +46,7 @@ nothing is rotated, raised or reshaped.
 
 | What | Rule |
 |---|---|
-| Rig factor | `k = ∛(sX · sY · sZ)`, where `sX = W/453`, `sY = D/279`, `sZ = H/79` — **the same k for all five lights** |
+| Rig factor | `k = max(1, ∛(sX · sY · sZ))`, where `sX = W/453`, `sY = D/279`, `sZ = H/79` — **the same k for all five lights**, and **clamped at 1**: a sofa that fits inside the tuned rig gets the rig exactly as built |
 | Positions | `p′ = p · k` |
 | Rotations | pitch, yaw, roll — **never recomputed**, copied from the shot's tuned rig |
 | Intensity, mode **B** (default) | sizes unchanged, `I·(k²·d² + R²)/(d² + R²) ≈ I·k^p`, where `p = 2d²/(d²+R²)` |
@@ -64,6 +64,10 @@ nothing is rotated, raised or reshaped.
 - **Mode B** — recommended: real studio fixtures keep their real sizes. It also explains why
   "inverse square doesn't work": for large soft lights (fill, left_rim), `R` is comparable to the
   distance → softer falloff (`~k^1.7`), while for the sharp `main_key` → almost `k²`.
+- **Why the clamp:** a sofa smaller than the reference sits deeper inside the light field, which
+  makes the light *more* even, not less. Over the 15-preset catalogue, leaving the rig alone beats
+  pulling it in — exposure spread 1.21× vs 1.26× — and only a sofa that outgrows the rig needs it
+  to back off (evenness 1.32× worse at 1.2× the reference size, 3.47× at 1.5×).
 - **What it cannot do:** follow the sofa's *shape*. A rigid rig tracks size only, so a sectional
   whose proportions differ a lot from the reference keeps a residual difference — the tool warns
   when `max(sX,sY,sZ)/min(sX,sY,sZ) > 1.5` instead of pretending to compensate.

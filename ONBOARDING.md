@@ -23,7 +23,7 @@ All logic is in a single `index.html` — no build, no dependencies.
 
 ## Features
 - **Camera shots / views:** `F` (front), `FH` (front-high), `TQ-R` (¾, sofa +36°, right-arm sectionals), `TQ-L` (¾, sofa −36°, left-arm) — the two ¾ shots are mirrored. Each shot is its own light rig. ⚠️ The mapping was briefly inverted on 2026-08-13 and reverted the same day; identify a rig by its numbers, not by a label on an export (see `armRequiredView` in `index.html` and HANDOFF_FORMULA §8, which also records an open conflict with the render pipeline).
-- **Rigid-body size scaling:** the three axis ratios collapse into one factor `k = ∛(sX·sY·sZ)` and the whole rig moves in or out by it. Rotations, and the balance between the five sources, are preserved exactly. `k` is invariant to swapping W/D, so a mesh authored rotated 90° gives the same rig, and the `swap` flag in the `computeAll` API is now a documented no-op.
+- **Rigid-body size scaling:** the three axis ratios collapse into one factor `k = max(1, ∛(sX·sY·sZ))` and the whole rig moves out by it. **Clamped at 1** — anything that fits inside the tuned rig is emitted with the rig exactly as built; only a sofa that outgrows the light field makes it back off. Rotations, and the balance between the five sources, are preserved exactly. `k` is invariant to swapping W/D, so a mesh authored rotated 90° gives the same rig, and the `swap` flag in the `computeAll` API is now a documented no-op.
 - **Two source-size models:** B (fixed physical sizes, `I·k^p` — **default**) / A (sizes also × k, `I·k²` — an exact similarity transform).
 - **Sofa presets:** 17 RH sectional models (UPH bounds measured in the UE project), plus user presets in `localStorage`. The default preset is `KOPER_LEFT_ARM_L_SECTIONAL_prod39250480` at `384 x 305 x 82` so it can load server renders immediately.
 - **Interactive scene schematic:** the two-screen Split layout is the default, with Plan and Elevation available as expanded single views. Plan (X·Y, TQ sofa drawn at its shot angle) and Elevation (X·Z, heights & pitch) use a calm technical palette, subdued major/minor cm grid, engineering dimensions, camera/floor markers, scale bar, animated aim cones/vectors, and collision-aware labels. `fitAspectBounds` expands world bounds to the measured SVG aspect on render, layout switch, and resize, keeping the grid edge-to-edge without distorting or cropping scene geometry. A light can be selected from colored chips or directly on either SVG; the inspector shows intensity, position, pitch/yaw, source size and the rig factor. The selection pulse and scene entrance transitions respect `prefers-reduced-motion`; colors toggle between role and Kelvin.
@@ -40,7 +40,7 @@ Single self-contained `index.html`:
      - `VIEWS` — per-shot rig data `{ F, FH, TQR, TQL }`; each `{ label, desc, rot, lights }` where `lights[name] = { pos:[x,y,z], I, pitch, yaw }` (only the fields that change between shots).
      - `viewLights(view)` — merges `LIGHT_BASE` + `VIEWS[view].lights` into a full light set.
      - `TEMPLATE` — one shared T3D skeleton (5 actors, structure of the F rig, asset paths neutralized to `/Game/LightRig/…`).
-     - `rigScale(W, D, H, ref)` → the single factor the whole rig is scaled by.
+     - `rigScaleRaw(W, D, H, ref)` → ∛(sX·sY·sZ); `rigScale(…)` → the same clamped at 1 (what `computeAll` uses).
      - `computeAll(W, D, H, mode, swap, ref, view)` → results object per light (`swap` is a no-op).
      - `generateT3D(res)` → T3D string for pasting.
      - `fmt`, `hyp` — utilities. (`scaleAim` / `rotZ` are gone: with one scale factor there is no aim to re-derive and no sofa frame to rotate into.)
@@ -135,8 +135,15 @@ reference implementation. Everything except the spec is **generated from `index.
 
 ## Formula (full version is in the on-site "Calculation formula" panel)
 - Axis ratios: `sX = W/453`, `sY = D/279`, `sZ = H/79`.
-- **One rig factor:** `k = ∛(sX·sY·sZ)` — the same for all five lights. The rig is a studio setup
-  around the subject, not geometry glued to its bounding box, so it scales as a rigid body.
+- **One rig factor:** `k = max(1, ∛(sX·sY·sZ))` — the same for all five lights. The rig is a studio
+  setup around the subject, not geometry glued to its bounding box, so it scales as a rigid body.
+- **Clamped at 1 — the rig is only pushed out, never pulled in.** Measured over the 15-preset
+  catalogue, a sofa that fits inside the tuned rig is lit better by leaving the rig alone: exposure
+  spread 1.21× static vs 1.26× scaled, and evenness improves the smaller the sofa gets (0.92× the
+  reference error at 0.9 scale, 0.60× at 0.6) because a smaller subject sits deeper inside the light
+  field. Above the reference it inverts — evenness 1.32× worse at 1.2 scale, 3.47× at 1.5 — which is
+  the case the clamp lets through. For the current catalogue (largest `459 × 276 × 83`, raw factor
+  1.017) that means the rig is emitted as tuned for every model but one.
 - Position: `p₁ = p₀ · k`. That is the entire spatial transform — no sofa frame, no `Rz(θ)`, because
   a uniform scale commutes with any rotation, so the ¾ shots need no special handling.
 - **Rotations are never recomputed.** Multiplying a position by a scalar leaves the direction from
@@ -193,8 +200,9 @@ npm test          # = node test/sanity.cjs   (Node 18+)
 all four views produce 5 actors, the same line count, and no branding; per-view rotations
 (key + right-rim) are correct; scaling changes the output while preserving structure; the
 rigid-rig invariants — `rigScale` is the geometric mean and is swap-invariant, `swap` is a no-op,
-rotations are never recomputed, `k` is identical for all five lights, positions are exactly
-`source · k` on every shot, and `AttenuationRadius` is never written;
+rotations are never recomputed, `k` is identical for all five lights and clamped at 1, a sofa
+smaller than the reference reproduces the rig byte-for-byte, positions are exactly `source · k` on
+every shot, and `AttenuationRadius` is never written;
 render-preview helpers — arm side + TQ gating, candidate order, manifest matching — via the
 exported pure functions; that the `handoff/` data files are in sync with `index.html`; and that
 all four shots still reproduce the UE scene exports in `handoff/ue_reference/`.

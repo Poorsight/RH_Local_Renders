@@ -1,6 +1,6 @@
 (() => {
   const $ = (id) => document.getElementById(id);
-  const state = { status: null, models: [], metadata: null, batch: [], model: null, jobPath: null, poll: null, rig: null, history: [], historyBatch: null, historyModel: null };
+  const state = { status: null, models: [], metadata: null, batch: [], model: null, jobPath: null, poll: null, rig: null, history: [], historyBatch: null, rigBatch: null, historyModel: null };
   const canReachLocalService = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
   const LOCAL_MODELS_ROOT = "D:\\GitHub\\RH_Local_Renders\\local\\models";
   const RIG_REFERENCE = { width: 453, depth: 279, height: 79 };
@@ -345,10 +345,10 @@
   const renderHistoryDetail = () => {
     const batch = state.historyBatch;
     if (!batch) { $("historyDetail").innerHTML = '<div class="empty-state">Choose a saved job to inspect its models, JSON, and render output.</div>'; return; }
-    $("historyDetail").innerHTML = `<div class="history-detail-heading"><div><span>SAVED JOB</span><strong>${escapeHtml(batch.id)}</strong><small>${escapeHtml(formatDate(batch.generatedAt))}</small></div><i class="history-state" data-state="${escapeHtml(batch.state)}">${escapeHtml(historyStateLabel(batch.state))}</i></div><div class="history-summary"><div><span>MODELS</span><strong>${batch.modelCount}</strong></div><div><span>RENDERS</span><strong>${batch.renderCount}/${batch.expectedRenders}</strong></div><div><span>OUTPUT</span><strong>${batch.renderCount ? "On disk" : "Empty"}</strong></div></div>${batch.error ? `<p class="inline-warning">${escapeHtml(batch.error)}</p>` : `<div class="history-model-preview">${batch.models.slice(0, 6).map((model, index) => `<button type="button" data-history-action="review" data-model-index="${index}" title="Review ${escapeHtml(model.name)}">${model.renders[0] ? `<img src="${escapeHtml(model.renders[0].url)}" alt="${escapeHtml(model.name)} render" loading="lazy">` : "<span>No render</span>"}<small>${escapeHtml(model.name)}</small></button>`).join("")}</div>`}<code class="history-path" title="${escapeHtml(batch.jobPath)}">${escapeHtml(batch.jobPath)}</code><div class="history-actions"><button class="primary-button" type="button" data-history-action="review"${batch.modelCount ? "" : " disabled"}>Review batch</button><button class="secondary-button" type="button" data-history-action="rerun"${batch.state === "invalid" ? " disabled" : ""}>Run again</button><button class="quiet-button" type="button" data-history-action="viewJob">View JSON</button><button class="quiet-button" type="button" data-history-action="showJob">Show JSON</button><button class="quiet-button" type="button" data-history-action="openRenders"${batch.renderCount ? "" : " disabled"}>Open renders</button></div>`;
+    $("historyDetail").innerHTML = `<div class="history-detail-heading"><div><span>SAVED JOB</span><strong>${escapeHtml(batch.id)}</strong><small>${escapeHtml(formatDate(batch.generatedAt))}</small></div><i class="history-state" data-state="${escapeHtml(batch.state)}">${escapeHtml(historyStateLabel(batch.state))}</i></div><div class="history-summary"><div><span>MODELS</span><strong>${batch.modelCount}</strong></div><div><span>RENDERS</span><strong>${batch.renderCount}/${batch.expectedRenders}</strong></div><div><span>OUTPUT</span><strong>${batch.renderCount ? "On disk" : "Empty"}</strong></div></div>${batch.error ? `<p class="inline-warning">${escapeHtml(batch.error)}</p>` : ""}<code class="history-path" title="${escapeHtml(batch.jobPath)}">${escapeHtml(batch.jobPath)}</code><div class="history-actions"><button class="primary-button" type="button" data-history-action="review"${batch.modelCount ? "" : " disabled"}>Review batch</button><button class="secondary-button" type="button" data-history-action="rerun"${batch.state === "invalid" ? " disabled" : ""}>Run again</button><button class="quiet-button" type="button" data-history-action="viewJob">View JSON</button><button class="quiet-button" type="button" data-history-action="showJob">Show JSON</button><button class="quiet-button" type="button" data-history-action="openRenders"${batch.renderCount ? "" : " disabled"}>Open renders</button></div>`;
   };
   const renderRigHistoryModels = () => {
-    const batch = state.historyBatch, group = $("rigBatchGroup");
+    const batch = state.rigBatch, group = $("rigBatchGroup");
     group.hidden = !batch?.models?.length;
     if (!batch?.models?.length) return;
     $("rigBatchCount").textContent = `${batch.models.length} models`;
@@ -371,7 +371,7 @@
   };
   const reviewHistoryBatch = (batch, modelIndex = 0) => {
     if (!batch?.models?.length) return;
-    state.historyBatch = batch; renderHistoryList(); renderHistoryDetail(); renderRigHistoryModels();
+    state.historyBatch = batch; state.rigBatch = batch; renderHistoryList(); renderHistoryDetail(); renderRigHistoryModels();
     selectHistoryModel(batch.models[Math.max(0, Math.min(modelIndex, batch.models.length - 1))]);
     document.querySelector(".rig-section").scrollIntoView({ behavior: "smooth", block: "start" });
   };
@@ -385,8 +385,9 @@
       const selectedId = state.historyBatch?.id, { batches } = await api("/api/history"); state.history = batches;
       state.historyBatch = batches.find(batch => batch.id === selectedId) || batches[0] || null;
       renderHistoryList(); renderHistoryDetail();
-      if (state.historyModel && state.historyBatch) {
-        const updated = state.historyBatch.models.find(model => model.name === state.historyModel.name); if (updated) selectHistoryModel(updated);
+      if (state.rigBatch) state.rigBatch = batches.find(batch => batch.id === state.rigBatch.id) || null;
+      if (state.historyModel && state.rigBatch) {
+        const updated = state.rigBatch.models.find(model => model.name === state.historyModel.name); if (updated) selectHistoryModel(updated);
       }
     } catch (error) { $("historyList").innerHTML = `<div class="empty-state">History unavailable: ${escapeHtml(error.message)}</div>`; }
   };
@@ -463,8 +464,8 @@
     } catch (error) { toast(error.message, true); }
   });
   $("rigBatchModels").addEventListener("click", event => {
-    const button = event.target.closest("[data-history-model-index]"); if (!button || !state.historyBatch) return;
-    selectHistoryModel(state.historyBatch.models[+button.dataset.historyModelIndex]);
+    const button = event.target.closest("[data-history-model-index]"); if (!button || !state.rigBatch) return;
+    selectHistoryModel(state.rigBatch.models[+button.dataset.historyModelIndex]);
   });
   $("closeJobDialog").addEventListener("click", () => $("jobDialog").close());
   $("jobDialog").addEventListener("click", event => { if (event.target === $("jobDialog")) $("jobDialog").close(); });

@@ -297,6 +297,10 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(client, /data-history-action="rerun"/);
   assert.match(client, /openLocal\("showJob"/);
   assert.match(client, /selectHistoryModel/);
+  assert.match(client, /state\.rigBatch/);
+  assert.match(client, /model\.renders\.map\(render =>/);
+  assert.doesNotMatch(client, /batch\.models\.slice\(0, 6\)/);
+  assert.match(styles, /\.rig-render-images img\{height:auto;aspect-ratio:auto;object-fit:contain\}/);
   assert.match(html, /Shadow runs in a fresh Unreal process with Substrate disabled/);
   assert.match(client, /Substrate \$\{render\.substrate \? "ON" : "OFF"\}/);
   assert.doesNotMatch(client, /Open the local dashboard with npm start to resolve full model paths/);

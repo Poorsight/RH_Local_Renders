@@ -8,7 +8,7 @@ const os = require("node:os");
 const { parseCsv } = require("../lib/csv.cjs");
 const { buildRig, jobLights, rigScale } = require("../lib/rig.cjs");
 const { buildJob, buildBatchJob, CAMERA_YAW, groupedMaterials } = require("../lib/jobs.cjs");
-const { ModelStore } = require("../lib/models.cjs");
+const { ModelStore, sectionalFormFactor } = require("../lib/models.cjs");
 const { buildUnrealLaunch } = require("../lib/unreal.cjs");
 
 const root = path.join(__dirname, "..");
@@ -70,7 +70,7 @@ test("tracked metadata makes all current models self-contained", async () => {
     fs.writeFileSync(path.join(temp, `${name}.fbx`), "");
     const inspected = await new ModelStore(root, { modelsRoot: temp }).inspect(name);
     assert.deepEqual(inspected.dimensions, { width: 356.3, depth: 274.7, height: 88.6 });
-    assert.equal(inspected.side, "RIGHT_ARM"); assert.equal(inspected.importYaw, -90); assert.equal(inspected.offsetUniformScale, 2.54);
+    assert.equal(inspected.side, "R"); assert.equal(inspected.importYaw, -90); assert.equal(inspected.offsetUniformScale, 2.54);
     assert.deepEqual(inspected.materialIds, ["UPH", "Stitches", "Feet"]);
   } finally { fs.rmSync(temp, { recursive: true, force: true }); }
 });
@@ -83,10 +83,22 @@ test("a new FBX is analyzed once and persisted in ignored local metadata", async
   try {
     const first = await new ModelStore(root, { modelsRoot, localMetadataPath, analyzeModel: async () => analyzed }).inspect(name);
     assert.equal(first.newlyAnalyzed, true); assert.equal(first.metadataSource, "local");
-    assert.deepEqual(first.materialIds, ["UPH", "Feet"]); assert.ok(fs.existsSync(localMetadataPath));
+    assert.equal(first.side, "L"); assert.deepEqual(first.materialIds, ["UPH", "Feet"]); assert.ok(fs.existsSync(localMetadataPath));
     const second = await new ModelStore(root, { modelsRoot, localMetadataPath, analyzeModel: async () => { throw new Error("should use cache"); } }).inspect(name);
     assert.equal(second.newlyAnalyzed, false); assert.deepEqual(second.dimensions, { width: 300, depth: 250, height: 80 });
   } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+});
+
+test("sectional form factors normalize filenames and metadata to exact L/R/U values", () => {
+  const metadata = JSON.parse(fs.readFileSync(path.join(root, "data", "models.json"), "utf8"));
+  for (const [name, record] of Object.entries(metadata.models)) {
+    const expected = name.includes("RIGHT_ARM") ? "R" : "L";
+    assert.equal(sectionalFormFactor(name, record.side), expected, name);
+  }
+  assert.equal(sectionalFormFactor("MODULAR_U_SECTIONAL_prod1"), "U");
+  assert.equal(sectionalFormFactor("MODULAR_RIGHT_ARM_U_SECTIONAL_prod1"), "U");
+  assert.equal(sectionalFormFactor("AMBIGUOUS_SECTIONAL_prod2", "U_SHAPE"), "U");
+  assert.equal(sectionalFormFactor("AMBIGUOUS_SECTIONAL_prod3"), "UNKNOWN");
 });
 
 test("batch jobs keep per-model geometry and apply shared IDs only where present", () => {
@@ -124,13 +136,22 @@ test("legacy light-rig project files stay out of the unified project", () => {
   assert.deepEqual(Object.keys(scripts).sort(), ["build", "start", "test"]);
 });
 
-test("desktop launcher starts one hidden local server and waits before opening the site", () => {
+test("desktop launcher replaces a stale hidden server and waits before opening the site", () => {
   const launcher = fs.readFileSync(path.join(root, "Launch_RH_Local_Renders.vbs"), "utf8");
   const batch = fs.readFileSync(path.join(root, "Start_RH_Local_Renders.bat"), "utf8");
-  assert.match(launcher, /ServerReady\(statusUrl\)/);
+  assert.match(launcher, /ServerState\(statusUrl\)/);
+  assert.match(launcher, /"""stale"":false/);
+  assert.match(launcher, /Get-NetTCPConnection/);
+  assert.match(launcher, /Stop-Process/);
   assert.match(launcher, /--no-browser/);
   assert.match(launcher, /shell\.Run siteUrl, 1, False/);
   assert.match(batch, /if \/I "%~1"=="--no-browser" goto start_server/);
+});
+
+test("server status exposes a runtime token and stale-source signal", () => {
+  const server = fs.readFileSync(path.join(root, "server.cjs"), "utf8");
+  assert.match(server, /runtimeSourceToken/);
+  assert.match(server, /runtime: \{ startedAt: RUNTIME_STARTED_AT, sourceToken: RUNTIME_SOURCE_TOKEN, stale:/);
 });
 
 test("Unreal launch points the stock BatchRender plugin at the local API", () => {
@@ -169,6 +190,7 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(html, /id="modelBatch"/);
   assert.match(client, /LOCAL_MODELS_ROOT = "D:\\\\GitHub\\\\RH_Local_Renders\\\\local\\\\models"/);
   assert.match(client, /const metadataModel = query =>/);
+  assert.match(client, /const sectionalFormFactor = \(name, side = ""\) =>/);
   assert.match(client, /await loadModelMetadata\(\)/);
   assert.doesNotMatch(client, /Open the local dashboard with npm start to resolve full model paths/);
   assert.match(styles, /@media\(min-width:981px\)\{main\{width:calc\(100% - 48px\);max-width:none\}\}/);

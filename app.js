@@ -38,11 +38,21 @@
     const value = String(id || ""), last = value.split(/[:_]/).filter(Boolean).pop() || value;
     return last.replace(/\d/g, "") || last;
   };
+  const sectionalFormFactor = (name, side = "") => {
+    const modelName = String(name || "").toUpperCase(), recorded = String(side || "").toUpperCase();
+    if (/(?:^|_)U(?:_|$)/.test(modelName) || modelName.includes("U_SECTIONAL") || modelName.includes("U_CHAISE")) return "U";
+    if (/(?:^|_)RIGHT_ARM(?:_|$)/.test(modelName)) return "R";
+    if (/(?:^|_)LEFT_ARM(?:_|$)/.test(modelName)) return "L";
+    if (recorded === "R" || recorded.includes("RIGHT")) return "R";
+    if (recorded === "L" || recorded.includes("LEFT")) return "L";
+    if (recorded === "U" || recorded.includes("U_SHAPE") || recorded.includes("U_SECTIONAL") || recorded.includes("U_CHAISE")) return "U";
+    return "UNKNOWN";
+  };
   const sideFromModel = () => {
     const value = $("sceneSide").value;
     if (value !== "auto") return value;
     const label = state.model?.side || "";
-    return label.includes("RIGHT") ? "R" : label.includes("LEFT") ? "L" : label.includes("U") ? "U" : "R";
+    return ["R", "L", "U"].includes(label) ? label : "R";
   };
   const payload = () => ({
     modelPath: state.model.path,
@@ -112,7 +122,7 @@
     const [name, record] = match, materialIds = state.metadata.profiles?.[record.ids];
     if (!materialIds) throw new Error(`Material ID profile ${record.ids} is missing for ${name}`);
     const [width, depth, height] = record.dimensions;
-    return { name, path: `${LOCAL_MODELS_ROOT}\\${name}.fbx`, side: record.side, materialIds: [...materialIds], dimensions: { width, depth, height }, importYaw: record.yaw, offsetUniformScale: record.scale, warning: record.warning || "" };
+    return { name, path: `${LOCAL_MODELS_ROOT}\\${name}.fbx`, side: sectionalFormFactor(name, record.side), materialIds: [...materialIds], dimensions: { width, depth, height }, importYaw: record.yaw, offsetUniformScale: record.scale, warning: record.warning || "" };
   };
   const loadModelMetadata = async () => {
     const response = await fetch("data/models.json", { cache: "no-store" });

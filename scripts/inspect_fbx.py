@@ -102,14 +102,54 @@ def detect_back(points):
     return detected, best_coverage
 
 
-def sectional_side(stem):
+def named_form_factor(stem):
     upper = stem.upper()
-    if re.search(r"(?:^|_)RIGHT_ARM(?:_|$)", upper):
-        return "RIGHT_ARM"
-    if re.search(r"(?:^|_)LEFT_ARM(?:_|$)", upper):
-        return "LEFT_ARM"
     if "U_SECTIONAL" in upper or "U_CHAISE" in upper or re.search(r"(?:^|_)U(?:_|$)", upper):
-        return "U_SHAPE"
+        return "U"
+    if re.search(r"(?:^|_)RIGHT_ARM(?:_|$)", upper):
+        return "R"
+    if re.search(r"(?:^|_)LEFT_ARM(?:_|$)", upper):
+        return "L"
+    return "UNKNOWN"
+
+
+def geometric_form_factor(points, back):
+    if back not in {"-X", "+X", "-Y", "+Y"}:
+        return "UNKNOWN"
+    xy = points[:, :2]
+    low, high = xy.min(0), xy.max(0)
+    grid = occupancy(xy, low, high)
+    ix, iy = np.nonzero(grid)
+    size = high - low
+    centers = np.stack([
+        low[0] + (ix + 0.5) / grid.shape[0] * size[0],
+        low[1] + (iy + 0.5) / grid.shape[1] * size[1],
+    ], axis=1) - (low + high) / 2
+    back_vector = {"-X": (-1.0, 0.0), "+X": (1.0, 0.0), "-Y": (0.0, -1.0), "+Y": (0.0, 1.0)}[back]
+    front = np.array([-back_vector[0], -back_vector[1]])
+    viewer_right = np.array([-front[1], front[0]])
+    lateral, forward = centers @ viewer_right, centers @ front
+    bins = 64
+    edges = np.linspace(lateral.min(), lateral.max(), bins + 1)
+    indices = np.clip(np.digitize(lateral, edges) - 1, 0, bins - 1)
+    profile = np.full(bins, np.nan)
+    for index in range(bins):
+        selected = indices == index
+        if selected.any():
+            profile[index] = forward[selected].max()
+    floor = np.nanmin(profile)
+    span = np.nanmax(profile) - floor
+    normalized = np.where(np.isnan(profile), floor, profile)
+    normalized = (normalized - floor) / (span if span > 1e-9 else 1.0)
+    half = bins // 2
+    asymmetry = float(normalized[half:].mean() - normalized[:half].mean())
+    center = normalized[int(bins * 0.30):int(bins * 0.70)].mean()
+    ends = np.concatenate([normalized[:int(bins * 0.18)], normalized[bins - int(bins * 0.18):]]).mean()
+    notch = float(ends - center)
+    if abs(asymmetry) >= 0.13:
+        return "R" if asymmetry > 0 else "L"
+    if notch >= 0.22:
+        return "U"
     return "UNKNOWN"
 
 
@@ -174,8 +214,12 @@ def inspect(source):
     if ambiguous_units > 1:
         warnings.append(f"UNIT: ambiguous; using {unit_name}")
 
+    stem = os.path.splitext(os.path.basename(source))[0]
+    form_factor = named_form_factor(stem)
+    if form_factor == "UNKNOWN":
+        form_factor = geometric_form_factor(points, back)
     return {
-        "side": sectional_side(os.path.splitext(os.path.basename(source))[0]),
+        "side": form_factor,
         "dimensions": [round(width, 1), round(depth, 1), round(z_cm, 1)],
         "yaw": import_yaw,
         "scale": unit_factor,

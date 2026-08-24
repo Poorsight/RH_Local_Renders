@@ -4,7 +4,7 @@ Local control centre for RH BatchRender jobs. It keeps the sectional light-rig r
 
 ## Start
 
-Double-click the **RH Local Renders** desktop shortcut. It starts the existing batch file without a visible terminal, waits for the local service, and opens the dashboard. Reopening the shortcut while the service is already running only opens the site and does not create another server.
+Double-click the **RH Local Renders** desktop shortcut. It starts the existing batch file without a visible terminal, waits for the local service, and opens the dashboard. Reopening the shortcut while the current service is already running only opens the site; if runtime files changed, it safely replaces that stale localhost process before opening the page.
 
 The underlying launchers are `Launch_RH_Local_Renders.vbs` and `Start_RH_Local_Renders.bat`. You can also run the batch file directly, or use:
 
@@ -40,7 +40,7 @@ The light rows are refreshed from the public Google Sheet (`gid=0`). `data/secti
 
 The model input accepts a full FBX path, exact filename, or unique product substring. **Choose FBX** and drag-and-drop accept multiple files at once and add them to one model batch. Selecting a row opens that model's dimensions and import yaw; removing a row does not touch the FBX on disk.
 
-The tracked `data/models.json` keeps the metadata for the original 16 FBX files. A new FBX placed in `local/models/` is analyzed automatically on first inspection with the installed local Blender: the service reads its bounds, unit scale, back orientation, sectional side, import yaw, and component Material IDs. The result is cached in ignored `local/model-metadata.json` and is refreshed if that FBX changes. No file is uploaded or copied, and the runtime does not depend on the old `sectional-classifier` project. Set `RH_BLENDER` only if Blender is installed outside `C:\Program Files\Blender Foundation\`.
+The tracked `data/models.json` keeps the metadata for the original 16 FBX files. A new FBX placed in `local/models/` is analyzed automatically on first inspection with the installed local Blender: the service reads its bounds, unit scale, back orientation, exact `L`/`R`/`U` sectional form factor, import yaw, and component Material IDs. The name markers (`LEFT_ARM`, `RIGHT_ARM`, and U-shape names) take priority; ambiguous names fall back to the measured footprint. The result is cached in ignored `local/model-metadata.json` and is refreshed if that FBX changes. No file is uploaded or copied, and the runtime does not depend on the old `sectional-classifier` project. Set `RH_BLENDER` only if Blender is installed outside `C:\Program Files\Blender Foundation\`.
 
 Material assignments are normalized from the final component-name word with digits removed: long names ending in `_UPH` and `_UPH1` become one `UPH` row, and the same applies to `Stitches` and `Feet`. One RH material value is applied to every exact source mesh ID in that group, while each task receives only the IDs present in its own FBX. **Generate job** creates one `.job.json` whose `tasks` contain every model, while dimensions, side, import yaw, lights, and output folder remain model-specific.
 

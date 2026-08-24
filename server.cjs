@@ -3,6 +3,7 @@
 const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
+const crypto = require("node:crypto");
 const { spawn } = require("node:child_process");
 const { SheetStore } = require("./lib/rig.cjs");
 const { ModelStore } = require("./lib/models.cjs");
@@ -15,6 +16,21 @@ const PORT = Number(process.env.RH_LOCAL_RENDERS_PORT || 5500);
 const UNREAL_EDITOR = process.env.RH_UNREAL_EDITOR || "D:\\Unreal_Engine\\UE_5.6\\Engine\\Binaries\\Win64\\UnrealEditor.exe";
 const UNREAL_PROJECT = process.env.RH_UNREAL_PROJECT || "D:\\GitHub\\rh_unreal_2\\rh_unreal_2.uproject";
 const sheet = new SheetStore(ROOT), models = new ModelStore(ROOT);
+const RUNTIME_FILES = [
+  "server.cjs", "package.json", "lib/csv.cjs", "lib/jobs.cjs", "lib/models.cjs",
+  "lib/rig.cjs", "lib/unreal.cjs", "scripts/inspect_fbx.py"
+];
+const runtimeSourceToken = () => {
+  const hash = crypto.createHash("sha256");
+  for (const relative of RUNTIME_FILES) {
+    const file = path.join(ROOT, relative);
+    hash.update(relative);
+    hash.update(fs.existsSync(file) ? fs.readFileSync(file) : "missing");
+  }
+  return hash.digest("hex").slice(0, 16);
+};
+const RUNTIME_STARTED_AT = new Date().toISOString();
+const RUNTIME_SOURCE_TOKEN = runtimeSourceToken();
 let render = { state: "idle", pid: null, jobPath: null, startedAt: null, finishedAt: null, exitCode: null, log: "" };
 let child = null, bridge = null, lastUnrealContactAt = null;
 
@@ -112,7 +128,8 @@ async function api(request, response, url) {
   }
   if (request.method === "GET" && url.pathname === "/api/status") return json(response, 200, {
     project: "RH_Local_Renders", models: models.list(), sheet: sheet.status(),
-    unreal: { editor: UNREAL_EDITOR, project: UNREAL_PROJECT, available: fs.existsSync(UNREAL_EDITOR) && fs.existsSync(UNREAL_PROJECT), lastContactAt: lastUnrealContactAt }, render: currentRender()
+    unreal: { editor: UNREAL_EDITOR, project: UNREAL_PROJECT, available: fs.existsSync(UNREAL_EDITOR) && fs.existsSync(UNREAL_PROJECT), lastContactAt: lastUnrealContactAt }, render: currentRender(),
+    runtime: { startedAt: RUNTIME_STARTED_AT, sourceToken: RUNTIME_SOURCE_TOKEN, stale: RUNTIME_SOURCE_TOKEN !== runtimeSourceToken() }
   });
   if (request.method === "POST" && url.pathname === "/api/models/inspect") return json(response, 200, await models.inspect((await body(request)).modelPath));
   if (request.method === "POST" && url.pathname === "/api/sheet/refresh") return json(response, 200, await sheet.refresh());
@@ -121,8 +138,8 @@ async function api(request, response, url) {
     const entries = [];
     for (const selection of selections) {
       const model = await models.inspect(selection.modelPath);
-      const modelSide = String(model.side || "");
-      const side = input.side === "auto" || !input.side ? (modelSide.includes("RIGHT") ? "R" : modelSide.includes("LEFT") ? "L" : modelSide.includes("U") ? "U" : "R") : input.side;
+      const side = input.side === "auto" || !input.side ? model.side : String(input.side).toUpperCase();
+      if (!["R", "L", "U"].includes(side)) throw new Error(`Could not determine L, R, or U form factor for ${model.name}`);
       entries.push({ model, input: { ...input, ...selection, side, dimensions: selection.dimensions || model.dimensions, importYaw: selection.importYaw ?? model.importYaw } });
     }
     const result = writeBatchJob(ROOT, entries, sheet.rig());

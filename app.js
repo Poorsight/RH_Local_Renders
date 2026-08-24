@@ -59,7 +59,7 @@
     models: state.batch.map(model => ({ modelPath: model.path, dimensions: model.dimensions, importYaw: model.importYaw })),
     category: $("category").value,
     environment: $("environment").value,
-    side: $("sceneSide").value, sourceMode: $("sourceMode").value,
+    side: $("sceneSide").value, sourceMode: $("sourceMode").value, renderProfile: selected("renderProfile")[0] || "high",
     dimensions: { width: +$("width").value, depth: +$("depth").value, height: +$("height").value },
     importYaw: +$("importYaw").value || 0,
     cameras: selected("camera"), layers: selected("layer"), materials: materialRows()
@@ -417,6 +417,9 @@
     });
     document.querySelectorAll('input[name="camera"]').forEach(input => input.checked = cameras.has(input.value));
     document.querySelectorAll('input[name="layer"]').forEach(input => input.checked = layers.has(input.value));
+    const profile = String(job._rhLocal?.renderProfile || metadataRows[0]?.renderProfile || "").toLowerCase() || ((tasks[0]?.sequence?.cameras?.[0]?.LayerResolutions || []).some(layer => Number(layer.Resolution?.Y) <= 500) ? "low" : "high");
+    document.querySelectorAll('input[name="renderProfile"]').forEach(input => input.checked = input.value === profile);
+    document.querySelector('input[name="renderProfile"]:checked')?.dispatchEvent(new Event("change"));
     const sides = new Set(restored.map(model => model.side).filter(side => ["R", "L", "U"].includes(side)));
     $("sceneSide").value = sides.size === 1 ? [...sides][0] : "auto";
     $("sourceMode").value = restored[0].sourceMode || "B"; $("jobResult").hidden = true;
@@ -475,6 +478,12 @@
   [["width", "width"], ["depth", "depth"], ["height", "height"]].forEach(([id, key]) => $(id).addEventListener("input", () => { if (state.model && +$(id).value > 0) { state.model.dimensions[key] = +$(id).value; renderBatch(); validate(); } }));
   $("importYaw").addEventListener("input", () => { if (state.model) { state.model.importYaw = +$("importYaw").value || 0; validate(); } });
   $("generateJob").addEventListener("click", generate); $("launchRender").addEventListener("click", launch); $("refreshSheet").addEventListener("click", refreshSheet);
+  document.querySelectorAll('input[name="renderProfile"]').forEach(input => input.addEventListener("change", () => {
+    const low = input.checked && input.value === "low";
+    $("fabricResolutionLabel").textContent = low ? "Path Trace · 500" : "Path Trace · 5K";
+    $("shadowResolutionLabel").textContent = low ? "Lumen · 1.5K×500" : "Lumen · 15K×5K";
+    state.jobPath = null; $("jobResult").hidden = true; validate();
+  }));
   $("copyJobPath").addEventListener("click", async () => { await navigator.clipboard.writeText(state.jobPath || ""); toast("Job path copied"); });
   $("rigUseModel").addEventListener("click", syncRigFromModel);
   [["rigWidth", "rigWidthRange"], ["rigDepth", "rigDepthRange"], ["rigHeight", "rigHeightRange"]].forEach(([numberId, rangeId]) => {

@@ -8,11 +8,11 @@ const os = require("node:os");
 const { spawn } = require("node:child_process");
 const { parseCsv } = require("../lib/csv.cjs");
 const { buildRig, jobLights, rigScale } = require("../lib/rig.cjs");
-const { buildJob, buildBatchJob, writeJob, CAMERA_YAW, groupedMaterials } = require("../lib/jobs.cjs");
+const { buildJob, buildBatchJob, writeJob, CAMERA_YAW, RESOLUTION_PROFILES, groupedMaterials } = require("../lib/jobs.cjs");
 const { ModelStore, sectionalFormFactor } = require("../lib/models.cjs");
 const { buildUnrealLaunch } = require("../lib/unreal.cjs");
 const { history, expectedRenders } = require("../lib/history.cjs");
-const { buildRenderPlan } = require("../lib/render-plan.cjs");
+const { buildRenderPlan, cameraStateKey, applyCameraHandoff } = require("../lib/render-plan.cjs");
 
 const root = path.join(__dirname, "..");
 const rows = parseCsv(fs.readFileSync(path.join(root, "data", "sectionals-indoor.csv"), "utf8"));
@@ -225,6 +225,37 @@ test("Fabric and Shadow become ordered Unreal phases with the required Substrate
   assert.equal(JSON.stringify(job), original, "the saved parent job stays unchanged");
 });
 
+test("Low and High profiles preserve the 1:3 Fabric-to-Shadow pixel grid", () => {
+  assert.deepEqual(RESOLUTION_PROFILES.high.Fabric.Resolution, { X: 5000, Y: 5000 });
+  assert.deepEqual(RESOLUTION_PROFILES.high.Shadow.Resolution, { X: 15000, Y: 5000 });
+  assert.deepEqual(RESOLUTION_PROFILES.low.Fabric.Resolution, { X: 500, Y: 500 });
+  assert.deepEqual(RESOLUTION_PROFILES.low.Shadow.Resolution, { X: 1500, Y: 500 });
+  for (const profile of ["low", "high"]) {
+    const job = buildJob({ ...baseInput, renderProfile: profile, layers: ["Fabric", "Shadow"] }, { ...model, materialIds: ["UPH", "Stitches", "Feet"] }, rig, `D:\\renders\\${profile}`);
+    const [fabric, shadow] = job.tasks[0].sequence.cameras[0].LayerResolutions;
+    assert.equal(shadow.Resolution.X, fabric.Resolution.X * 3);
+    assert.equal(shadow.Resolution.Y, fabric.Resolution.Y);
+    assert.equal(shadow.SensorSize.X, fabric.SensorSize.X * 3);
+    assert.equal(shadow.SensorSize.Y, fabric.SensorSize.Y);
+    assert.equal(job._rhLocal.renderProfile, profile);
+  }
+});
+
+test("Shadow receives the exact Fabric transform and focal length with fit disabled", () => {
+  const job = buildJob({ ...baseInput, layers: ["Fabric", "Shadow"] }, { ...model, materialIds: ["UPH", "Stitches", "Feet"] }, rig, "D:\\renders\\handoff");
+  const shadow = buildRenderPlan(job)[1].job, states = new Map();
+  for (const camera of shadow.tasks[0].sequence.cameras) states.set(cameraStateKey(model.name, camera.sequenceName), {
+    cameraLocation: { X: 7, Y: 1650, Z: 120 }, cameraRotation: { Pitch: -3, Yaw: -90, Roll: 0 }, focalLength: 155.25
+  });
+  const handoff = applyCameraHandoff(shadow, states);
+  assert.deepEqual(handoff.missing, []); assert.equal(handoff.applied.length, 3);
+  for (const camera of handoff.job.tasks[0].sequence.cameras) {
+    assert.equal(camera.fit, "none"); assert.equal(camera.Camera.OverrideLocation, true); assert.equal(camera.Camera.OverrideRotation, true);
+    assert.equal(camera.Camera.OverrideFocalLength, true); assert.equal(camera.Camera.FocalLength, 155.25);
+    assert.deepEqual(camera.LayerResolutions[0].SensorSize, { X: 108, Y: 36 });
+  }
+});
+
 test("local render service completes Fabric before restarting for Substrate-off Shadow", async () => {
   const suffix = `${process.pid}_${Date.now()}`, port = 56000 + process.pid % 5000;
   const jobsRoot = path.join(root, "local", "jobs", "generated"), output = path.join(root, "local", "renders", `test_phases_${suffix}`);
@@ -257,7 +288,11 @@ test("local render service completes Fabric before restarting for Substrate-off 
     assert.match(launches[0].substrateArgument, /r\.Substrate=True$/); assert.match(launches[1].substrateArgument, /r\.Substrate=False$/);
     assert.equal(launches[0].keyLight.intensity, 45); assert.equal(launches[0].keyLight.InnerConeAngle, -1); assert.equal(launches[0].keyLight.OuterConeAngle, -1);
     assert.equal(launches[1].keyLight.intensity, 100); assert.equal(launches[1].keyLight.InnerConeAngle, 45); assert.equal(launches[1].keyLight.OuterConeAngle, 60);
+    assert.ok(launches[1].cameras.every(camera => camera.fit === "none"));
+    assert.deepEqual(launches[1].cameras.map(camera => camera.Camera.FocalLength), [140, 141, 142]);
+    assert.ok(launches[1].cameras.every(camera => camera.Camera.OverrideLocation && camera.Camera.OverrideRotation && camera.Camera.OverrideFocalLength));
     assert.match(status.log, /Fabric is complete\. Restarting Unreal for Shadow with Substrate OFF/);
+    assert.match(status.log, /Applied 3 Fabric camera states to Shadow; fit disabled/);
   } finally {
     service.kill();
     fs.rmSync(jobPath, { force: true }); fs.rmSync(output, { recursive: true, force: true }); fs.rmSync(fakeLog, { force: true });
@@ -356,6 +391,9 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(styles, /\.rig-render-images>a\{background-color:#d7d7d7;background-image:/);
   assert.match(styles, /\.rig-section\{margin-top:52px;padding:22px 22px 34px;background:/);
   assert.match(html, /Shadow runs in a fresh Unreal process with Substrate disabled/);
+  assert.match(html, /name="renderProfile" value="low"/);
+  assert.match(html, /name="renderProfile" value="high" checked/);
+  assert.match(client, /renderProfile: selected\("renderProfile"\)\[0\] \|\| "high"/);
   assert.match(client, /Substrate \$\{render\.substrate \? "ON" : "OFF"\}/);
   assert.doesNotMatch(client, /Open the local dashboard with npm start to resolve full model paths/);
   assert.match(styles, /@media\(min-width:981px\)\{main\{width:calc\(100% - 48px\);max-width:none\}\}/);

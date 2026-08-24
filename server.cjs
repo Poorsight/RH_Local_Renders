@@ -8,7 +8,7 @@ const { spawn } = require("node:child_process");
 const { SheetStore } = require("./lib/rig.cjs");
 const { ModelStore } = require("./lib/models.cjs");
 const { writeBatchJob } = require("./lib/jobs.cjs");
-const { buildRenderPlan } = require("./lib/render-plan.cjs");
+const { buildRenderPlan, cameraStateKey, applyCameraHandoff } = require("./lib/render-plan.cjs");
 const { buildUnrealLaunch } = require("./lib/unreal.cjs");
 const { history } = require("./lib/history.cjs");
 
@@ -88,6 +88,12 @@ function finishRun(state, message) {
 function startRenderPhase() {
   if (!activeRun) return;
   const phase = activeRun.phases[activeRun.index], apiUrl = `http://${HOST}:${PORT}/api/unreal`;
+  if (phase.name === "Shadow" && activeRun.phases.some((item, index) => index < activeRun.index && item.name === "Fabric")) {
+    const handoff = applyCameraHandoff(phase.job, activeRun.cameraStates);
+    if (handoff.missing.length) return finishRun("failed", `Fabric camera handoff missing for ${handoff.missing.join(", ")}`);
+    phase.job = handoff.job;
+    appendRenderLog(`Applied ${handoff.applied.length} Fabric camera state${handoff.applied.length === 1 ? "" : "s"} to Shadow; fit disabled.\n`);
+  }
   bridge = { job: phase.job, jobPath: activeRun.jobPath, outputFolder: activeRun.outputFolder, before: imageSnapshot(activeRun.outputFolder), delivered: false, completed: false, success: false, phase };
   const phaseBridge = bridge, launch = buildUnrealLaunch(UNREAL_EDITOR, UNREAL_PROJECT, apiUrl, { substrate: phase.substrate });
   appendRenderLog(`\nStarting ${phase.name} phase ${activeRun.index + 1}/${activeRun.phases.length}; Substrate ${phase.substrate ? "ON" : "OFF"}.\n${launch.command}\n${launch.args.join(" ")}\n`);
@@ -165,6 +171,17 @@ async function api(request, response, url) {
     appendRenderLog(`BatchRender event ${eventName}: ${JSON.stringify(data).slice(0, 4000)}\n`);
     if (bridge && eventName === "render_finished") render.rendered = Number(render.rendered || 0) + 1;
     const matchesJob = bridge && (!data.jobId || data.jobId === bridge.job.jobId || data.jobId === activeRun?.job?.jobId);
+    if (matchesJob && bridge?.phase?.name === "Fabric" && eventName === "sequence_camera_data") {
+      const camera = data.camera || {}, focalLength = Number(camera.FocalLength ?? camera.focalLength);
+      const sequenceName = data.sequenceName || camera.sequenceName || camera.name;
+      if (data.taskId && sequenceName && camera.cameraLocation && camera.cameraRotation && Number.isFinite(focalLength) && focalLength > 0) {
+        activeRun.cameraStates.set(cameraStateKey(data.taskId, sequenceName), {
+          cameraLocation: camera.cameraLocation, cameraRotation: camera.cameraRotation, focalLength,
+          sensorWidth: Number(camera.SensorWidth ?? camera.sensorWidth), sensorHeight: Number(camera.SensorHeight ?? camera.sensorHeight),
+          aperture: Number(camera.CurrentAperture ?? camera.currentAperture), correctPerspective: Boolean(camera.bCorrectPerspective)
+        });
+      }
+    }
     if (matchesJob && eventName === "job_completed") finishBridge("success", `job ${data.jobId || bridge.job.jobId} completed`);
     if (matchesJob && eventName === "error") finishBridge("failed", data.error || "plugin reported an error");
     return json(response, 200, { ok: true });
@@ -198,7 +215,7 @@ async function api(request, response, url) {
     const rendersRoot = path.join(ROOT, "local", "renders"), outputFolder = path.resolve(String(job._rhLocal?.outputFolder || ""));
     if (!within(outputFolder, rendersRoot)) return error(response, 400, "Job output must stay inside RH_Local_Renders/local/renders");
     const phases = buildRenderPlan(job);
-    activeRun = { job, jobPath, outputFolder, before: imageSnapshot(outputFolder), phases, index: 0 };
+    activeRun = { job, jobPath, outputFolder, before: imageSnapshot(outputFolder), phases, index: 0, cameraStates: new Map() };
     render = { state: "running", pid: null, jobPath, startedAt: new Date().toISOString(), finishedAt: null, exitCode: null, rendered: 0, phase: null, phaseIndex: 0, phaseCount: phases.length, substrate: null, log: `Queued ${phases.map(phase => phase.name).join(" → ")} render plan.\nLocal BatchRender API: http://${HOST}:${PORT}/api/unreal\n` };
     startRenderPhase();
     return json(response, 202, currentRender());

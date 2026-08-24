@@ -1,0 +1,106 @@
+diff --git a/Source/BatchRender/Private/BatchRender.cpp b/Source/BatchRender/Private/BatchRender.cpp
+index 2928522..b4893c0 100644
+--- a/Source/BatchRender/Private/BatchRender.cpp
++++ b/Source/BatchRender/Private/BatchRender.cpp
+@@ -2281,6 +2281,13 @@ bool UBatchRenderLibrary::GetSequenceCameraDefaults(const FString& SequenceName,
+ 	{
+ 		UE_LOG(LogTemp, Warning, TEXT("GetSequenceCameraDefaults: Failed to get FocalLength for %s"), *SequenceName);
+ 	}
++	float OverrideFocalLength = 0.0f;
++	if (UJobLibrary::ConsumeCameraFocalLengthOverride(SequenceName, OverrideFocalLength))
++	{
++		Data.FocalLengthMM = OverrideFocalLength;
++		AddFocalLengthKeyToArchCineCameraInSequence(LevelSequence, 0.f, Data.FocalLengthMM, true);
++		UE_LOG(LogTemp, Log, TEXT("GetSequenceCameraDefaults: applied Fabric handoff focal length %.3f mm for %s"), Data.FocalLengthMM, *SequenceName);
++	}
+ 	if (!GetSensorWidthHeightKeyFromCineCameraInSequence(LevelSequence, 0.f, Data.SensorWidth, Data.SensorHeight))
+ 	{
+ 		UE_LOG(LogTemp, Warning, TEXT("GetSequenceCameraDefaults: Failed to get SensorWidthHeight for %s"), *SequenceName);
+diff --git a/Source/BatchRenderEditor/Private/JobModel.cpp b/Source/BatchRenderEditor/Private/JobModel.cpp
+index eba3df8..d29dc5e 100644
+--- a/Source/BatchRenderEditor/Private/JobModel.cpp
++++ b/Source/BatchRenderEditor/Private/JobModel.cpp
+@@ -1,5 +1,12 @@
+ #include "JobModel.h"
+ #include "JsonObjectConverter.h"
++#include "Misc/ScopeLock.h"
++
++namespace
++{
++	FCriticalSection CameraOverrideLock;
++	TMap<FString, TArray<float>> CameraFocalLengthOverrides;
++}
+ 
+ bool UJobLibrary::ParseJobFromJson(const FString& JsonString, FRenderJob& Job, FText& FailReason)
+ {
+@@ -9,6 +16,21 @@ bool UJobLibrary::ParseJobFromJson(const FString& JsonString, FRenderJob& Job, F
+ 		return false;
+ 	}
+ 
++	{
++		FScopeLock Lock(&CameraOverrideLock);
++		CameraFocalLengthOverrides.Empty();
++		for (const FTask& Task : Job.Tasks)
++		{
++			for (const FCameraInfo& Camera : Task.Sequence.Cameras)
++			{
++				if (Camera.Camera.OverrideFocalLength && Camera.Camera.FocalLength > 0.0f)
++				{
++					CameraFocalLengthOverrides.FindOrAdd(Camera.SequenceName).Add(Camera.Camera.FocalLength);
++				}
++			}
++		}
++	}
++
+ 	for (auto& Task : Job.Tasks)
+ 	{
+ 		Task.SubTasks.Empty();
+@@ -107,3 +129,14 @@ bool UJobLibrary::ParseJobFromJson(const FString& JsonString, FRenderJob& Job, F
+ 	
+ 	return true;
+ }
++
++bool UJobLibrary::ConsumeCameraFocalLengthOverride(const FString& SequenceName, float& OutFocalLength)
++{
++	FScopeLock Lock(&CameraOverrideLock);
++	TArray<float>* Overrides = CameraFocalLengthOverrides.Find(SequenceName);
++	if (!Overrides || Overrides->IsEmpty()) return false;
++	OutFocalLength = (*Overrides)[0];
++	Overrides->RemoveAt(0);
++	if (Overrides->IsEmpty()) CameraFocalLengthOverrides.Remove(SequenceName);
++	return OutFocalLength > 0.0f;
++}
+diff --git a/Source/BatchRenderEditor/Public/JobModel.h b/Source/BatchRenderEditor/Public/JobModel.h
+index d2cfe70..fa566cd 100644
+--- a/Source/BatchRenderEditor/Public/JobModel.h
++++ b/Source/BatchRenderEditor/Public/JobModel.h
+@@ -164,6 +164,12 @@ struct FCamera
+ 
+     UPROPERTY(BlueprintReadWrite, EditAnywhere)
+     FRotator Rotation = FRotator::ZeroRotator;
++
++    UPROPERTY(BlueprintReadWrite, EditAnywhere)
++    bool OverrideFocalLength = false;
++
++    UPROPERTY(BlueprintReadWrite, EditAnywhere)
++    float FocalLength = 0.0f;
+ };
+ 
+ USTRUCT(BlueprintType)
+@@ -423,11 +429,15 @@ struct FRenderJob
+ };
+ 
+ UCLASS()
+-class UJobLibrary : public UBlueprintFunctionLibrary
++class BATCHRENDEREDITOR_API UJobLibrary : public UBlueprintFunctionLibrary
+ {
+     GENERATED_BODY()
+ public:
++    static constexpr int32 CameraFocalHandoffVersion = 1;
++
+     UFUNCTION(BlueprintCallable, Category=BatchRender)
+     static bool ParseJobFromJson(const FString& JsonString, FRenderJob& Job, FText& FailReason);
+ 
++    static bool ConsumeCameraFocalLengthOverride(const FString& SequenceName, float& OutFocalLength);
++
+ };

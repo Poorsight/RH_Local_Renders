@@ -114,10 +114,17 @@
           </div>
         </fieldset>
         <fieldset>
+          <legend>Render resolution</legend>
+          <div class="choice-row render-profile" role="radiogroup" aria-label="Render resolution">
+            <label><input type="radio" name="renderProfile" value="low"><span>Low <small>Fast test</small></span></label>
+            <label><input type="radio" name="renderProfile" value="high" checked><span>High <small>Production</small></span></label>
+          </div>
+        </fieldset>
+        <fieldset>
           <legend>Layers</legend>
           <div class="choice-row layers">
-            <label><input type="checkbox" name="layer" value="Fabric" checked><span>Fabric <small>Path Trace · 5K</small></span></label>
-            <label><input type="checkbox" name="layer" value="Shadow"><span>Shadow <small>Lumen · 15K×5K</small></span></label>
+            <label><input type="checkbox" name="layer" value="Fabric" checked><span>Fabric <small id="fabricResolutionLabel">Path Trace · 5K</small></span></label>
+            <label><input type="checkbox" name="layer" value="Shadow"><span>Shadow <small id="shadowResolutionLabel">Lumen · 15K×5K</small></span></label>
           </div>
           <p class="field-hint layer-order-hint">Fabric runs with Substrate enabled. Shadow runs in a fresh Unreal process with Substrate disabled; when both are selected, Fabric always completes first.</p>
         </fieldset>

@@ -9,6 +9,7 @@ const { SheetStore } = require("./lib/rig.cjs");
 const { ModelStore } = require("./lib/models.cjs");
 const { writeBatchJob } = require("./lib/jobs.cjs");
 const { buildUnrealLaunch } = require("./lib/unreal.cjs");
+const { history } = require("./lib/history.cjs");
 
 const ROOT = __dirname;
 const HOST = "127.0.0.1";
@@ -17,7 +18,7 @@ const UNREAL_EDITOR = process.env.RH_UNREAL_EDITOR || "D:\\Unreal_Engine\\UE_5.6
 const UNREAL_PROJECT = process.env.RH_UNREAL_PROJECT || "D:\\GitHub\\rh_unreal_2\\rh_unreal_2.uproject";
 const sheet = new SheetStore(ROOT), models = new ModelStore(ROOT);
 const RUNTIME_FILES = [
-  "server.cjs", "package.json", "lib/csv.cjs", "lib/jobs.cjs", "lib/models.cjs",
+  "server.cjs", "package.json", "lib/csv.cjs", "lib/history.cjs", "lib/jobs.cjs", "lib/models.cjs",
   "lib/rig.cjs", "lib/unreal.cjs", "scripts/inspect_fbx.py"
 ];
 const runtimeSourceToken = () => {
@@ -169,6 +170,24 @@ async function api(request, response, url) {
     return json(response, 202, currentRender());
   }
   if (request.method === "GET" && url.pathname === "/api/renders/status") return json(response, 200, currentRender());
+  if (request.method === "GET" && url.pathname === "/api/history") return json(response, 200, { batches: history(ROOT, currentRender()) });
+  if (request.method === "GET" && url.pathname === "/api/jobs/file") {
+    const jobsRoot = path.join(ROOT, "local", "jobs", "generated"), file = path.resolve(jobsRoot, url.searchParams.get("path") || "");
+    if (!within(file, jobsRoot) || !file.toLowerCase().endsWith(".job.json")) return error(response, 403, "Job file is outside the generated jobs folder");
+    return sendFile(response, file);
+  }
+  if (request.method === "POST" && url.pathname === "/api/local/open") {
+    const input = await body(request), jobsRoot = path.join(ROOT, "local", "jobs", "generated"), rendersRoot = path.join(ROOT, "local", "renders");
+    const target = path.resolve(String(input.path || "")), action = String(input.action || "");
+    if (action === "showJob") {
+      if (!within(target, jobsRoot) || !target.toLowerCase().endsWith(".job.json") || !fs.existsSync(target)) return error(response, 403, "Only generated job files can be shown");
+      const explorer = spawn("explorer.exe", ["/select,", target], { detached: true, stdio: "ignore", windowsHide: false }); explorer.on("error", () => {}); explorer.unref();
+    } else if (action === "openRenders") {
+      if (!within(target, rendersRoot) || !fs.existsSync(target) || !fs.statSync(target).isDirectory()) return error(response, 403, "Only local render folders can be opened");
+      const explorer = spawn("explorer.exe", [target], { detached: true, stdio: "ignore", windowsHide: false }); explorer.on("error", () => {}); explorer.unref();
+    } else return error(response, 400, "Unknown local open action");
+    return json(response, 200, { ok: true });
+  }
   if (request.method === "GET" && url.pathname === "/api/catalog") return json(response, 200, readCatalog());
   if (request.method === "GET" && url.pathname === "/api/renders/file") {
     const rendersRoot = path.join(ROOT, "local", "renders"), file = path.resolve(rendersRoot, url.searchParams.get("path") || "");

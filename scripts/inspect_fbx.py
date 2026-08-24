@@ -202,7 +202,11 @@ def inspect(source):
     raw = bounds_high - bounds_low
     (unit_factor, unit_name), ambiguous_units = guess_unit(float(raw[2]), float(raw[0]), float(raw[1]))
     back, coverage = detect_back(points)
+    # FBX files exported with the legacy inches-as-centimetres profile arrive in
+    # Unreal with the opposite X-axis handedness from the normal metre exports.
     yaw_by_back = {"+Y": 0, "-X": -90, "+X": 90, "-Y": 180}
+    if unit_name == "inches exported as cm":
+        yaw_by_back = {"+Y": 0, "-X": 90, "+X": -90, "-Y": 180}
     import_yaw = yaw_by_back.get(back, 0)
     x_cm, y_cm, z_cm = [float(value * unit_factor * 100) for value in raw]
     width, depth = (y_cm, x_cm) if abs(import_yaw) == 90 else (x_cm, y_cm)

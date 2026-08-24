@@ -7,9 +7,10 @@ const path = require("node:path");
 const os = require("node:os");
 const { parseCsv } = require("../lib/csv.cjs");
 const { buildRig, jobLights, rigScale } = require("../lib/rig.cjs");
-const { buildJob, buildBatchJob, CAMERA_YAW, groupedMaterials } = require("../lib/jobs.cjs");
+const { buildJob, buildBatchJob, writeJob, CAMERA_YAW, groupedMaterials } = require("../lib/jobs.cjs");
 const { ModelStore, sectionalFormFactor } = require("../lib/models.cjs");
 const { buildUnrealLaunch } = require("../lib/unreal.cjs");
+const { history, expectedRenders } = require("../lib/history.cjs");
 
 const root = path.join(__dirname, "..");
 const rows = parseCsv(fs.readFileSync(path.join(root, "data", "sectionals-indoor.csv"), "utf8"));
@@ -61,6 +62,33 @@ test("equal material names become one BatchRender material group", () => {
   assert.deepEqual(groupedMaterials([{ meshes: ["UPH"], material: "A" }, { meshes: ["Stitches"], material: "A" }])[0].meshes, ["uph", "stitches"]);
 });
 
+test("render history discovers saved jobs and their disk renders", () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "rh-history-"));
+  const jobsRoot = path.join(temp, "local", "jobs", "generated"), output = path.join(temp, "local", "renders", "TEST_prod1");
+  fs.mkdirSync(jobsRoot, { recursive: true }); fs.mkdirSync(output, { recursive: true });
+  const input = { ...baseInput, cameras: ["F"], layers: ["Fabric"] };
+  const job = buildJob(input, { ...model, materialIds: ["UPH", "Stitches", "Feet"] }, rig, output);
+  const jobPath = path.join(jobsRoot, "TEST_prod1.job.json"), image = path.join(output, "00000000_F_Product_uph.png");
+  try {
+    fs.writeFileSync(jobPath, JSON.stringify(job)); fs.writeFileSync(image, "png");
+    assert.equal(expectedRenders(job.tasks[0]), 1);
+    const [saved] = history(temp);
+    assert.equal(saved.id, "TEST_prod1"); assert.equal(saved.modelCount, 1); assert.equal(saved.renderCount, 1); assert.equal(saved.expectedRenders, 1); assert.equal(saved.state, "complete");
+    assert.deepEqual(saved.models[0].dimensions, baseInput.dimensions); assert.equal(saved.models[0].renders[0].camera, "F");
+    assert.match(saved.jobUrl, /^\/api\/jobs\/file\?path=/); assert.match(saved.models[0].renders[0].url, /^\/api\/renders\/file\?path=/);
+  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+});
+
+test("single-model jobs keep unique JSON and output folders", () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "rh-saved-jobs-")), current = { ...model, materialIds: ["UPH", "Stitches", "Feet"] };
+  try {
+    const first = writeJob(temp, baseInput, current, rig), second = writeJob(temp, baseInput, current, rig);
+    assert.notEqual(first.jobPath, second.jobPath); assert.notEqual(first.outputFolder, second.outputFolder);
+    assert.ok(fs.existsSync(first.jobPath)); assert.ok(fs.existsSync(second.jobPath));
+    assert.notEqual(first.job.jobId, second.job.jobId); assert.match(first.job.jobId, /^TEST_prod1_\d+/);
+  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+});
+
 test("tracked metadata makes all current models self-contained", async () => {
   const metadata = JSON.parse(fs.readFileSync(path.join(root, "data", "models.json"), "utf8"));
   assert.equal(Object.keys(metadata.models).length, 16);
@@ -70,7 +98,7 @@ test("tracked metadata makes all current models self-contained", async () => {
     fs.writeFileSync(path.join(temp, `${name}.fbx`), "");
     const inspected = await new ModelStore(root, { modelsRoot: temp }).inspect(name);
     assert.deepEqual(inspected.dimensions, { width: 356.3, depth: 274.7, height: 88.6 });
-    assert.equal(inspected.side, "R"); assert.equal(inspected.importYaw, -90); assert.equal(inspected.offsetUniformScale, 2.54);
+    assert.equal(inspected.side, "R"); assert.equal(inspected.importYaw, 90); assert.equal(inspected.offsetUniformScale, 2.54);
     assert.deepEqual(inspected.materialIds, ["UPH", "Stitches", "Feet"]);
   } finally { fs.rmSync(temp, { recursive: true, force: true }); }
 });
@@ -206,6 +234,15 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(client, /const metadataModel = query =>/);
   assert.match(client, /const sectionalFormFactor = \(name, side = ""\) =>/);
   assert.match(client, /await loadModelMetadata\(\)/);
+  assert.match(html, /id="historyList"/);
+  assert.match(html, /id="historyDetail"/);
+  assert.match(html, /id="rigBatchModels"/);
+  assert.match(html, /id="rigRenderImages"/);
+  assert.match(html, /id="jobDialog"/);
+  assert.match(client, /const loadHistory = async/);
+  assert.match(client, /data-history-action="rerun"/);
+  assert.match(client, /openLocal\("showJob"/);
+  assert.match(client, /selectHistoryModel/);
   assert.doesNotMatch(client, /Open the local dashboard with npm start to resolve full model paths/);
   assert.match(styles, /@media\(min-width:981px\)\{main\{width:calc\(100% - 48px\);max-width:none\}\}/);
 });

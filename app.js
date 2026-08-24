@@ -1,6 +1,6 @@
 (() => {
   const $ = (id) => document.getElementById(id);
-  const state = { status: null, models: [], metadata: null, batch: [], model: null, jobPath: null, poll: null, rig: null };
+  const state = { status: null, models: [], metadata: null, batch: [], model: null, jobPath: null, poll: null, rig: null, history: [], historyBatch: null, historyModel: null };
   const canReachLocalService = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
   const LOCAL_MODELS_ROOT = "D:\\GitHub\\RH_Local_Renders\\local\\models";
   const RIG_REFERENCE = { width: 453, depth: 279, height: 79 };
@@ -51,7 +51,7 @@
   const sideFromModel = () => {
     const value = $("sceneSide").value;
     if (value !== "auto") return value;
-    const label = state.model?.side || "";
+    const label = state.historyModel?.side || state.model?.side || "";
     return ["R", "L", "U"].includes(label) ? label : "R";
   };
   const payload = () => ({
@@ -92,7 +92,7 @@
     $("batchList").innerHTML = state.batch.map(model => `<div class="batch-model${state.model?.path === model.path ? " active" : ""}" data-model-path="${escapeHtml(model.path)}"><button class="batch-model-select" type="button" title="Open ${escapeHtml(model.name)}"><span>${escapeHtml(model.name)}</span><small>${model.dimensions.width} × ${model.dimensions.depth} × ${model.dimensions.height} cm · ${escapeHtml(model.materialIds.length)} IDs</small></button><button class="batch-model-remove" type="button" title="Remove ${escapeHtml(model.name)}" aria-label="Remove ${escapeHtml(model.name)}">×</button></div>`).join("");
   };
   const selectModel = model => {
-    state.model = model;
+    state.model = model; state.historyModel = null;
     $("modelEmpty").hidden = true; $("modelDetails").hidden = false;
     $("inspectedName").textContent = model.name; $("modelSide").textContent = model.side || "Unknown side";
     $("width").value = model.dimensions.width; $("depth").value = model.dimensions.depth; $("height").value = model.dimensions.height; $("importYaw").value = model.importYaw;
@@ -248,14 +248,18 @@
     const progress = ((+range.value - +range.min) / (+range.max - +range.min)) * 100;
     range.style.setProperty("--range-progress", `${progress}%`);
   };
-  const syncRigFromModel = () => {
-    if (!state.model) return;
-    [["rigWidth", "rigWidthRange", "width"], ["rigDepth", "rigDepthRange", "depth"], ["rigHeight", "rigHeightRange", "height"]].forEach(([numberId, rangeId, modelId]) => {
-      const number = $(numberId), range = $(rangeId), value = Math.max(+number.min, +$(modelId).value || +number.value);
+  const setRigDimensions = dimensions => {
+    if (!dimensions) return;
+    [["rigWidth", "rigWidthRange", "width"], ["rigDepth", "rigDepthRange", "depth"], ["rigHeight", "rigHeightRange", "height"]].forEach(([numberId, rangeId, dimension]) => {
+      const number = $(numberId), range = $(rangeId), value = Math.max(+number.min, +dimensions[dimension] || +number.value);
       if (value > +range.max) range.max = value;
       number.value = value; range.value = value; updateRigRange(range);
     });
     renderRig();
+  };
+  const syncRigFromModel = () => {
+    if (!state.model) return;
+    setRigDimensions(state.model.dimensions);
   };
   const loadRig = async () => {
     try {
@@ -306,7 +310,7 @@
     try {
       const result = await api("/api/jobs", { method: "POST", body: JSON.stringify(payload()) });
       state.jobPath = result.jobPath; $("jobResult").hidden = false; $("copyJobPath").textContent = result.jobPath;
-      $("launchRender").disabled = false; toast(`Job ready: ${result.modelCount || 1} model${result.modelCount === 1 ? "" : "s"} · ${result.cameraCount} views · ${result.lightSource}`);
+      $("launchRender").disabled = false; toast(`Job ready: ${result.modelCount || 1} model${result.modelCount === 1 ? "" : "s"} · ${result.cameraCount} views · ${result.lightSource}`); loadHistory();
     } catch (error) { toast(error.message, true); }
     finally { $("generateJob").disabled = false; $("generateJob").textContent = "Generate job"; validate(); }
   };
@@ -317,20 +321,72 @@
     } catch (error) { toast(error.message, true); }
   };
   const updateRender = (render) => {
+    state.status ||= {}; state.status.render = render;
     const badge = $("renderBadge"), box = $("renderStatus"), log = $("renderLog");
     badge.dataset.state = render.state; badge.textContent = ({running:"Rendering",success:"Complete",failed:"Failed",idle:"Idle"})[render.state] || render.state;
     box.dataset.state = render.state;
     const title = render.state === "running" ? "Unreal is rendering" : render.state === "success" ? "Render completed" : render.state === "failed" ? "Render stopped with an error" : "No active render";
     box.querySelector("strong").textContent = title; box.querySelector("span").textContent = render.jobPath || "Generate a job, then launch it in Unreal Engine 5.6.";
     log.hidden = !render.log; log.textContent = render.log || "";
-    if (render.state !== "running" && state.poll) { clearInterval(state.poll); state.poll = null; loadCatalog(); }
+    if (render.state !== "running" && state.poll) { clearInterval(state.poll); state.poll = null; loadHistory(); }
   };
   const startPolling = () => { if (state.poll) clearInterval(state.poll); state.poll = setInterval(async () => { try { updateRender(await api("/api/renders/status")); } catch {} }, 2000); };
-  const loadCatalog = async () => {
+  const formatDate = value => {
+    const date = new Date(value); if (Number.isNaN(date.getTime())) return "Unknown time";
+    return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
+  };
+  const historyStateLabel = value => ({ complete: "Complete", partial: "Partial", running: "Rendering", failed: "Failed", ready: "Job ready", invalid: "Invalid" })[value] || value;
+  const renderHistoryList = () => {
+    $("historyCount").textContent = `${state.history.length} job${state.history.length === 1 ? "" : "s"}`;
+    $("historyList").innerHTML = state.history.length ? state.history.map(batch => `<button class="history-card${state.historyBatch?.id === batch.id ? " active" : ""}" type="button" data-history-id="${escapeHtml(batch.id)}"><span class="history-card-top"><strong>${escapeHtml(batch.id)}</strong><i class="history-state" data-state="${escapeHtml(batch.state)}">${escapeHtml(historyStateLabel(batch.state))}</i></span><span class="history-card-meta"><b>${batch.modelCount} model${batch.modelCount === 1 ? "" : "s"}</b><b>${batch.renderCount}/${batch.expectedRenders} renders</b></span><small>${escapeHtml(formatDate(batch.updatedAt || batch.generatedAt))}</small></button>`).join("") : '<div class="empty-state">No saved jobs yet. Generated jobs will appear here automatically.</div>';
+  };
+  const renderHistoryDetail = () => {
+    const batch = state.historyBatch;
+    if (!batch) { $("historyDetail").innerHTML = '<div class="empty-state">Choose a saved job to inspect its models, JSON, and render output.</div>'; return; }
+    $("historyDetail").innerHTML = `<div class="history-detail-heading"><div><span>SAVED JOB</span><strong>${escapeHtml(batch.id)}</strong><small>${escapeHtml(formatDate(batch.generatedAt))}</small></div><i class="history-state" data-state="${escapeHtml(batch.state)}">${escapeHtml(historyStateLabel(batch.state))}</i></div><div class="history-summary"><div><span>MODELS</span><strong>${batch.modelCount}</strong></div><div><span>RENDERS</span><strong>${batch.renderCount}/${batch.expectedRenders}</strong></div><div><span>OUTPUT</span><strong>${batch.renderCount ? "On disk" : "Empty"}</strong></div></div>${batch.error ? `<p class="inline-warning">${escapeHtml(batch.error)}</p>` : `<div class="history-model-preview">${batch.models.slice(0, 6).map((model, index) => `<button type="button" data-history-action="review" data-model-index="${index}" title="Review ${escapeHtml(model.name)}">${model.renders[0] ? `<img src="${escapeHtml(model.renders[0].url)}" alt="${escapeHtml(model.name)} render" loading="lazy">` : "<span>No render</span>"}<small>${escapeHtml(model.name)}</small></button>`).join("")}</div>`}<code class="history-path" title="${escapeHtml(batch.jobPath)}">${escapeHtml(batch.jobPath)}</code><div class="history-actions"><button class="primary-button" type="button" data-history-action="review"${batch.modelCount ? "" : " disabled"}>Review batch</button><button class="secondary-button" type="button" data-history-action="rerun"${batch.state === "invalid" ? " disabled" : ""}>Run again</button><button class="quiet-button" type="button" data-history-action="viewJob">View JSON</button><button class="quiet-button" type="button" data-history-action="showJob">Show JSON</button><button class="quiet-button" type="button" data-history-action="openRenders"${batch.renderCount ? "" : " disabled"}>Open renders</button></div>`;
+  };
+  const renderRigHistoryModels = () => {
+    const batch = state.historyBatch, group = $("rigBatchGroup");
+    group.hidden = !batch?.models?.length;
+    if (!batch?.models?.length) return;
+    $("rigBatchCount").textContent = `${batch.models.length} models`;
+    $("rigBatchModels").innerHTML = batch.models.map((model, index) => `<button type="button" class="rig-batch-model${state.historyModel === model ? " active" : ""}" data-history-model-index="${index}" title="${escapeHtml(model.name)}"><span>${String(index + 1).padStart(2, "0")}</span><strong>${escapeHtml(model.name)}</strong><small>${model.dimensions ? `${model.dimensions.width} × ${model.dimensions.depth} × ${model.dimensions.height} cm` : "No dimensions"} · ${model.renders.length} renders</small></button>`).join("");
+  };
+  const renderRigGallery = () => {
+    const model = state.historyModel, gallery = $("rigRenderGallery");
+    gallery.hidden = !model;
+    if (!model) return;
+    $("rigRenderModel").textContent = model.name; $("rigRenderCount").textContent = `${model.renders.length} file${model.renders.length === 1 ? "" : "s"}`;
+    $("rigRenderImages").innerHTML = model.renders.length ? model.renders.map(render => `<a href="${escapeHtml(render.url)}" target="_blank" rel="noreferrer"><img src="${escapeHtml(render.url)}" alt="${escapeHtml(model.name)} ${escapeHtml(render.camera || "render")}" loading="lazy"><span>${escapeHtml(render.camera || render.name)}</span></a>`).join("") : '<div class="empty-state">This model has no render files on disk yet.</div>';
+  };
+  const selectHistoryModel = model => {
+    if (!model) return;
+    state.historyModel = model; $("rigMode").value = model.sourceMode || "B";
+    if (currentRigShot().startsWith("TQ")) {
+      const shot = document.querySelector(`input[name="rigShot"][value="${model.side === "R" ? "TQR" : "TQL"}"]`); if (shot) shot.checked = true;
+    }
+    setRigDimensions(model.dimensions); renderRigHistoryModels(); renderRigGallery();
+  };
+  const reviewHistoryBatch = (batch, modelIndex = 0) => {
+    if (!batch?.models?.length) return;
+    state.historyBatch = batch; renderHistoryList(); renderHistoryDetail(); renderRigHistoryModels();
+    selectHistoryModel(batch.models[Math.max(0, Math.min(modelIndex, batch.models.length - 1))]);
+    document.querySelector(".rig-section").scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+  const selectHistoryBatch = batch => { state.historyBatch = batch; renderHistoryList(); renderHistoryDetail(); };
+  const viewHistoryJob = async batch => {
+    const job = await api(batch.jobUrl); $("jobDialogTitle").textContent = batch.id; $("jobJson").textContent = JSON.stringify(job, null, 2); $("jobDialog").showModal();
+  };
+  const openLocal = (action, path) => api("/api/local/open", { method: "POST", body: JSON.stringify({ action, path }) });
+  const loadHistory = async () => {
     try {
-      const { models } = await api("/api/catalog"); $("catalogCount").textContent = `${models.length} model${models.length === 1 ? "" : "s"}`;
-      $("catalog").innerHTML = models.length ? models.map(model => `<article class="catalog-card"><div class="catalog-image">${model.previewUrl ? `<img src="${escapeHtml(model.previewUrl)}" alt="${escapeHtml(model.name)} render">` : "<span>No render preview</span>"}</div><div class="catalog-body"><strong title="${escapeHtml(model.name)}">${escapeHtml(model.name)}</strong><div class="catalog-meta"><span>${model.dimensions.width} × ${model.dimensions.depth} × ${model.dimensions.height} cm</span><span>${model.renders.length} renders</span></div></div></article>`).join("") : '<div class="empty-state">A model appears here after its first successful render, with measured dimensions and render examples.</div>';
-    } catch {}
+      const selectedId = state.historyBatch?.id, { batches } = await api("/api/history"); state.history = batches;
+      state.historyBatch = batches.find(batch => batch.id === selectedId) || batches[0] || null;
+      renderHistoryList(); renderHistoryDetail();
+      if (state.historyModel && state.historyBatch) {
+        const updated = state.historyBatch.models.find(model => model.name === state.historyModel.name); if (updated) selectHistoryModel(updated);
+      }
+    } catch (error) { $("historyList").innerHTML = `<div class="empty-state">History unavailable: ${escapeHtml(error.message)}</div>`; }
   };
   const refreshSheet = async () => {
     $("refreshSheet").disabled = true;
@@ -346,7 +402,7 @@
       const status = await api("/api/status"); state.status = status; state.models = status.models; setConnection(true);
       $("modelCount").textContent = status.models.length; $("sheetState").textContent = status.sheet.source.toUpperCase(); $("unrealState").textContent = status.unreal.available ? "READY" : "MISSING";
       $("modelOptions").innerHTML = status.models.map(model => `<option value="${escapeHtml(model.path)}">${escapeHtml(model.name)}</option>`).join("");
-      updateRender(status.render); loadCatalog(); if (status.render.state === "running") startPolling();
+      updateRender(status.render); loadHistory(); if (status.render.state === "running") startPolling();
     } catch { setConnection(false); $("sheetState").textContent = "OFFLINE"; $("unrealState").textContent = "OFFLINE"; }
   };
   $("inspectModel").addEventListener("click", inspect); $("modelPath").addEventListener("keydown", event => { if (event.key === "Enter") inspect(); });
@@ -388,6 +444,28 @@
   document.querySelectorAll('input[name="rigShot"], input[name="rigColor"]').forEach(node => node.addEventListener("change", renderRig));
   document.querySelectorAll('input[name="rigLayout"]').forEach(node => node.addEventListener("change", () => { $("rigViews").dataset.layout = node.value; requestAnimationFrame(renderRig); }));
   $("sceneSide").addEventListener("change", renderRig);
+  $("refreshHistory").addEventListener("click", loadHistory);
+  $("historyList").addEventListener("click", event => {
+    const card = event.target.closest("[data-history-id]"); if (!card) return;
+    const batch = state.history.find(item => item.id === card.dataset.historyId); if (batch) selectHistoryBatch(batch);
+  });
+  $("historyDetail").addEventListener("click", async event => {
+    const button = event.target.closest("[data-history-action]"), batch = state.historyBatch; if (!button || !batch) return;
+    const action = button.dataset.historyAction;
+    try {
+      if (action === "review") reviewHistoryBatch(batch, +(button.dataset.modelIndex || 0));
+      else if (action === "rerun") { state.jobPath = batch.jobPath; $("jobResult").hidden = false; $("copyJobPath").textContent = batch.jobPath; await launch(); }
+      else if (action === "viewJob") await viewHistoryJob(batch);
+      else if (action === "showJob") { await openLocal("showJob", batch.jobPath); toast("JSON selected in Explorer"); }
+      else if (action === "openRenders") { await openLocal("openRenders", batch.outputFolder); toast("Render folder opened"); }
+    } catch (error) { toast(error.message, true); }
+  });
+  $("rigBatchModels").addEventListener("click", event => {
+    const button = event.target.closest("[data-history-model-index]"); if (!button || !state.historyBatch) return;
+    selectHistoryModel(state.historyBatch.models[+button.dataset.historyModelIndex]);
+  });
+  $("closeJobDialog").addEventListener("click", () => $("jobDialog").close());
+  $("jobDialog").addEventListener("click", event => { if (event.target === $("jobDialog")) $("jobDialog").close(); });
   document.querySelectorAll("input,select").forEach(node => node.addEventListener("change", validate));
   init();
 })();

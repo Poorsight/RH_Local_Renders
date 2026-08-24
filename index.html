@@ -136,6 +136,17 @@
       </section>
     </div>
 
+    <section class="history-section" aria-labelledby="historyTitle">
+      <div class="section-heading history-heading">
+        <div><p class="eyebrow">LOCAL ARCHIVE</p><h2 id="historyTitle">Render & job history</h2><p>Generated JSON jobs stay available for review, reruns, and batch inspection.</p></div>
+        <div class="history-heading-actions"><span id="historyCount">0 jobs</span><button id="refreshHistory" class="quiet-button" type="button">Refresh</button></div>
+      </div>
+      <div class="history-workspace">
+        <div id="historyList" class="history-list"><div class="empty-state">Render history requires the local service.</div></div>
+        <article id="historyDetail" class="history-detail"><div class="empty-state">Choose a saved job to inspect its models, JSON, and render output.</div></article>
+      </div>
+    </section>
+
     <section class="rig-section" aria-labelledby="rigTitle">
       <div class="section-heading rig-heading">
         <div>
@@ -150,6 +161,11 @@
 
       <div class="rig-workspace">
         <aside class="rig-controls" aria-label="Light rig controls">
+          <div id="rigBatchGroup" class="rig-control-group rig-batch-group" hidden>
+            <div class="rig-control-heading"><span>BATCH MODELS</span><small id="rigBatchCount"></small></div>
+            <div id="rigBatchModels" class="rig-batch-models"></div>
+          </div>
+
           <div class="rig-control-group">
             <div class="rig-control-heading"><span>SHOT</span><small id="rigShotHint">Front</small></div>
             <div class="rig-segmented" role="radiogroup" aria-label="Light rig shot">
@@ -219,16 +235,19 @@
             </article>
           </div>
           <div id="rigLights" class="rig-light-list" aria-label="Light values"></div>
+          <div id="rigRenderGallery" class="rig-render-gallery" hidden>
+            <div class="rig-render-gallery-heading"><div><span>DISK RENDERS</span><strong id="rigRenderModel"></strong></div><span id="rigRenderCount"></span></div>
+            <div id="rigRenderImages" class="rig-render-images"></div>
+          </div>
         </div>
       </div>
     </section>
-
-    <section class="catalog-section" aria-labelledby="catalogTitle">
-      <div class="section-heading"><div><p class="eyebrow">GENERATED PRESETS</p><h2 id="catalogTitle">Rendered models</h2></div><span id="catalogCount">0 models</span></div>
-      <div id="catalog" class="catalog-grid"><div class="empty-state">A model appears here after its first successful render, with measured dimensions and render examples.</div></div>
-    </section>
   </main>
 
+  <dialog id="jobDialog" class="job-dialog" aria-labelledby="jobDialogTitle">
+    <div class="job-dialog-heading"><div><span>JOB JSON</span><strong id="jobDialogTitle"></strong></div><button id="closeJobDialog" class="quiet-button" type="button">Close</button></div>
+    <pre id="jobJson"></pre>
+  </dialog>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="app.js"></script>
 </body>

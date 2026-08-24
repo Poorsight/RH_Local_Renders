@@ -42,11 +42,13 @@ The model input accepts a full FBX path, exact filename, or unique product subst
 
 The tracked `data/models.json` keeps the metadata for the original 16 FBX files. A new FBX placed in `local/models/` is analyzed automatically on first inspection with the installed local Blender: the service reads its bounds, unit scale, back orientation, exact `L`/`R`/`U` sectional form factor, import yaw, and component Material IDs. The name markers (`LEFT_ARM`, `RIGHT_ARM`, and U-shape names) take priority; ambiguous names fall back to the measured footprint. The result is cached in ignored `local/model-metadata.json` and is refreshed if that FBX changes. No file is uploaded or copied, and the runtime does not depend on the old `sectional-classifier` project. Set `RH_BLENDER` only if Blender is installed outside `C:\Program Files\Blender Foundation\`.
 
-Material assignments are normalized from the final component-name word with digits removed: long names ending in `_UPH` and `_UPH1` become one `UPH` row, and the same applies to `Stitches` and `Feet`. One RH material value is applied to every exact source mesh ID in that group, while each task receives only the IDs present in its own FBX. **Generate job** creates one `.job.json` whose `tasks` contain every model, while dimensions, side, import yaw, lights, and output folder remain model-specific.
+Material assignments are normalized from the final component-name word with digits removed: long names ending in `_UPH` and `_UPH1` become one `UPH` row, and the same applies to `Stitches` and `Feet`. One RH material value is applied to every exact source mesh ID in that group, while each task receives only the IDs present in its own FBX. **Generate job** creates one uniquely named `.job.json` whose `tasks` contain every model, while dimensions, side, import yaw, lights, and output folder remain model-specific. Single-model jobs also receive a timestamped JSON and output folder, so generating another job never overwrites the earlier one.
 
 The static preview uses the same tracked `data/models.json`: dropping any batch made from the 16 known FBX files restores their expected `D:\GitHub\RH_Local_Renders\local\models\…` paths and groups their Material IDs without uploading files. First-time analysis of a new FBX, job generation, and Unreal launch require `Start_RH_Local_Renders.bat` because a public web page cannot run Blender or local processes.
 
-There are no bundled model presets. After a successful render produces images, the service adds that model to ignored `local/catalog.json` with its measured dimensions and render files. The UI then displays it under **Rendered models**.
+There are no bundled model presets. **Render & job history** discovers the JSON jobs and render files already stored under `local/`, including output from a completed plugin run even if a previous browser session missed its final event. A saved job can be selected, viewed as formatted JSON, shown in Explorer, or launched again. **Review batch** loads its model list into the native light rig; selecting a model restores that job's dimensions, side, source mode, and disk render gallery.
+
+The legacy inches-as-centimetres FBX profile uses the opposite X handedness during Unreal import. Automatic inspection accounts for this when deriving import yaw; the affected `prod9910052` model therefore uses `+90°`, while normal metre exports keep the established orientation rule.
 
 ## Light reference
 
@@ -72,14 +74,14 @@ The generated job is served once to that process. A render is marked successful 
 
 ## Source and local data
 
-Everything under `local/` is ignored. Only `local/models/` is kept as permanent input; `local/jobs/`, `local/renders/` and `local/catalog.json` are created later by the application as working output and must not be committed. The public/static dashboard remains safe when uploaded, but launching Unreal requires the localhost service.
+Everything under `local/` is ignored by Git. `local/models/` is permanent input; `local/jobs/` and `local/renders/` are the durable local history displayed by the dashboard and should be retained until the user chooses to remove them. None of these files are committed. The public/static dashboard remains safe when uploaded, but local history and Unreal launch require the localhost service.
 
 ## Project layout
 
 ```text
 app.js / app.css / index.html   browser dashboard
 server.cjs                     localhost API and render process control
-lib/                           jobs, models, light data and Unreal launch logic
+lib/                           jobs, history, models, light data and Unreal launch logic
 data/                          tracked model metadata and light fallback
 test/                          product regression tests
 scripts/deploy.sh              preview deployment

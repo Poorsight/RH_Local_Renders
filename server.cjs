@@ -4,7 +4,7 @@ const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
-const { spawn } = require("node:child_process");
+const { spawn, spawnSync } = require("node:child_process");
 const { SheetStore } = require("./lib/rig.cjs");
 const { ModelStore } = require("./lib/models.cjs");
 const { writeBatchJob } = require("./lib/jobs.cjs");
@@ -166,6 +166,12 @@ function latestModified(root, extensions) {
   return latest;
 }
 
+function pluginRuntimeIsCommitted(pluginRoot, files) {
+  if (!files.every(file => fs.existsSync(path.join(pluginRoot, file)))) return false;
+  const result = spawnSync("git", ["-C", pluginRoot, "diff", "--quiet", "HEAD", "--", ...files], { windowsHide: true });
+  return result.status === 0;
+}
+
 async function preflight(input) {
   const selections = input.models?.length ? input.models : input.modelPath ? [{ modelPath: input.modelPath }] : [];
   const checks = [], inspected = [];
@@ -194,8 +200,9 @@ async function preflight(input) {
   checks.push(sheet.status().rows ? { id: "lights", level: sheet.status().source === "live" ? "ok" : "warning", label: "Light data", detail: `${sheet.status().rows} Sectionals / Indoor rows · ${sheet.status().source}` } : { id: "lights", level: "error", label: "Light data", detail: "No light rows are available." });
   const pluginRoot = path.join(path.dirname(UNREAL_PROJECT), "Plugins", "BatchRender"), markerFile = path.join(pluginRoot, "Source", "BatchRenderEditor", "Public", "JobModel.h");
   const bridgeSource = fs.existsSync(markerFile) && fs.readFileSync(markerFile, "utf8").includes("CameraFocalHandoffVersion");
-  const sourceTime = latestModified(path.join(pluginRoot, "Source"), [".h", ".cpp"]), binaryFiles = [path.join(pluginRoot, "Binaries", "Win64", "UnrealEditor-BatchRender.dll"), path.join(pluginRoot, "Binaries", "Win64", "UnrealEditor-BatchRenderEditor.dll")];
-  const binariesCurrent = binaryFiles.every(file => fs.existsSync(file) && fs.statSync(file).mtimeMs >= sourceTime);
+  const sourceTime = latestModified(path.join(pluginRoot, "Source"), [".h", ".cpp"]), binaryRelative = [path.join("Binaries", "Win64", "UnrealEditor-BatchRender.dll"), path.join("Binaries", "Win64", "UnrealEditor-BatchRenderEditor.dll")], binaryFiles = binaryRelative.map(file => path.join(pluginRoot, file));
+  const runtimeRelative = [path.join("Source", "BatchRenderEditor", "Public", "JobModel.h"), path.join("Source", "BatchRenderEditor", "Private", "JobModel.cpp"), path.join("Source", "BatchRender", "Private", "BatchRender.cpp"), ...binaryRelative];
+  const binariesCurrent = pluginRuntimeIsCommitted(pluginRoot, runtimeRelative) || binaryFiles.every(file => fs.existsSync(file) && fs.statSync(file).mtimeMs >= sourceTime);
   const bridgeReady = bridgeSource && binariesCurrent;
   const bridgeDetail = !bridgeSource ? "BatchRender camera handoff is not installed." : !binariesCurrent ? "BatchRender camera handoff must be rebuilt." : "Editor, project, and Fabric camera handoff are ready.";
   checks.push(fs.existsSync(UNREAL_EDITOR) && fs.existsSync(UNREAL_PROJECT) ? { id: "unreal", level: bridgeReady ? "ok" : "error", label: "Unreal", detail: bridgeDetail } : { id: "unreal", level: "error", label: "Unreal", detail: "Editor or project file is missing." });

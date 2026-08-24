@@ -22,6 +22,6 @@ Apply and rebuild when required:
 .\scripts\setup-batchrender-bridge.ps1 -Action Setup
 ```
 
-Expected final state is `Ready`. `RebuildRequired` means the C++ source contains support but the DLLs are older. `PatchRequired` means the current upstream source is compatible but unpatched. `Incompatible` requires reviewing the new upstream version and refreshing the patch; no partial patch is left behind.
+Expected final state is `Ready`. A clean plugin commit that contains both the supported C++ source and its DLLs stays `Ready` after a branch checkout even though Git changes file timestamps. `RebuildRequired` means locally changed C++ source is newer than the DLLs. `PatchRequired` means the current upstream source is compatible but unpatched. `Incompatible` requires reviewing the new upstream version and refreshing the patch; no partial patch is left behind.
 
 Long term, this small change should be merged into the BatchRender upstream repository. The local compatibility layer can remain as the version/status guard.

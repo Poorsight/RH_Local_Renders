@@ -333,6 +333,8 @@ test("server status exposes a runtime token and stale-source signal", () => {
   const server = fs.readFileSync(path.join(root, "server.cjs"), "utf8");
   assert.match(server, /runtimeSourceToken/);
   assert.match(server, /runtime: \{ startedAt: RUNTIME_STARTED_AT, sourceToken: RUNTIME_SOURCE_TOKEN, stale:/);
+  assert.match(server, /pluginRuntimeIsCommitted/);
+  assert.match(server, /git", \["-C", pluginRoot, "diff", "--quiet", "HEAD"/);
 });
 
 test("Unreal launch points the stock BatchRender plugin at the local API", () => {

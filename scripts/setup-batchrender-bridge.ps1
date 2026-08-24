@@ -41,6 +41,15 @@ function Test-SourceSupport {
 }
 
 function Test-BinariesCurrent {
+    $trackedRuntimeFiles = @($SourceFiles) + @($BuildGroups | ForEach-Object { $_.Binary })
+    $allRuntimeFilesExist = $trackedRuntimeFiles | ForEach-Object {
+        Test-Path -LiteralPath (Join-Path $PluginRoot $_) -PathType Leaf
+    } | Where-Object { -not $_ } | Measure-Object
+    if ($allRuntimeFilesExist.Count -eq 0) {
+        & git -C $PluginRoot diff --quiet HEAD -- $trackedRuntimeFiles 2>$null
+        if ($LASTEXITCODE -eq 0) { return $true }
+    }
+
     foreach ($group in $BuildGroups) {
         $binary = Join-Path $PluginRoot $group.Binary
         if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) { return $false }

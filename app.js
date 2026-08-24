@@ -34,6 +34,12 @@
   };
   const selected = (name) => [...document.querySelectorAll(`input[name=${name}]:checked`)].map(node => node.value);
   const materialRows = () => [...document.querySelectorAll("[data-material-id]")].map(node => ({ meshes: [node.dataset.materialId], material: node.value.trim() }));
+  const sideFromModel = () => {
+    const value = $("sceneSide").value;
+    if (value !== "auto") return value;
+    const label = state.model?.side || "";
+    return label.includes("RIGHT") ? "R" : label.includes("LEFT") ? "L" : label.includes("U") ? "U" : "R";
+  };
   const payload = () => ({
     modelPath: state.model.path,
     models: state.batch.map(model => ({ modelPath: model.path, dimensions: model.dimensions, importYaw: model.importYaw })),

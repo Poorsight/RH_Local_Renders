@@ -17,7 +17,8 @@ FBX name/path
   -> dimensions + side + import yaw + component Material IDs
   -> Google Sheets Sectionals / Indoor rig (tracked CSV fallback)
   -> local/jobs/generated/<model>.job.json
-  -> UnrealEditor rh_unreal_2.uproject -BatchRenderJob=...
+  -> local GET/POST BatchRender API
+  -> UnrealEditor rh_unreal_2.uproject -BatchRender -ini:Editor:...ApiUrl=local
   -> local/renders/<model>/
   -> local/catalog.json
 ```
@@ -38,9 +39,9 @@ Light positions/intensities use the rigid-rig formula documented in `handoff/HAN
 
 ## Unreal bridge
 
-`D:\GitHub\rh_unreal_2\Plugins\BatchRender\Source\BatchRenderEditor` parses `-BatchRenderJob=<file>`, invokes the existing `TestJob` path after editor initialization, suppresses the background API queue, and optionally exits through `-BatchRenderExitOnComplete`.
+The bridge belongs only to this repository. `server.cjs` implements the plugin's existing API contract: Unreal fetches the queued job with `GET /api/unreal` and posts render/completion/error events back to the same endpoint. `lib/unreal.cjs` applies a process-only `-ini:Editor:[/Script/BatchRenderEditor.BatchRenderSettings]:ApiUrl=http://127.0.0.1:<port>/api/unreal` override, so the launched editor never touches the production queue.
 
-The Unreal repository and BatchRender submodule may contain unrelated user changes, especially `.uasset` and material/texture folders. Preserve them.
+Do not edit, commit, push, or rebuild launcher code in `rh_unreal_2` or its BatchRender submodule. They may contain unrelated user changes, especially `.uasset` and material/texture folders; preserve them.
 
 ## Commands
 

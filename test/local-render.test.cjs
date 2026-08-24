@@ -8,6 +8,7 @@ const { parseCsv } = require("../lib/csv.cjs");
 const { buildRig, jobLights } = require("../lib/rig.cjs");
 const { buildJob, CAMERA_YAW, groupedMaterials } = require("../lib/jobs.cjs");
 const { componentId } = require("../lib/models.cjs");
+const { buildUnrealLaunch } = require("../lib/unreal.cjs");
 
 const root = path.join(__dirname, "..");
 const rows = parseCsv(fs.readFileSync(path.join(root, "data", "sectionals-indoor.csv"), "utf8"));
@@ -50,4 +51,14 @@ test("equal material names become one BatchRender material group", () => {
 
 test("component IDs are read from the suffix of FBX object names", () => {
   assert.equal(componentId("SOFA_PART:UPH"), "UPH"); assert.equal(componentId("SOFA_PART:Feet.001"), "Feet");
+});
+
+test("Unreal launch points the stock BatchRender plugin at the local API", () => {
+  const apiUrl = "http://127.0.0.1:5500/api/unreal";
+  const launch = buildUnrealLaunch("D:\\UE\\UnrealEditor.exe", "D:\\RH\\rh.uproject", apiUrl);
+  assert.equal(launch.options.shell, false);
+  assert.ok(launch.args.includes("-BatchRender"));
+  assert.ok(launch.args.includes(`-ini:Editor:[/Script/BatchRenderEditor.BatchRenderSettings]:ApiUrl=${apiUrl}`));
+  assert.ok(!launch.args.some(argument => argument.startsWith("-ExecutePythonScript=")));
+  assert.ok(!launch.args.some(argument => argument.startsWith("-BatchRenderJob=")));
 });

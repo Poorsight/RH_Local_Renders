@@ -54,15 +54,15 @@ npm test
 
 The suite checks the old T3D golden vectors and UE exports, the cached sectional sheet, five-light job shape, material grouping, and the exact sectional actor-yaw rules.
 
-The BatchRender plugin supports:
+The launcher is stored entirely in this repository. The stock BatchRender plugin already reads `ApiUrl` from `Config/DefaultEditor.ini`, fetches a job with `GET`, and reports events such as `render_finished`, `job_completed`, and `error` with `POST`. The dashboard exposes the same protocol at `http://127.0.0.1:5500/api/unreal` and overrides `ApiUrl` only for the launched process.
 
 ```powershell
-UnrealEditor.exe rh_unreal_2.uproject -BatchRender `
-  -BatchRenderJob="D:\path\model.job.json" `
-  -BatchRenderExitOnComplete -log
+UnrealEditor.exe rh_unreal_2.uproject `
+  -BatchRender `
+  -ini:Editor:[/Script/BatchRenderEditor.BatchRenderSettings]:ApiUrl=http://127.0.0.1:5500/api/unreal
 ```
 
-It bypasses the remote queue for that one local job and returns exit code `0` on success or `1` on failure.
+The generated job is served once to that process. A render is marked successful only after the plugin posts `job_completed` and at least one output image was created or updated; the dashboard then closes that Unreal process. No source, config, batch file, binary, or commit is required in `rh_unreal_2` or its BatchRender submodule.
 
 ## Source and local data
 

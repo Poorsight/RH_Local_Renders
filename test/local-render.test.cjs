@@ -62,3 +62,14 @@ test("Unreal launch points the stock BatchRender plugin at the local API", () =>
   assert.ok(!launch.args.some(argument => argument.startsWith("-ExecutePythonScript=")));
   assert.ok(!launch.args.some(argument => argument.startsWith("-BatchRenderJob=")));
 });
+
+test("main page renders the light rig natively in the shared workspace", () => {
+  const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
+  const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  assert.match(html, /class="rig-workspace"/);
+  assert.match(html, /id="rigPlan"/);
+  assert.match(html, /id="rigElevation"/);
+  assert.doesNotMatch(html, /<iframe/i);
+  assert.match(client, /data\/sectionals-indoor\.csv/);
+  assert.match(client, /Math\.max\(1, raw\)/);
+});

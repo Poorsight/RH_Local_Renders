@@ -42,7 +42,9 @@ There are no bundled model presets. After a successful render produces images, t
 
 ## Light reference
 
-`light-rig-reference.html` is the standalone scaler/schematic preserved from the original project. The dashboard embeds it and forwards the public page hash, so links such as `#v=F&W=343&D=307&H=79&m=A&cb=role` still configure the reference.
+The sectional light-rig scaler and schematic are native parts of the dashboard, using the same controls, typography, colours, and responsive layout as the render workflow. It reads the tracked `data/sectionals-indoor.csv` directly in the browser, so the reference also works on the static preview without the local service.
+
+`light-rig-reference.html` remains only as a compatibility page for old direct links. The dashboard does not embed it or use an iframe.
 
 The scaler handoff remains in `handoff/`. Run `npm run handoff` after changing its rig constants.
 

@@ -2,10 +2,7 @@
 
 ## Product state
 
-The project has two coupled surfaces:
-
-1. `index.html`, `app.css`, `app.js`, and `server.cjs` form the local render-control dashboard.
-2. `light-rig-reference.html` is the standalone sectional light-rig calculator preserved as a visual reference and embedded near the bottom of the dashboard.
+The primary surface is the unified render-control dashboard formed by `index.html`, `app.css`, `app.js`, and `server.cjs`. Its sectional light-rig controls and schematics are native dashboard components rather than an embedded page. `light-rig-reference.html` remains only for compatibility with old direct links.
 
 Do not add bundled model presets. A preset is a generated catalogue entry and may appear only after a successful local render has produced image files.
 
@@ -60,4 +57,4 @@ For UI changes, check desktop and 390px mobile layouts, interactions, horizontal
 
 ## Public preview
 
-Keep the historical `/dmitriy.derevyanko/light-rig/` URL working. The static copy shows the dashboard and embedded reference; local actions show offline unless `server.cjs` is running on the same origin. The hash is forwarded to `light-rig-reference.html`.
+Keep the historical `/dmitriy.derevyanko/light-rig/` URL working. The static copy shows the unified dashboard and native light-rig reference; local actions show offline unless `server.cjs` is running on the same origin. Deploy `data/sectionals-indoor.csv` with the page because the browser-side rig reads it directly.

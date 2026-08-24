@@ -125,17 +125,87 @@
       </section>
     </div>
 
+    <section class="rig-section" aria-labelledby="rigTitle">
+      <div class="section-heading rig-heading">
+        <div>
+          <p class="eyebrow">LIGHT WORKSPACE</p>
+          <h2 id="rigTitle">Sectional light rig</h2>
+          <p>The same five-light setup used by generated jobs, scaled as one rigid body.</p>
+        </div>
+        <div class="rig-readout" aria-label="Current light rig scale">
+          <span>RIG SCALE</span><strong id="rigScale">1.000×</strong><small id="rigScaleNote">Reference footprint</small>
+        </div>
+      </div>
+
+      <div class="rig-workspace">
+        <aside class="rig-controls" aria-label="Light rig controls">
+          <div class="rig-control-group">
+            <div class="rig-control-heading"><span>SHOT</span><small id="rigShotHint">Front</small></div>
+            <div class="rig-segmented" role="radiogroup" aria-label="Light rig shot">
+              <label><input type="radio" name="rigShot" value="F" checked><span>F</span></label>
+              <label><input type="radio" name="rigShot" value="FH"><span>FH</span></label>
+              <label><input type="radio" name="rigShot" value="TQR"><span>TQ-R</span></label>
+              <label><input type="radio" name="rigShot" value="TQL"><span>TQ-L</span></label>
+            </div>
+          </div>
+
+          <div class="rig-control-group">
+            <div class="rig-control-heading"><span>SOFA DIMENSIONS</span><button id="rigUseModel" class="text-button" type="button" disabled>Use inspected model</button></div>
+            <div class="rig-dimensions">
+              <label>Width · X <span>cm</span><input id="rigWidth" type="number" min="1" step="1" value="453"></label>
+              <label>Depth · Y <span>cm</span><input id="rigDepth" type="number" min="1" step="1" value="279"></label>
+              <label>Height · Z <span>cm</span><input id="rigHeight" type="number" min="1" step="1" value="79"></label>
+            </div>
+          </div>
+
+          <div class="rig-control-group">
+            <div class="rig-control-heading"><span>LIGHT BEHAVIOR</span><small>Rigid rig</small></div>
+            <label>Source geometry
+              <select id="rigMode">
+                <option value="B">Fixed sources · production</option>
+                <option value="A">Exact similarity</option>
+              </select>
+            </label>
+            <p class="rig-help">The five lights keep their tuned rotations and relative balance. The rig only moves out when a sofa exceeds the 453 × 279 × 79 cm reference.</p>
+          </div>
+
+          <div class="rig-control-group rig-reference-note">
+            <span>REFERENCE</span><strong>453 × 279 × 79 cm</strong><small>Positions and intensity remain 1:1 while k = 1.</small>
+          </div>
+        </aside>
+
+        <div class="rig-stage">
+          <div class="rig-toolbar">
+            <div class="rig-segmented" role="radiogroup" aria-label="Diagram layout">
+              <label><input type="radio" name="rigLayout" value="plan"><span>Plan</span></label>
+              <label><input type="radio" name="rigLayout" value="elevation"><span>Elevation</span></label>
+              <label><input type="radio" name="rigLayout" value="split" checked><span>Split</span></label>
+            </div>
+            <div class="rig-segmented" role="radiogroup" aria-label="Diagram color mode">
+              <label><input type="radio" name="rigColor" value="role" checked><span>Role</span></label>
+              <label><input type="radio" name="rigColor" value="kelvin"><span>Kelvin</span></label>
+            </div>
+          </div>
+
+          <div id="rigLoading" class="rig-loading">Loading Sectionals / Indoor light data…</div>
+          <div id="rigViews" class="rig-views" data-layout="split" hidden>
+            <article class="rig-view rig-plan-view">
+              <div class="rig-view-heading"><strong>Plan</strong><span>X · Y</span></div>
+              <svg id="rigPlan" role="img" aria-label="Top view of sectional and five-light rig" preserveAspectRatio="xMidYMid meet"></svg>
+            </article>
+            <article class="rig-view rig-elevation-view">
+              <div class="rig-view-heading"><strong>Elevation</strong><span>X · Z</span></div>
+              <svg id="rigElevation" role="img" aria-label="Side view of sectional and five-light rig" preserveAspectRatio="xMidYMid meet"></svg>
+            </article>
+          </div>
+          <div id="rigLights" class="rig-light-list" aria-label="Light values"></div>
+        </div>
+      </div>
+    </section>
+
     <section class="catalog-section" aria-labelledby="catalogTitle">
       <div class="section-heading"><div><p class="eyebrow">GENERATED PRESETS</p><h2 id="catalogTitle">Rendered models</h2></div><span id="catalogCount">0 models</span></div>
       <div id="catalog" class="catalog-grid"><div class="empty-state">A model appears here after its first successful render, with measured dimensions and render examples.</div></div>
-    </section>
-
-    <section class="reference-section" aria-labelledby="referenceTitle">
-      <div class="section-heading">
-        <div><p class="eyebrow">LIGHT REFERENCE</p><h2 id="referenceTitle">Sectional light rig</h2><p>Keep using the original scaler and schematic while setting up jobs.</p></div>
-        <a class="secondary-button link-button" href="light-rig-reference.html" target="_blank" rel="noopener">Open full reference</a>
-      </div>
-      <div class="reference-frame-wrap"><iframe id="referenceFrame" title="Sectional light rig reference" loading="lazy"></iframe></div>
     </section>
   </main>
 

@@ -97,7 +97,7 @@
             </select>
           </label>
           <label>Source geometry
-            <select id="sourceMode"><option value="B">Fixed sources (production)</option><option value="A">Exact similarity</option></select>
+            <select id="sourceMode"><option value="B">Fixed sources (production)</option><option value="A">Scaled sources</option></select>
           </label>
         </div>
         <fieldset>
@@ -136,7 +136,7 @@
         <div>
           <p class="eyebrow">LIGHT WORKSPACE</p>
           <h2 id="rigTitle">Sectional light rig</h2>
-          <p>The same five-light setup used by generated jobs, scaled as one rigid body.</p>
+          <p>The same five-light setup used by generated jobs. X/Y follow one shared scale; every source keeps its tuned Z height.</p>
         </div>
         <div class="rig-readout" aria-label="Current light rig scale">
           <span>RIG SCALE</span><strong id="rigScale">1.000×</strong><small id="rigScaleNote">Reference footprint</small>
@@ -174,14 +174,14 @@
           </div>
 
           <div class="rig-control-group">
-            <div class="rig-control-heading"><span>LIGHT BEHAVIOR</span><small>Rigid rig</small></div>
+            <div class="rig-control-heading"><span>LIGHT BEHAVIOR</span><small>Fixed Z</small></div>
             <label>Source geometry
               <select id="rigMode">
                 <option value="B">Fixed sources · production</option>
-                <option value="A">Exact similarity</option>
+                <option value="A">Scaled sources</option>
               </select>
             </label>
-            <p class="rig-help">The five lights keep their tuned rotations and relative balance. The rig only moves out when a sofa exceeds the 453 × 279 × 79 cm reference.</p>
+            <p class="rig-help">The five lights keep their tuned rotations and Z heights. Only X/Y move out when the shared scale exceeds the 453 × 279 × 79 cm reference.</p>
           </div>
 
           <div class="rig-control-group rig-reference-note">

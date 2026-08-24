@@ -23,7 +23,7 @@
     "B": "sizes unchanged, intensity x (k^2*d0^2 + R^2)/(d0^2 + R^2)  ~=  intensity x k^p, p = 2*d0^2/(d0^2 + R^2)"
   },
   "rig_scale": {
-    "rule": "the three axis ratios collapse into ONE factor: k = max(1, cbrt(sX * sY * sZ)). Every light gets the same k, positions are p * k, and pitch/yaw/roll are never recomputed.",
+    "rule": "the three axis ratios collapse into ONE factor: k = max(1, cbrt(sX * sY * sZ)). Every light gets the same k in X/Y; Z is always copied from the source rig. Pitch/yaw/roll are never recomputed.",
     "clamp": "k is clamped at 1 - the rig is only ever pushed OUT, never pulled in. A sofa that fits inside the tuned rig is emitted with the rig exactly as built (k = 1). Measured over the 15-preset catalogue that beats scaling down: exposure spread 1.21x static vs 1.26x scaled, and evenness improves the smaller the sofa gets. Above the reference the picture inverts (evenness 1.32x worse at 1.2 scale, 3.47x at 1.5), which is what the clamp lets through.",
     "why": [
       "a per-axis stretch gave each light its own k (0.69 to 1.30 on a real sectional), which pulls the balance between the five sources apart",
@@ -364,7 +364,7 @@
   },
   "validation": {
     "scale_magnitude": "warn when k < 0.6 or k > 1.6",
-    "shape_mismatch": "warn when max(sX,sY,sZ)/min(sX,sY,sZ) > 1.5 - a rigid rig follows the sofa's size but not its shape",
+    "shape_mismatch": "warn when max(sX,sY,sZ)/min(sX,sY,sZ) > 1.5 - one X/Y footprint factor follows the sofa's size but not its shape",
     "peak_intensity": "warn when max intensity > 250 cd"
   },
   "preset_tq_rule": {

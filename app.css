@@ -17,3 +17,6 @@
 
 .model-drop-target{position:relative}.model-path-actions{display:flex;gap:8px}.model-drop-overlay{position:absolute;inset:-5px;z-index:3;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border:1px dashed var(--sage);border-radius:12px;background:rgba(27,32,28,.96);opacity:0;visibility:hidden;pointer-events:none;transition:opacity .14s,visibility .14s}.model-drop-overlay span{color:var(--sage-strong);font-size:12px;font-weight:700}.model-drop-overlay small{color:var(--muted);font-size:9px}.model-drop-target[data-dragging=true] .model-drop-overlay{opacity:1;visibility:visible}.model-drop-status{display:block;margin-top:8px;color:#6f7770;font-size:10px;line-height:1.45;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.model-drop-status[data-state=success]{color:var(--sage)}.model-drop-status[data-state=error]{color:var(--danger)}
 @media(max-width:620px){.model-path-actions{display:grid;grid-template-columns:1fr 1fr}.model-path-actions button{width:100%}.model-drop-status{white-space:normal}}
+
+/* Use the available desktop canvas; the responsive cap below 980 px remains intentional. */
+@media(min-width:981px){main{width:calc(100% - 48px);max-width:none}}

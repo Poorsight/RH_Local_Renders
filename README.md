@@ -44,7 +44,7 @@ There are no bundled model presets. After a successful render produces images, t
 
 ## Light reference
 
-The sectional light-rig scaler and schematic are native parts of the dashboard, using the same controls, typography, colours, and responsive layout as the render workflow. It reads the tracked `data/sectionals-indoor.csv` directly in the browser, so the reference also works on the static preview without the local service.
+The sectional light-rig scaler and schematic are native parts of the dashboard, using the same controls, typography, colours, and responsive layout as the render workflow. X/Y light positions use one shared scale while every source keeps its original Z coordinate, including height-only changes. It reads the tracked `data/sectionals-indoor.csv` directly in the browser, so the reference also works on the static preview without the local service.
 
 `light-rig-reference.html` remains only as a compatibility page for old direct links. The dashboard does not embed it or use an iframe.
 

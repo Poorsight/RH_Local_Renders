@@ -18,10 +18,10 @@ constant, the exact T3D output contract, and golden vectors. **A port that passe
 
 Five lights (2 × SpotLight, 3 × RectLight) were hand-tuned in Unreal for **one** reference sofa —
 `453 × 279 × 79 cm` — in **four** camera shots. For a differently-sized sectional the rig is not
-re-tuned; it is *scaled*: the whole rig moves in or out **as one rigid body** by a single factor,
-and intensity (plus, optionally, source size) follows from how much further the lights ended up
-from the subject. **Nothing is rotated, raised or reshaped** — the angles a lighting artist tuned
-are the angles that get written out.
+re-tuned; its floor-plane footprint expands by one shared factor. X and Y move together, while
+every source keeps its original Z coordinate. Intensity (plus, optionally, source size) follows the
+same factor. **Nothing is rotated or raised** — the angles and heights a lighting artist tuned are
+the values that get written out.
 
 Output is Unreal **T3D** text: 5 actors in folder `Lights`, pasted into the level with `Ctrl + V`.
 
@@ -70,7 +70,7 @@ node handoff/export_from_index.cjs
 |---|---|---|---|
 | `W`, `D`, `H` | float > 0, cm | — | sofa bounding box: width, depth, height (UPH mesh bounds) |
 | `view` | `F` \| `FH` \| `TQR` \| `TQL` | `F` | camera shot; each shot is its own rig |
-| `mode` | `A` \| `B` | `B` | source-size model — **B is production** (real fixtures keep their size); A also scales the sizes, an exact similarity transform (§5.5) |
+| `mode` | `A` \| `B` | `B` | source-size model — **B is production** (real fixtures keep their size); A also scales source sizes (§5.5) |
 | `swap` | bool | `false` | **no-op**, kept only so existing call sites keep compiling: `k` depends on `W · D`, which a swap does not change (§5.2) |
 | `ref` | `{W,D,H}` | `453 × 279 × 79` | the sofa the rig was tuned for; only change if the rig is re-tuned or the reference mesh is re-measured (it was, on 2026-08-24: `274 × 77` → `279 × 79`) |
 
@@ -99,15 +99,15 @@ k = max(1, ∛(sX · sY · sZ))
 ```
 
 The rig is a **studio setup around** the subject, not geometry glued to its bounding box, so it is
-scaled as a **rigid body**: one factor, no per-axis stretch, no rotation. Three consequences, and
+scaled with one **shared X/Y footprint factor**: no per-axis stretch, no Z movement and no rotation. Three consequences, and
 they are the reason this replaced the old per-axis transform:
 
 * **The balance between the five sources survives.** A per-axis stretch gave every light its own
   `k` — on a real 274.6 × 355.5 × 86.9 sectional they ranged from 0.690 to 1.297, a factor of 1.9.
   Each source then changed brightness by a different amount and the tuned look fell apart.
-* **`pitch` / `yaw` never need correcting.** Multiplying a position by a scalar leaves the direction
-  from the light to the subject unchanged. The per-axis stretch forced aim corrections of up to
-  21° on that same sectional, which is what flattened the render.
+* **`pitch` / `yaw` are never corrected.** The pipeline preserves the artist-authored angles and
+  the fixed source heights. The old per-axis stretch forced aim corrections of up to 21° on that
+  same sectional, which is what flattened the render.
 * **Swapping `W` and `D` changes nothing**, because `sX · sY = W · D / (ref.W · ref.D)` either way.
   A mesh authored rotated 90° produces the same rig — an entire class of pipeline bug disappears.
 
@@ -124,19 +124,19 @@ Above the reference the picture inverts — a sofa outgrows the light field and 
 lets through. In practice, for the current catalogue (largest model `459 × 276 × 83`, raw factor
 `1.017`) the rig is emitted as tuned for every model but one, and that one moves by 1.7 %.
 
-What it cannot do is follow the subject's **shape**: a rigid rig tracks size only. When the
+What it cannot do is follow the subject's **shape**: one footprint factor tracks size only. When the
 proportions differ a lot from the reference (see 10), that residual is real and is not a bug.
 
-### 5.3 Position — a plain scalar multiple
+### 5.3 Position — shared X/Y scale, fixed Z
 
 ```
-p₁ = (x · k, y · k, z · k)
+p₁ = (x · k, y · k, z)
 d₀ = ‖p₀‖ = √(x² + y² + z²)          # still needed for the mode-B intensity
 ```
 
-No sofa frame, no `Rz(θ)`: a uniform scale commutes with any rotation, so the ¾ shots need no
-special handling. At the reference sofa `k = 1` and every position is reproduced exactly — that is
-the identity invariant.
+No sofa frame, no `Rz(θ)`: the ¾ shots need no special handling. Z is copied verbatim for every
+input, including height-only changes. At the reference sofa `k = 1` and every position is
+reproduced exactly — that is the identity invariant.
 
 > Applied to the whole rig, including `front_fill`. The five lights were tuned around the sofa as
 > one unit, so they scale with it as one unit.
@@ -203,7 +203,7 @@ longer the case.
 k = max(1, cbrt((W/ref.W) * (D/ref.D) * (H/ref.H)))              # §5.2 — one factor, all lights
 for name, L in merge(LIGHT_BASE, VIEWS[view].lights):
     x, y, z = L.pos
-    pos  = (x*k, y*k, z*k)
+    pos  = (x*k, y*k, z)
     d0   = hypot3(x, y, z)
     R    = L.type == "spot" ? L.radius : sqrt(L.w * L.h / PI)
     if mode == "A":  I = L.I * k*k;                             sizeK = k
@@ -232,12 +232,12 @@ sX = 550/453 = 1.214128035   sY = 300/279 = 1.075268817   sZ = 85/79 = 1.0759493
 k  = ∛(sX · sY · sZ) = 1.119930634            # > 1, so no clamp; same k for all five lights
 
 main_key_lgt   p₀ = (−474, −19, 168)   I₀ = 60   R = 52.479965
-               p₁ = p₀ · k = (−530.847121, −21.278682, 188.148347)      # 62 cm further out
+               p₁ = (x·k, y·k, z) = (−530.847121, −21.278682, 168.000000)
                rotations: pitch −25, yaw 3, roll 0 — unchanged
   mode B:      Intensity = 75.090572   SourceRadius = 52.479965 (untouched)   p = 1.978485
   mode A:      Intensity = 75.254678   SourceRadius = 58.773920 (· k)
 
-front_fill_lgt p₁ = (0, 779.471722, 58.236393)                              # 84 cm further out
+front_fill_lgt p₁ = (0, 779.471722, 52.000000)                              # Z unchanged
   mode B:      Intensity = 7.311257    SourceWidth = SourceHeight = 500 (untouched)
   mode A:      Intensity = 7.525468    SourceWidth = SourceHeight = 559.965317
 ```

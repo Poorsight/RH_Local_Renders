@@ -5,7 +5,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const { parseCsv } = require("../lib/csv.cjs");
-const { buildRig, jobLights } = require("../lib/rig.cjs");
+const { buildRig, jobLights, rigScale } = require("../lib/rig.cjs");
 const { buildJob, CAMERA_YAW, groupedMaterials } = require("../lib/jobs.cjs");
 const { componentId } = require("../lib/models.cjs");
 const { buildUnrealLaunch } = require("../lib/unreal.cjs");
@@ -39,10 +39,21 @@ test("sectional actor yaw uses only F/FH/TQ rules from ActorRotations", () => {
   }
 });
 
-test("job lights preserve five-light shape and scale positions with one factor", () => {
-  const lights = jobLights(rig, "Sectional_Indoor_R", "F", baseInput.dimensions, "B");
+test("job lights scale X/Y with one factor and never move in Z", () => {
+  const dimensions = { width: 700, depth: 500, height: 300 };
+  const lights = jobLights(rig, "Sectional_Indoor_R", "F", dimensions, "B");
+  const source = rig.Sectional_Indoor_R.F;
+  const k = rigScale(dimensions).value;
   assert.equal(lights.length, 5); assert.deepEqual(lights.map(light => light.name), ["front_fill_lgt", "left_rim_lgt", "main_key_lgt", "right_bounce_lgt", "right_rim_lgt"]);
   assert.ok(lights.every(light => light.LevelName.startsWith("Sectional_Indoor_")));
+  for (const light of lights) {
+    assert.equal(light.Location.X, Number((source[light.name].position[0] * k).toFixed(6)));
+    assert.equal(light.Location.Y, Number((source[light.name].position[1] * k).toFixed(6)));
+    assert.equal(light.Location.Z, source[light.name].position[2]);
+  }
+
+  const heightOnly = jobLights(rig, "Sectional_Indoor_R", "F", { ...baseInput.dimensions, height: 800 }, "B");
+  for (const light of heightOnly) assert.equal(light.Location.Z, source[light.name].position[2]);
 });
 
 test("equal material names become one BatchRender material group", () => {
@@ -66,6 +77,7 @@ test("Unreal launch points the stock BatchRender plugin at the local API", () =>
 test("main page renders the light rig natively in the shared workspace", () => {
   const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
   const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const styles = fs.readFileSync(path.join(root, "app.css"), "utf8");
   assert.match(html, /class="rig-workspace"/);
   assert.match(html, /id="rigPlan"/);
   assert.match(html, /id="rigElevation"/);
@@ -75,10 +87,12 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.doesNotMatch(html, /<iframe/i);
   assert.match(client, /data\/sectionals-indoor\.csv/);
   assert.match(client, /Math\.max\(1, raw\)/);
+  assert.match(client, /position: \[x \* scale, y \* scale, z\]/);
   assert.match(client, /canReachLocalService/);
   assert.match(client, /range\.addEventListener\("input"/);
   assert.match(html, /id="modelDropTarget"/);
   assert.match(html, /id="modelFileInput" type="file" accept="\.fbx"/);
   assert.match(client, /droppedFilePath/);
   assert.match(client, /dropTarget\.addEventListener\("drop"/);
+  assert.match(styles, /@media\(min-width:981px\)\{main\{width:calc\(100% - 48px\);max-width:none\}\}/);
 });

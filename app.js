@@ -119,7 +119,7 @@
       const geometry = RIG_GEOMETRY[name] || {}, [x, y, z] = light.position;
       const distance2 = x * x + y * y + z * z, radius2 = (geometry.radius || 0) ** 2;
       const intensity = mode === "A" ? light.intensity * scale * scale : light.intensity * ((scale * scale * distance2 + radius2) / (distance2 + radius2));
-      return { ...light, name, position: [x * scale, y * scale, z * scale], intensity, geometry, meta: RIG_META[name] };
+      return { ...light, name, position: [x * scale, y * scale, z], intensity, geometry, meta: RIG_META[name] };
     });
     return { shot, side, camera, dimensions, mode, raw, scale, lights, sofaYaw: shot === "TQR" ? -36 : shot === "TQL" ? 36 : 0 };
   };

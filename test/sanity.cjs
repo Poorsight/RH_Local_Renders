@@ -106,8 +106,8 @@ check("scaled F (600x300x80) differs from reference", big !== scaled);
 check("scaled F keeps 5 actors + line count",
   (big.match(/Begin Actor/g) || []).length === 5 && big.split("\n").length === tmplLines);
 
-// 5. The rig scales as a rigid body: one factor for all five lights, no rotation, no shape
-// following. These are the invariants that replaced the old per-axis stretch + adaptive aim.
+// 5. The rig uses one factor for all five lights in the horizontal plane, never changes Z,
+// and does not recompute rotations. These invariants replaced per-axis stretch + adaptive aim.
 {
   const dims = [[600,300,80], [274.583,355.499,86.860], [312,246,77], [1000,80,30]];
 
@@ -150,15 +150,24 @@ check("scaled F keeps 5 actors + line count",
       Math.abs(ks[0] - rigScale(274.583, 355.499, 86.860, REF_DEFAULT)) < 1e-12);
   }
 
-  // Positions are a plain scalar multiple of the source rig on every shot, including the
-  // turned ¾ ones — a uniform scale commutes with any rotation, so no sofa frame is needed.
+  // X/Y use the one shared scale while the tuned source height is always preserved.
   const maxDelta = (view, W, D, H) => {
     const k = rigScale(W, D, H, REF_DEFAULT);
     const got = computeAll(W, D, H, "A", false, REF_DEFAULT, view), src = viewLights(view);
-    return Math.max(...Object.keys(src).flatMap(n => [0,1,2].map(i => Math.abs(got[n].pos[i] - src[n].pos[i] * k))));
+    return Math.max(...Object.keys(src).flatMap(n => [
+      Math.abs(got[n].pos[0] - src[n].pos[0] * k),
+      Math.abs(got[n].pos[1] - src[n].pos[1] * k),
+      Math.abs(got[n].pos[2] - src[n].pos[2]),
+    ]));
   };
-  check("positions are exactly source · k on every shot",
+  check("X/Y positions use source · k and Z stays at the source height on every shot",
     views.every(v => dims.every(([W,D,H]) => maxDelta(v, W, D, H) === 0)));
+  check("changing only sofa height never changes any light Z",
+    views.every(v => {
+      const low = computeAll(R0.W, R0.D, R0.H, "A", false, REF_DEFAULT, v);
+      const tall = computeAll(R0.W, R0.D, R0.H * 8, "A", false, REF_DEFAULT, v);
+      return Object.keys(low).every(n => low[n].pos[2] === tall[n].pos[2]);
+    }));
   check("every shot reproduces its source rig exactly at the reference sofa",
     views.every(v => maxDelta(v, R0.W, R0.D, R0.H) === 0));
 
@@ -166,7 +175,7 @@ check("scaled F keeps 5 actors + line count",
     Object.values(computeAll(600, 300, 80, "A", false, REF_DEFAULT, "F")).every(r => r.atten === undefined) &&
     generateT3D(computeAll(600, 300, 80, "A", false, REF_DEFAULT, "F")).includes("AttenuationRadius=600.000000"));
 
-  check("mode A is an exact similarity: sizes · k, intensity · k²",
+  check("mode A scales source sizes · k and intensity · k²",
     (() => {
       const r = computeAll(600, 300, 80, "A", false, REF_DEFAULT, "F"), src = viewLights("F"), k = r.front_fill_lgt.k;
       return Math.abs(r.front_fill_lgt.w - src.front_fill_lgt.w * k) < 1e-9 &&

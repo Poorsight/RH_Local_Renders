@@ -116,8 +116,8 @@ def rig_scale_raw(W, D, H, ref=None) -> float:
     """The geometric mean of the three axis ratios: cbrt(sX * sY * sZ).
 
     The rig is a studio setup around the subject, not geometry glued to its bounding box,
-    so it moves as a rigid body. Every light gets the same factor, which keeps the balance
-    between the five sources intact and means pitch/yaw never have to be recomputed.
+    so its X/Y footprint expands with one shared factor. Every light keeps its tuned source Z;
+    height changes never raise or lower a light, and pitch/yaw are not recomputed.
     The factor is also invariant to swapping W and D, because sX*sY = W*D/(refW*refD)
     either way, so a mesh authored rotated 90 deg produces the same rig.
     """
@@ -158,7 +158,7 @@ def compute_all(W, D, H, mode="A", swap=False, ref=None, view="F") -> dict:
     """Scale the rig for a sofa of W x D x H cm.
 
     mode  "B" = keep source sizes, intensity x (k^2*d0^2 + R^2)/(d0^2 + R^2)   (default in the UI)
-          "A" = scale source sizes too, intensity x k^2 (an exact similarity transform)
+          "A" = scale source sizes too, intensity x k^2
     swap  accepted for API compatibility; it has no effect (see rig_scale)
     ref   rig reference sofa, defaults to {'W': 453, 'D': 279, 'H': 79}
     view  "F" | "FH" | "TQR" | "TQL"
@@ -170,12 +170,12 @@ def compute_all(W, D, H, mode="A", swap=False, ref=None, view="F") -> dict:
     if view not in data()["views"]:
         view = "F"
 
-    k = rig_scale(W, D, H, ref)                 # one factor for the whole rig
+    k = rig_scale(W, D, H, ref)                 # one factor for the whole X/Y footprint
 
     res = {}
     for name, L in view_lights(view).items():
         x, y, z = (float(c) for c in L["pos"])
-        npos = [x * k, y * k, z * k]
+        npos = [x * k, y * k, z]
         d0 = _hyp3(x, y, z)                                  # distance to origin, source rig
         R = (float(L["radius"]) if L["type"] == "spot"
              else math.sqrt(float(L["w"]) * float(L["h"]) / math.pi))   # effective source radius
@@ -366,7 +366,7 @@ def selftest(verbose=True) -> int:
     for value, want in _FMT_VECTORS:
         check("fmt(%r) == %r" % (value, want), fmt(value) == want)
 
-    # rigid-rig invariants (same vectors as test/sanity.cjs in the repo)
+    # fixed-Z rig invariants (same vectors as test/sanity.cjs in the repo)
     r0 = reference()
     check("rig_scale_raw: geometric mean of the three axis ratios",
           abs(rig_scale_raw(r0["W"] * 2, r0["D"] * 2, r0["H"] * 2, r0) - 2) < 1e-12 and
@@ -388,6 +388,9 @@ def selftest(verbose=True) -> int:
                   for n in rr))
         ks = [rr[n]["k"] for n in rr]
         check("%s: k is identical for all five lights" % v, max(ks) - min(ks) == 0.0)
+        tall = compute_all(r0["W"], r0["D"], r0["H"] * 8, mode="B", ref=r0, view=v)
+        check("%s: changing height never changes light Z" % v,
+              all(tall[n]["pos"][2] == float(src[n]["pos"][2]) for n in tall))
     check("the legacy `swap` argument is a no-op",
           scale_rig(274.583, 355.499, 86.860, view="TQR", mode="B", swap=False) ==
           scale_rig(274.583, 355.499, 86.860, view="TQR", mode="B", swap=True))

@@ -296,7 +296,7 @@
       <input id="Hs" type="range" min="30" max="160" step="1" value="79" />
     </div>
 
-    <div class="sectionhead"><h2>Light behavior</h2><span class="tag">rigid rig</span></div>
+    <div class="sectionhead"><h2>Light behavior</h2><span class="tag">fixed Z</span></div>
     <label class="opt">
       <input type="radio" name="mode" value="B" checked />
       <span>
@@ -307,14 +307,14 @@
     <label class="opt">
       <input type="radio" name="mode" value="A" />
       <span>
-        <span class="t">Exact similarity</span>
-        <span class="d">Also scales every source size by the same factor — a true scale model of the rig, so shadow softness is preserved to the letter.</span>
+        <span class="t">Scaled sources</span>
+        <span class="d">Also scales every source size by the same factor. X/Y positions expand, while every tuned source height stays fixed.</span>
       </span>
     </label>
-    <p class="modehelp"><b>The rig moves as one rigid body:</b> a single factor pushes all five lights out when a sofa outgrows the tuned setup, and leaves them exactly where they are otherwise. Nothing is rotated, raised or reshaped, so the balance between the sources stays as tuned.</p>
+    <p class="modehelp"><b>The rig expands only across the floor plane:</b> one factor pushes all five lights out in X/Y when a sofa outgrows the tuned setup. Z is always copied from the source rig; lights are never raised or lowered.</p>
     <details class="mini">
       <summary>When to use which?</summary>
-      <p class="note">Both modes are identical at the reference size and differ only in source size — typically a few per cent, which shows up as slightly softer or harder shadow edges. <b>Fixed sources</b> matches what the render pipeline can reproduce with real fixtures; use <b>exact similarity</b> when you want the scale model to be mathematically perfect.</p>
+      <p class="note">Both modes are identical at the reference size and differ only in source size — typically a few per cent, which shows up as slightly softer or harder shadow edges. <b>Fixed sources</b> matches what the render pipeline can reproduce with real fixtures; <b>scaled sources</b> preserves relative source size as the X/Y footprint expands.</p>
     </details>
 
     <details class="mini">
@@ -421,7 +421,7 @@
         <tbody></tbody>
       </table>
       </div>
-      <p class="note">Every field <code>generateT3D</code> writes. <b>Size</b>: rect = W×H (·b BarnDoorLength), spot = r SourceRadius (·s SoftSourceRadius). <b>Rot</b> = the shot’s tuned Pitch·Yaw·Roll, never recomputed. <b>k</b> is the same for all five lights by construction. The grey tag next to Intensity is the source value. <b>p</b> = falloff exponent (fixed sources); exact similarity uses k² (p = 2). <code>AttenuationRadius</code> is not written at all.</p>
+      <p class="note">Every field <code>generateT3D</code> writes. <b>Size</b>: rect = W×H (·b BarnDoorLength), spot = r SourceRadius (·s SoftSourceRadius). <b>Rot</b> = the shot’s tuned Pitch·Yaw·Roll, never recomputed. <b>k</b> is the same for all five lights in X/Y; Z is always the source value. The grey tag next to Intensity is the source value. <b>p</b> = falloff exponent (fixed sources); scaled sources use k² (p = 2). <code>AttenuationRadius</code> is not written at all.</p>
     </details>
   </section>
 
@@ -436,8 +436,8 @@
       <div class="eq"><span class="v">k = max(1, ∛(s<sub>X</sub> · s<sub>Y</sub> · s<sub>Z</sub>))</span>&nbsp;&nbsp;&nbsp;&nbsp;the same k for all five lights</div>
       <div class="eq">sofa fits inside the tuned rig → <b>k = 1</b>, the rig is emitted exactly as tuned</div>
 
-      <div class="lbl">3. New light position — and that is the whole transform:</div>
-      <div class="eq">X′ = X · k&nbsp;&nbsp;&nbsp;&nbsp;Y′ = Y · k&nbsp;&nbsp;&nbsp;&nbsp;Z′ = Z · k</div>
+      <div class="lbl">3. New light position — horizontal scale, fixed source height:</div>
+      <div class="eq">X′ = X · k&nbsp;&nbsp;&nbsp;&nbsp;Y′ = Y · k&nbsp;&nbsp;&nbsp;&nbsp;Z′ = Z</div>
       <div class="eq">d<sub>0</sub> = √(X² + Y² + Z²)&nbsp;&nbsp;&nbsp;&nbsp;pitch, yaw, roll — unchanged</div>
 
       <div class="lbl">4. Effective source radius:</div>
@@ -447,7 +447,7 @@
       <div class="eq"><span class="v">Intensity′ = Intensity · (k²·d<sub>0</sub>² + R²) / (d<sub>0</sub>² + R²)</span>&nbsp;&nbsp;≈&nbsp;&nbsp;Intensity · k<sup>p</sup></div>
       <div class="eq">p = 2·d<sub>0</sub>² / (d<sub>0</sub>² + R²)&nbsp;&nbsp;&nbsp;&nbsp;sharp key → p ≈ 2,&nbsp;&nbsp;soft fill → p ≈ 1.7</div>
 
-      <div class="lbl">5. Exact similarity — sizes scale too (× k):</div>
+      <div class="lbl">5. Scaled sources — sizes scale too (× k):</div>
       <div class="eq"><span class="v">Intensity′ = Intensity · k²</span>&nbsp;&nbsp;&nbsp;&nbsp;SourceWidth/Height/Radius/BarnDoorLength · k</div>
 
       <div class="lbl">6. Never touched:</div>
@@ -457,9 +457,9 @@
     <p class="note">
       <b>Why one factor and not three:</b> stretching the rig per axis gave every light a different k
       (0.69 to 1.30 on a real sectional), which pulls the balance between the five sources apart and forces
-      pitch/yaw corrections of up to 21° — that is what flattened the render. A single factor moves the rig as a
-      rigid body: the balance and every angle survive untouched, and the only thing that cannot be preserved is a
-      sofa whose proportions differ from the reference.<br />
+      pitch/yaw corrections of up to 21° — that is what flattened the render. A single factor expands the floor-plane
+      footprint consistently, while Z and every tuned angle stay untouched. A sofa whose proportions differ strongly
+      from the reference still needs a visual check.<br />
       <b>Why the clamp:</b> a sofa smaller than the reference sits deeper inside the light field, which makes the
       light <i>more</i> even, not less — measured over the whole preset catalogue, leaving the rig alone beats
       pulling it in (exposure spread 1.21× vs 1.26×). Only a sofa that outgrows the rig needs it to back off.<br />
@@ -672,13 +672,12 @@ function viewLights(view){
 const fmt = x => Number(x).toFixed(6);
 const hyp = (a,b,c) => Math.sqrt(a*a + b*b + c*c);
 
-/* ONE scale factor for the whole rig — the geometric mean of the three axis ratios.
+/* ONE scale factor for the whole rig footprint — the geometric mean of the three axis ratios.
    The rig is a studio setup around the subject, not geometry glued to its bounding box,
-   so it is scaled as a rigid whole instead of being stretched per axis. Consequences:
+   so X/Y expand together while the tuned Z of every source stays fixed. Consequences:
      • every light gets the SAME k, so the balance between the five sources is preserved
        exactly (a per-axis stretch gave them k from 0.69 to 1.30 on a real sectional);
-     • pitch/yaw never need correcting — multiplying a position by a scalar leaves the
-       direction from the light to the subject unchanged;
+     • pitch/yaw stay exactly as tuned; no adaptive aim is applied;
      • it is invariant to swapping W and D, because sX·sY = W·D / (ref.W·ref.D) either
        way — a mesh authored rotated 90° produces the same rig. */
 function rigScaleRaw(W, D, H, ref){
@@ -710,19 +709,19 @@ function fitAspectBounds(minX, maxX, minY, maxY, aspect){
 function computeAll(W, D, H, mode, swap, ref, view){
   /* `swap` is accepted for API compatibility and is a no-op: rigScale depends on W·D, which
      does not change when the two are exchanged. `view` still selects the per-shot rig. */
-  const k  = rigScale(W, D, H, ref);   // the same distance factor for every light
+  const k  = rigScale(W, D, H, ref);   // the same X/Y footprint factor for every light
   const LG = viewLights(view);         // merged base + per-view rig for the chosen shot
 
   const res = {};
   for (const [name, L] of Object.entries(LG)){
     const [x, y, z] = L.pos;
-    const npos = [x * k, y * k, z * k];
+    const npos = [x * k, y * k, z];
     const d0 = hyp(x, y, z);
     const R  = L.type === "spot" ? L.radius : Math.sqrt(L.w * L.h / Math.PI); // effective source radius
     const p  = 2 * d0 * d0 / (d0 * d0 + R * R);           // effective falloff exponent (info)
 
     let I_new, sizeK;
-    if (mode === "A"){            // scale sizes → strict k², an exact similarity transform
+    if (mode === "A"){            // scale source sizes and intensity with the shared factor
       I_new = L.I * k * k;
       sizeK = k;
     } else {                      // sizes fixed → k^p (exact form)
@@ -1136,11 +1135,11 @@ if (typeof document !== "undefined"){
     const sX = W/ref.W, sY = D/ref.D, sZ = H/ref.H, ws = [];
     const k = rigScale(W, D, H, ref), raw = rigScaleRaw(W, D, H, ref);
     if (k > 1.6) ws.push(`Extreme rig scale (×${k.toFixed(2)}) — this sofa is far larger than the rig was tuned for; verify coverage in the render.`);
-    /* The residual error this tool cannot remove: a rigid rig can follow the sofa's SIZE but not
-       its SHAPE, so flag how far the proportions have drifted from the reference. */
+    /* The residual error this tool cannot remove: one X/Y factor cannot follow the sofa's SHAPE,
+       so flag how far the proportions have drifted from the reference. */
     const skew = Math.max(sX,sY,sZ) / Math.min(sX,sY,sZ);
     if (skew > 1.5)
-      ws.push(`Proportions differ from the reference by ${skew.toFixed(2)}× (${sX.toFixed(2)} / ${sY.toFixed(2)} / ${sZ.toFixed(2)} per axis) — the rig scales as a rigid body, so it follows the size but not the shape. Check the far end and the chaise.`);
+      ws.push(`Proportions differ from the reference by ${skew.toFixed(2)}× (${sX.toFixed(2)} / ${sY.toFixed(2)} / ${sZ.toFixed(2)} per axis) — one X/Y scale follows overall size, not exact shape, and Z stays fixed. Check the far end and the chaise.`);
     if (W < 150 || D < 120 || H < 45 || H > 130)
       ws.push(`These dimensions are outside a typical sectional range — confirm that the values are in centimetres.`);
     const maxI = Math.max(...Object.values(res).map(r => r.intensity));

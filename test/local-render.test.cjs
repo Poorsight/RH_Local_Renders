@@ -105,6 +105,18 @@ test("tracked metadata makes all current models self-contained", async () => {
   } finally { fs.rmSync(temp, { recursive: true, force: true }); }
 });
 
+test("all -X backrest models use the verified positive Unreal camera yaw", () => {
+  const metadata = JSON.parse(fs.readFileSync(path.join(root, "data", "models.json"), "utf8"));
+  const rotated = new Set(["prod9690053", "prod24560660", "prod9910052", "prod24560673"]);
+  for (const [name, record] of Object.entries(metadata.models)) {
+    const product = name.match(/prod\d+$/)?.[0];
+    assert.equal(record.yaw, rotated.has(product) ? 90 : 0, name);
+  }
+  const analyzer = fs.readFileSync(path.join(root, "scripts", "inspect_fbx.py"), "utf8");
+  assert.match(analyzer, /yaw_by_back = \{"\+Y": 0, "-X": 90, "\+X": -90, "-Y": 180\}/);
+  assert.doesNotMatch(analyzer, /if unit_name == "inches exported as cm":\s*yaw_by_back/);
+});
+
 test("a new FBX is analyzed once and persisted in ignored local metadata", async () => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "rh-local-renders-new-"));
   const modelsRoot = path.join(temp, "models"), localMetadataPath = path.join(temp, "model-metadata.json"), name = "NEW_LEFT_ARM_L_SECTIONAL_prod123";
@@ -298,6 +310,7 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(client, /data-history-action="edit"/);
   assert.match(client, /const editHistoryJob = async batch =>/);
   assert.match(client, /state\.batch = restored/);
+  assert.match(client, /importYaw: Number\.isFinite\(\+inspected\.importYaw\)/);
   assert.match(client, /class="history-model-list"/);
   assert.match(client, /openLocal\("showJob"/);
   assert.match(client, /selectHistoryModel/);

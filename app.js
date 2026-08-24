@@ -394,7 +394,9 @@
       restored.push({
         ...inspected, name: task.taskId || inspected.name, path: modelPath || inspected.path,
         dimensions: record.dimensions || inspected.dimensions, side: sectionalFormFactor(task.taskId, record.side || inspected.side),
-        importYaw: Number.isFinite(+record.importYaw) ? +record.importYaw : inspected.importYaw,
+        // Orientation fixes in current model metadata must supersede stale yaw
+        // values embedded in an older saved job when it is loaded for editing.
+        importYaw: Number.isFinite(+inspected.importYaw) ? +inspected.importYaw : (Number(record.importYaw) || 0),
         sourceMode: record.sourceMode || inspected.sourceMode || "B"
       });
     }

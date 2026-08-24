@@ -4,3 +4,7 @@ Thumbs.db
 *.log
 .cache/
 __pycache__/
+
+# Local work area: models, job files, renders, the handoff package.
+# Everything under local/ stays on this machine and is never pushed.
+local/

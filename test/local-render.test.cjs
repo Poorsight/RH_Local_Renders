@@ -126,6 +126,20 @@ test("normalized UI groups still filter exact source component IDs per task", ()
   ], rig, "D:\\renders\\normalized", "normalized_test");
   assert.deepEqual(job.tasks[0].materials[0].meshes, ["first_123_uph"]);
   assert.deepEqual(job.tasks[1].materials[0].meshes, ["second_456_uph1"]);
+  assert.equal(job.tasks[0].layers[0].output.fileNameFormat, "00000000_{camera}_Product_{material:first_123_uph}");
+  assert.equal(job.tasks[1].layers[0].output.fileNameFormat, "00000000_{camera}_Product_{material:second_456_uph1}");
+});
+
+test("every Fabric filename material token resolves to an exact mesh in its task", () => {
+  const metadata = JSON.parse(fs.readFileSync(path.join(root, "data", "models.json"), "utf8"));
+  for (const [name, record] of Object.entries(metadata.models)) {
+    const ids = metadata.profiles[record.ids];
+    const current = { ...model, name, path: `D:\\models\\${name}.fbx`, materialIds: ids };
+    const materials = [{ meshes: ids.filter(id => /UPH\d*$/i.test(id)), material: "FABRIC_A" }];
+    const job = buildJob({ ...baseInput, materials }, current, rig, `D:\\renders\\${name}`);
+    const token = job.tasks[0].layers[0].output.fileNameFormat.match(/\{material:([^}]+)\}/)[1];
+    assert.ok(job.tasks[0].materials.some(group => group.meshes.includes(token)), `${name}: ${token}`);
+  }
 });
 
 test("legacy light-rig project files stay out of the unified project", () => {

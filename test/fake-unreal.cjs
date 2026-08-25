@@ -12,7 +12,7 @@ const { PNG } = require("pngjs");
   const apiUrl = apiArgument.slice(apiArgument.indexOf("=") + 1);
   const response = await fetch(apiUrl), job = await response.json();
   const phase = job._rhLocal?.renderPhase || job.tasks?.[0]?.layers?.[0]?.name || "Unknown", layerName = job.tasks?.[0]?.layers?.[0]?.name || phase;
-  const keyLight = job.tasks?.[0]?.sequence?.cameras?.[0]?.lights?.find(light => light.name === "main_key_lgt");
+  const keyLight = job.tasks?.[0]?.sequence?.cameras?.[0]?.lights?.find(light => light.name === "key_lgt");
   const cameras = (job.tasks || []).flatMap(task => (task.sequence?.cameras || []).map((camera, index) => ({ taskId: task.taskId, camera, index })));
   fs.appendFileSync(process.env.RH_FAKE_UNREAL_LOG, `${JSON.stringify({ phase, substrateArgument, jobId: job.jobId, keyLight, taskIds: (job.tasks || []).map(task => task.taskId), cameras: cameras.map(item => item.camera) })}\n`);
   const crashMarker = process.env.RH_FAKE_UNREAL_CRASH_ONCE;

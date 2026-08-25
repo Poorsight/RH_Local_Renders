@@ -187,13 +187,6 @@ legend{padding:0;color:var(--faint);font-size:10.5px;font-weight:750;letter-spac
 .choice-row.layers label,.choice-row.render-profile label,.choice-row.crop-mode label{min-width:130px}
 
 /* segmented control (rig) */
-.rig-segmented{display:flex;gap:3px;padding:4px;border-radius:var(--radius-pill);background:var(--surface-2);box-shadow:var(--press-sm)}
-.rig-segmented label{flex:1;flex-direction:row;cursor:pointer;min-width:0}
-.rig-segmented input{position:absolute;opacity:0;width:0;height:0}
-.rig-segmented label>span{flex:1;text-align:center;padding:8px 10px;border-radius:var(--radius-pill);color:var(--muted);font-size:12px;font-weight:600;transition:color .16s,background .16s,box-shadow .16s}
-.rig-segmented label:hover>span{color:var(--text)}
-.rig-segmented input:checked+span{background:transparent;box-shadow:var(--sel-ring);color:var(--accent-ink)}
-.rig-segmented input:focus-visible+span{outline:2px solid var(--accent);outline-offset:2px}
 
 /* range */
 input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:22px;background:none;box-shadow:none;padding:0}
@@ -327,88 +320,11 @@ input[type=range]:active::-webkit-slider-thumb{cursor:grabbing;box-shadow:var(--
 .selective-options{display:flex;flex-wrap:wrap;gap:7px}
 
 /* ── light rig ──────────────────────────────────────────────────── */
-.rig-section,.history-section,.catalog-section,.reference-section{margin-top:clamp(20px,2.2vw,32px);display:flex;flex-direction:column;gap:clamp(15px,1.4vw,22px)}
-.rig-readout{flex:none;padding:15px 19px;border-radius:var(--radius-sm);background:var(--surface);box-shadow:var(--lift);display:flex;flex-direction:column;gap:4px;text-align:right}
-.rig-readout span{color:var(--faint);font-size:10px;font-weight:750;letter-spacing:.16em}
-.rig-readout strong{font-size:22px;font-weight:640;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
-.rig-readout small{color:var(--muted);font-size:11px}
-.rig-workspace{display:grid;gap:clamp(15px,1.4vw,20px);grid-template-columns:minmax(0,1fr);align-items:start}
-@media (min-width:1180px){.rig-workspace{grid-template-columns:minmax(300px,360px) minmax(0,1fr)}}
-.rig-controls{display:flex;flex-direction:column;gap:13px;min-width:0}
-.rig-control-group{padding:16px;border-radius:var(--radius-sm);background:var(--surface);box-shadow:var(--lift);display:flex;flex-direction:column;gap:12px;min-width:0}
-.rig-control-heading{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
-.rig-control-heading span{color:var(--faint);font-size:10px;font-weight:750;letter-spacing:.16em}
-.rig-control-heading small{color:var(--muted);font-size:11px}
-.rig-dimensions{display:flex;flex-direction:column;gap:15px}
-.rig-dimension-control{display:flex;flex-direction:column;gap:8px}
-.rig-dimension-heading{display:flex;align-items:center;justify-content:space-between;gap:10px}
-.rig-dimension-heading label{flex-direction:row;font-size:12px;color:var(--soft);font-weight:560}
-.rig-dimension-number{display:flex;align-items:center;gap:6px}
-.rig-dimension-number input{width:78px;padding:8px 10px;text-align:right;font-size:12.5px}
-.rig-dimension-number span{color:var(--faint);font-size:11px}
-.rig-help,.rig-loading{color:var(--faint);font-size:11.5px;line-height:1.6}
-.rig-loading{padding:26px;text-align:center}
-.rig-reference-note{gap:5px}
-.rig-reference-note span{color:var(--faint);font-size:10px;font-weight:750;letter-spacing:.16em}
-.rig-reference-note strong{font-size:14px;font-weight:600;font-variant-numeric:tabular-nums}
-.rig-reference-note small{color:var(--muted);font-size:11px;line-height:1.55}
-.rig-batch-group{padding:16px;border-radius:var(--radius-sm);background:var(--surface);box-shadow:var(--lift);display:flex;flex-direction:column;gap:11px}
-.rig-batch-models{display:flex;flex-wrap:wrap;gap:7px}
-.rig-batch-model{padding:8px 13px;border-radius:var(--radius-pill);background:var(--surface-2);box-shadow:var(--press-sm);color:var(--muted);font-size:12px;font-weight:540}
-.rig-batch-model:hover{color:var(--text)}
-.rig-batch-model.active{background:var(--surface-raised);box-shadow:var(--lift-sm);color:var(--text)}
-.rig-stage{display:flex;flex-direction:column;gap:13px;min-width:0}
-.rig-diagram-toggle{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 18px;border-radius:var(--radius-sm);background:var(--surface);box-shadow:var(--lift);text-align:left}
-.rig-diagram-toggle>span{display:flex;flex-direction:column;gap:3px}
-.rig-diagram-toggle strong{font-size:14px;font-weight:600;color:var(--text)}
-.rig-diagram-toggle small{color:var(--muted);font-size:11.5px}
-.rig-diagram-toggle>i{width:28px;height:28px;flex:none;display:grid;place-items:center;border-radius:8px;background:var(--surface-2);box-shadow:var(--press-sm);color:var(--muted);font-style:normal;font-size:16px;transition:transform .2s,color .16s}
-.rig-diagram-toggle:hover>i{color:var(--text)}
-.rig-diagram-toggle[aria-expanded=true]>i{transform:rotate(45deg);color:var(--accent-ink)}
-.rig-diagram-body{display:flex;flex-direction:column;gap:13px;padding:16px;border-radius:var(--radius-sm);background:var(--surface);box-shadow:var(--lift)}
-.rig-toolbar{display:flex;gap:10px;flex-wrap:wrap}
-.rig-toolbar .rig-segmented{flex:1 1 190px}
-.rig-views{display:grid;gap:12px;grid-template-columns:minmax(0,1fr)}
-.rig-views[data-layout=split]{grid-template-columns:minmax(0,1fr)}
-@media (min-width:900px){.rig-views[data-layout=split]{grid-template-columns:repeat(2,minmax(0,1fr))}}
-.rig-views[data-layout=plan] .rig-elevation-view,.rig-views[data-layout=elevation] .rig-plan-view{display:none}
-.rig-view{display:flex;flex-direction:column;gap:9px;padding:13px;border-radius:var(--radius-sm);background:var(--surface-2);box-shadow:var(--press-sm);min-width:0}
-.rig-view-heading{display:flex;align-items:baseline;justify-content:space-between;gap:9px}
-.rig-view-heading strong{font-size:12.5px;font-weight:620}
-.rig-view-heading span{color:var(--faint);font-size:10.5px;font-weight:650;letter-spacing:.1em}
-.rig-view svg{width:100%;height:clamp(230px,26vw,340px);border-radius:var(--radius-xs);background:var(--inset)}
-.rig-svg-grid{stroke:var(--line-soft);stroke-width:1;fill:none}
-.rig-svg-axes{stroke:var(--line-strong);stroke-width:1;fill:none}
-.rig-svg-sofa{fill:var(--surface-raised);stroke:var(--line-strong);stroke-width:1.4}
-/* The diagram viewBox is in centimetres, so every size here is in user units: at the
-   measured 0.46 scale, 22 units is a 10px label and 27 units a 12.5px one. The light
-   markers take their colour from --light on the group, and the labels sit in a halo of
-   the plate colour so they stay legible where they cross the grid. */
-.rig-svg-sofa-label{fill:var(--faint);font-size:22px;font-weight:650;letter-spacing:.1em;paint-order:stroke;stroke:var(--inset);stroke-width:5;stroke-linejoin:round}
-.rig-svg-light line{stroke:var(--light);stroke-width:1.6;opacity:.8;vector-effect:non-scaling-stroke}
-.rig-svg-light circle{fill:var(--light);stroke:var(--inset);stroke-width:3;vector-effect:non-scaling-stroke}
-.rig-svg-light text{fill:var(--text);font-size:27px;font-weight:600;paint-order:stroke;stroke:var(--inset);stroke-width:6;stroke-linejoin:round}
-.rig-view marker path{fill:var(--line-strong);fill:context-stroke}
+.history-section,.catalog-section,.reference-section{margin-top:clamp(20px,2.2vw,32px);display:flex;flex-direction:column;gap:clamp(15px,1.4vw,22px)}
 /* The two views fit different viewBoxes into the same box, so the plan is drawn at about
    0.28 scale and the elevation at about 0.48. Each gets its own user-unit sizes so both
    land near a 12px label, a 9px dot and a 2px halo on screen. */
-.rig-plan-view .rig-svg-light circle{r:16}
-.rig-plan-view .rig-svg-light text{font-size:34px;stroke-width:8}
-.rig-plan-view .rig-svg-sofa-label{font-size:24px;stroke-width:6}
-.rig-elevation-view .rig-svg-light text{font-size:20px;stroke-width:5}
-.rig-elevation-view .rig-svg-sofa-label{font-size:16px;stroke-width:4}
-.rig-light-list{display:grid;gap:9px;grid-template-columns:repeat(auto-fit,minmax(178px,1fr))}
-.rig-light-card{display:flex;flex-direction:column;gap:7px;padding:12px;border-radius:var(--radius-xs);background:var(--surface-2);box-shadow:var(--press-sm);min-width:0}
-.rig-light-card.changed{box-shadow:var(--press-sm),0 0 0 1.5px var(--accent-line)}
-.rig-light-name{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600}
-.rig-light-dot{width:9px;height:9px;flex:none;border-radius:50%}
-.rig-light-values{display:flex;flex-direction:column;gap:3px;color:var(--muted);font-size:11px;line-height:1.5;font-variant-numeric:tabular-nums}
-.rig-render-gallery{padding:16px;border-radius:var(--radius-sm);background:var(--surface);box-shadow:var(--lift);display:flex;flex-direction:column;gap:12px}
-.rig-render-gallery-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:11px}
-.rig-render-gallery-heading span{color:var(--faint);font-size:10px;font-weight:750;letter-spacing:.16em}
-.rig-render-gallery-heading strong{display:block;margin-top:4px;font-size:13px;font-weight:560;overflow-wrap:anywhere}
-.rig-render-images{display:flex;flex-direction:column;gap:12px}
-.rig-render-images img,.history-model-preview img,.catalog-image img{display:block;width:100%;height:auto;background:none}
+.history-model-preview img,.catalog-image img{display:block;width:100%;height:auto;background:none}
 .history-model-preview img,.catalog-image img{border-radius:var(--radius-xs)}
 
 /* ── history ────────────────────────────────────────────────────── */
@@ -546,19 +462,6 @@ input[type=range]:active::-webkit-slider-thumb{cursor:grabbing;box-shadow:var(--
 .selective-options i{height:23px;width:1px;background:var(--line)}
 
 /* batch list in the rig section is a two-column grid of compact rows */
-.rig-batch-models{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;max-height:326px;overflow:auto;padding:4px 4px 5px}
-.rig-batch-model{display:grid;grid-template-columns:24px minmax(0,1fr);gap:3px 8px;width:100%;padding:9px 10px;border-radius:8px;background:var(--surface-2);box-shadow:var(--press-sm);color:var(--text);text-align:left}
-.rig-batch-model:hover{background:var(--surface-raised);box-shadow:var(--lift-sm)}
-.rig-batch-model.active{background:transparent;box-shadow:var(--sel-ring)}
-.rig-batch-model.active strong{color:var(--accent-ink)}
-.rig-batch-model>span{grid-row:span 2;color:var(--accent-ink);font:9px/1.4 ui-monospace,Consolas,monospace}
-.rig-batch-model strong,.rig-batch-model small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rig-batch-model strong{font-size:10px}
-.rig-batch-model small{color:var(--muted);font-size:9px}
-.rig-light-values{gap:7px;margin-top:11px;font-size:11px}
-.rig-render-images>a{position:relative;display:block;overflow:hidden;border-radius:var(--radius-xs);background:var(--inset);color:var(--soft);text-decoration:none}
-.rig-render-images>a:hover{box-shadow:var(--lift-sm)}
-.rig-render-images a span{position:absolute;left:8px;bottom:8px;padding:5px 8px;border-radius:var(--radius-pill);background:var(--surface);box-shadow:var(--lift-sm);font-size:9px;font-weight:500}
 .history-model-preview button{padding:0;border-radius:var(--radius-xs);background:var(--surface-2);box-shadow:var(--press-sm);color:var(--text);overflow:hidden;text-align:left;min-width:0}
 .history-model-preview button:hover{box-shadow:var(--lift-sm)}
 .history-model-preview button>span{display:grid;place-items:center;width:100%;aspect-ratio:1.35;color:var(--faint);font-size:9px}
@@ -575,21 +478,16 @@ strong,b{font-weight:500!important}h1,h2,h3{font-weight:550!important}
 
 
 @media (max-width:980px){
-  .rig-batch-models{grid-template-columns:1fr}
-  .rig-view svg{height:340px}
-  .rig-light-list{grid-template-columns:repeat(2,minmax(0,1fr))}
   .render-camera-group>div:last-child{grid-template-columns:1fr}
 }
 @media (max-width:620px){
   .selective-options{flex-wrap:wrap}
   .history-model-row small{display:none}
   .history-actions button{width:100%}
-  .rig-views{grid-template-columns:1fr}
 }
 
 /* Renders keep their own aspect and are never cropped; the checkerboard behind them
    is what makes the alpha of a transparent PNG readable. */
-.rig-render-images img{height:auto;aspect-ratio:auto;object-fit:contain}
 .render-preview-media{background:var(--preview-bg)}
 .history-model-list{max-height:206px;overflow:auto;padding:4px 4px 5px}
 @media (prefers-color-scheme:dark){
@@ -612,8 +510,8 @@ input[type=checkbox]:checked,input[type=radio]:checked{background:transparent;bo
 input[type=checkbox]:checked:after{content:"";position:absolute;left:4px;top:2px;width:6px;height:10px;border:solid var(--accent-ink);border-width:0 2px 2px 0;transform:rotate(42deg)}
 input[type=radio]:checked:after{content:"";position:absolute;inset:4px;border-radius:50%;background:var(--accent-ink)}
 input[type=checkbox]:focus-visible,input[type=radio]:focus-visible{outline:2px solid var(--accent-line);outline-offset:2px}
-.choice-row input,.rig-segmented input,.selective-options input{appearance:auto;-webkit-appearance:auto;width:0;height:0;box-shadow:none;background:none}
-.choice-row input:after,.rig-segmented input:after,.selective-options input:after{content:none}
+.choice-row input,.selective-options input{appearance:auto;-webkit-appearance:auto;width:0;height:0;box-shadow:none;background:none}
+.choice-row input:after,.selective-options input:after{content:none}
 
 /* material assignment: label and the "N models / M component IDs" line wrap */
 .material-id{display:flex;flex-direction:column;gap:4px;min-width:0}
@@ -630,8 +528,6 @@ input[type=checkbox]:focus-visible,input[type=radio]:focus-visible{outline:2px s
 .batch-model-select>small{color:var(--muted);font-size:11px;font-variant-numeric:tabular-nums}
 .batch-model.active .batch-model-select>span{color:var(--accent-ink)}
 .model-batch-list{max-height:none}
-.rig-batch-model{align-items:start}
-.rig-batch-model strong,.rig-batch-model small{overflow:visible;text-overflow:clip;white-space:normal;overflow-wrap:anywhere;line-height:1.4}
 
 /* history model rows: the input sits inside a label together with index, name and meta */
 .history-model-row>label{flex:1;display:grid;grid-template-columns:auto auto minmax(0,1fr);align-items:center;gap:4px 11px;min-width:0;cursor:pointer;flex-direction:row}
@@ -642,8 +538,6 @@ input[type=checkbox]:focus-visible,input[type=radio]:focus-visible{outline:2px s
 
 /* pressable buttons need a visible pressed state too, not just a hover lift */
 .secondary-button:active:not(:disabled),.quiet-button:active:not(:disabled){box-shadow:var(--press-sm);transform:translateY(0)}
-.rig-diagram-toggle[aria-expanded=true]{box-shadow:var(--sel-ring),var(--lift)}
-.rig-diagram-toggle[aria-expanded=true]>i{background:transparent;box-shadow:inset 0 0 0 1px var(--accent-line)}
 
 /* A slow, shallow breath so a selected control reads as live without drawing the
    eye. Only the small toggles get it -- a pulsing card or row would be noise. */
@@ -652,14 +546,12 @@ input[type=checkbox]:focus-visible,input[type=radio]:focus-visible{outline:2px s
   50%{box-shadow:inset 0 0 0 1px var(--accent),0 0 11px -2px var(--accent-glow-lit)}
 }
 .choice-row input:checked+span,
-.rig-segmented input:checked+span,
 .selective-options input:checked+span,
 .theme-switcher button[aria-pressed=true],
 input[type=checkbox]:checked,
 input[type=radio]:checked{animation:accent-breathe 3.6s ease-in-out infinite}
 @media (prefers-reduced-motion:reduce){
   .choice-row input:checked+span,
-  .rig-segmented input:checked+span,
   .selective-options input:checked+span,
   .theme-switcher button[aria-pressed=true],
   input[type=checkbox]:checked,
@@ -787,34 +679,33 @@ input[type=radio]:checked{animation:accent-breathe 3.6s ease-in-out infinite}
    element on the group: --n comes from how many options the group has, --i from which
    one is checked, so the same three rules drive the render profile, the crop mode, the
    rig segments and the theme switcher without any per-group markup. */
-.segmented,.rig-segmented,.theme-switcher{position:relative}
+.segmented,.theme-switcher{position:relative}
 .segmented{--seg-gap:9px;--seg-pad:0px;--seg-radius:var(--radius-xs);flex-wrap:nowrap}
-.rig-segmented{--seg-gap:3px;--seg-pad:4px;--seg-radius:var(--radius-pill)}
 .theme-switcher{--seg-gap:2px;--seg-pad:4px;--seg-radius:var(--radius-pill)}
-.segmented:before,.rig-segmented:before,.theme-switcher:before{
+.segmented:before,.theme-switcher:before{
   content:"";position:absolute;inset:var(--seg-pad) auto var(--seg-pad) var(--seg-pad);
   width:calc((100% - 2*var(--seg-pad) - (var(--n,2) - 1)*var(--seg-gap))/var(--n,2));
   border-radius:var(--seg-radius);box-shadow:var(--sel-ring);opacity:0;pointer-events:none;
   transform:translateX(0);
   transition:transform .34s cubic-bezier(.34,1.2,.5,1),opacity .18s ease,box-shadow .18s}
 /* how many options: the last nth-of-type that exists wins */
-.segmented:has(>label:nth-of-type(2)),.rig-segmented:has(>label:nth-of-type(2)),.theme-switcher:has(>button:nth-of-type(2)){--n:2}
-.segmented:has(>label:nth-of-type(3)),.rig-segmented:has(>label:nth-of-type(3)),.theme-switcher:has(>button:nth-of-type(3)){--n:3}
-.segmented:has(>label:nth-of-type(4)),.rig-segmented:has(>label:nth-of-type(4)),.theme-switcher:has(>button:nth-of-type(4)){--n:4}
+.segmented:has(>label:nth-of-type(2)),.theme-switcher:has(>button:nth-of-type(2)){--n:2}
+.segmented:has(>label:nth-of-type(3)),.theme-switcher:has(>button:nth-of-type(3)){--n:3}
+.segmented:has(>label:nth-of-type(4)),.theme-switcher:has(>button:nth-of-type(4)){--n:4}
 /* which one is on -- the offset is written into the transform rather than into a
    custom property the transform reads: interpolating a registered custom property
    snapped part way through, transform interpolates reliably */
-.segmented:has(>label:nth-of-type(2)>input:checked):before,.rig-segmented:has(>label:nth-of-type(2)>input:checked):before,.theme-switcher:has(>button:nth-of-type(2)[aria-pressed=true]):before{transform:translateX(calc(100% + var(--seg-gap)))}
-.segmented:has(>label:nth-of-type(3)>input:checked):before,.rig-segmented:has(>label:nth-of-type(3)>input:checked):before,.theme-switcher:has(>button:nth-of-type(3)[aria-pressed=true]):before{transform:translateX(calc(200% + 2*var(--seg-gap)))}
-.segmented:has(>label:nth-of-type(4)>input:checked):before,.rig-segmented:has(>label:nth-of-type(4)>input:checked):before,.theme-switcher:has(>button:nth-of-type(4)[aria-pressed=true]):before{transform:translateX(calc(300% + 3*var(--seg-gap)))}
-.segmented:has(input:checked):before,.rig-segmented:has(input:checked):before,.theme-switcher:has([aria-pressed=true]):before{opacity:1}
+.segmented:has(>label:nth-of-type(2)>input:checked):before,.theme-switcher:has(>button:nth-of-type(2)[aria-pressed=true]):before{transform:translateX(calc(100% + var(--seg-gap)))}
+.segmented:has(>label:nth-of-type(3)>input:checked):before,.theme-switcher:has(>button:nth-of-type(3)[aria-pressed=true]):before{transform:translateX(calc(200% + 2*var(--seg-gap)))}
+.segmented:has(>label:nth-of-type(4)>input:checked):before,.theme-switcher:has(>button:nth-of-type(4)[aria-pressed=true]):before{transform:translateX(calc(300% + 3*var(--seg-gap)))}
+.segmented:has(input:checked):before,.theme-switcher:has([aria-pressed=true]):before{opacity:1}
 /* the option itself keeps the colour change and the tick; the ring is the thumb's job */
-.segmented input:checked+span,.rig-segmented input:checked+span,.theme-switcher button[aria-pressed=true]{box-shadow:none;animation:none}
+.segmented input:checked+span,.theme-switcher button[aria-pressed=true]{box-shadow:none;animation:none}
 /* the inputs in these rows are visually hidden, so nothing should breathe on them */
-.choice-row input:checked,.rig-segmented input:checked{animation:none}
-.segmented label>span,.rig-segmented label>span{position:relative;z-index:1}
+.choice-row input:checked{animation:none}
+.segmented label>span{position:relative;z-index:1}
 /* the thumb is one option wide, so the options have to be equal: flex-basis 0, not auto */
-.segmented label,.rig-segmented label{flex:1 1 0;min-width:0}
+.segmented label{flex:1 1 0;min-width:0}
 
 /* Panels and cards settle in when the page loads, and a card lifts under the pointer. */
 @keyframes rise-in{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
@@ -845,7 +736,7 @@ input[type=radio]:checked{animation:accent-breathe 3.6s ease-in-out infinite}
 }
 
 @media (prefers-reduced-motion:reduce){
-  .segmented:before,.rig-segmented:before,.theme-switcher:before{transition:opacity .01s}
+  .segmented:before,.theme-switcher:before{transition:opacity .01s}
   .workspace-col>.panel,.preflight-checks>span{animation:none}
   .job-dialog,.job-dialog::backdrop,.suggest-pop,::picker(select){transition:opacity .01s}
   .batch-model:hover,.material-row:hover{transform:none}

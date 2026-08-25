@@ -8,13 +8,14 @@ const os = require("node:os");
 const { spawn } = require("node:child_process");
 const { PNG } = require("pngjs");
 const { parseCsv } = require("../lib/csv.cjs");
-const { buildRig, jobLights, rigScale } = require("../lib/rig.cjs");
+const { buildRig, jobLights } = require("../lib/rig.cjs");
 const { buildJob, buildBatchJob, writeJob, CAMERA_YAW, RESOLUTION_PROFILES, groupedMaterials } = require("../lib/jobs.cjs");
 const { ModelStore, sectionalFormFactor } = require("../lib/models.cjs");
 const { buildUnrealLaunch } = require("../lib/unreal.cjs");
 const { history, expectedRenders } = require("../lib/history.cjs");
 const { buildRenderPlan, cameraStateKey, applyCameraHandoff } = require("../lib/render-plan.cjs");
 const { analyzeCalibrationPair, applyCropProfile } = require("../lib/crop.cjs");
+const { cameraFitStatesForJob, writeCameraFitStates } = require("../lib/camera-fit.cjs");
 const { READY_FOLDER_NAME, availability, isProcessedImage, processImage, processedPathFor, publishReadyToUpload, writePngText } = require("../lib/post-process.cjs");
 
 const root = path.join(__dirname, "..");
@@ -22,7 +23,7 @@ const rows = parseCsv(fs.readFileSync(path.join(root, "data", "sectionals-indoor
 const rig = buildRig(rows);
 const model = { name: "TEST_prod1", path: "D:\\models\\TEST_prod1.fbx", offsetUniformScale: 1 };
 const baseInput = {
-  side: "R", sourceMode: "B", dimensions: { width: 343, depth: 307, height: 79 }, importYaw: 0,
+  side: "R", dimensions: { width: 343, depth: 307, height: 79 }, importYaw: 0,
   cameras: ["F", "FH", "TQ"], layers: ["Fabric"], materials: [{ meshes: ["UPH", "Stitches"], material: "FABRIC_A" }, { meshes: ["Feet"], material: "WOOD_A" }]
 };
 
@@ -30,9 +31,10 @@ test("CSV parser preserves quoted comma-separated scene prefixes", () => {
   const parsed = parseCsv('a,b\n1,"R, U"\n'); assert.deepEqual(parsed, [{ a: "1", b: "R, U" }]);
 });
 
-test("fallback sheet contains complete Sectionals / Indoor rigs", () => {
+test("fallback sheet carries one sun per Sectionals / Indoor scene and camera", () => {
   for (const scene of ["Sectional_Indoor_R", "Sectional_Indoor_L", "Sectional_Indoor_U"]) for (const camera of ["F", "FH", "TQ"]) {
-    assert.equal(Object.keys(rig[scene][camera]).length, 5, `${scene}/${camera}`);
+    assert.deepEqual(Object.keys(rig[scene][camera]), ["key_lgt"], `${scene}/${camera}`);
+    assert.equal(rig[scene][camera].key_lgt.sublevel, "KeyLight", `${scene}/${camera}`);
   }
 });
 
@@ -46,43 +48,64 @@ test("sectional actor yaw uses only F/FH/TQ rules from ActorRotations", () => {
   }
 });
 
-test("job lights scale X/Y with one factor and never move in Z", () => {
-  const dimensions = { width: 700, depth: 500, height: 300 };
-  const lights = jobLights(rig, "Sectional_Indoor_R", "F", dimensions, "B");
-  const source = rig.Sectional_Indoor_R.F;
-  const k = rigScale(dimensions).value;
-  assert.equal(lights.length, 5); assert.deepEqual(lights.map(light => light.name), ["front_fill_lgt", "left_rim_lgt", "main_key_lgt", "right_bounce_lgt", "right_rim_lgt"]);
-  assert.ok(lights.every(light => light.LevelName.startsWith("Sectional_Indoor_")));
-  for (const light of lights) {
-    assert.equal(light.Location.X, Number((source[light.name].position[0] * k).toFixed(6)));
-    assert.equal(light.Location.Y, Number((source[light.name].position[1] * k).toFixed(6)));
-    assert.equal(light.Location.Z, source[light.name].position[2]);
-  }
+test("job lights come straight from the sheet and no longer answer to the model", () => {
+  const source = rig.Sectional_Indoor_R.F.key_lgt;
+  const lights = jobLights(rig, "Sectional_Indoor_R", "F");
+  assert.equal(lights.length, 1);
+  const [sun] = lights;
+  assert.equal(sun.name, "key_lgt");
+  assert.equal(sun.LevelName, "Sectional_Indoor_KeyLight");
+  assert.deepEqual(sun.Location, { X: source.position[0], Y: source.position[1], Z: source.position[2] });
+  assert.deepEqual(sun.rotation, { Pitch: -25.913912, Yaw: -13.933297, Roll: 4.209608 });
+  assert.equal(sun.intensity, 2.5);
+  assert.equal(sun.InnerConeAngle, -1); assert.equal(sun.OuterConeAngle, -1);
+  assert.ok(!("RectSourceWidth" in sun) && !("SourceRadius" in sun), "source geometry is no longer overridden");
 
-  const heightOnly = jobLights(rig, "Sectional_Indoor_R", "F", { ...baseInput.dimensions, height: 800 }, "B");
-  for (const light of heightOnly) assert.equal(light.Location.Z, source[light.name].position[2]);
+  // The rig is a sun: a model ten times the size must produce identical lights.
+  const tiny = buildJob({ ...baseInput, dimensions: { width: 100, depth: 80, height: 40 } }, model, rig, "D:\renders\tiny");
+  const huge = buildJob({ ...baseInput, dimensions: { width: 900, depth: 700, height: 300 } }, model, rig, "D:\renders\huge");
+  assert.deepEqual(huge.tasks[0].sequence.cameras.map(camera => camera.lights),
+                   tiny.tasks[0].sequence.cameras.map(camera => camera.lights),
+                   "model size must not touch any light");
 });
 
-test("Shadow overrides main key intensity and cones before the existing size correction", () => {
-  for (const scene of ["Sectional_Indoor_R", "Sectional_Indoor_L", "Sectional_Indoor_U"]) for (const camera of ["F", "FH", "TQ"]) {
-    const fabric = jobLights(rig, scene, camera, baseInput.dimensions, "B");
-    const shadow = jobLights(rig, scene, camera, baseInput.dimensions, "B", "Shadow");
-    const fabricKey = fabric.find(light => light.name === "main_key_lgt"), shadowKey = shadow.find(light => light.name === "main_key_lgt");
-    assert.equal(fabricKey.intensity, camera === "TQ" ? 60 : 45, `${scene}/${camera} Fabric intensity`);
-    assert.equal(fabricKey.InnerConeAngle, -1); assert.equal(fabricKey.OuterConeAngle, -1);
-    assert.equal(shadowKey.intensity, 100, `${scene}/${camera} Shadow intensity`);
-    assert.equal(shadowKey.InnerConeAngle, 45); assert.equal(shadowKey.OuterConeAngle, 60);
-    assert.deepEqual(shadowKey.Location, fabricKey.Location); assert.deepEqual(shadowKey.rotation, fabricKey.rotation);
-    for (const fabricLight of fabric.filter(light => light.name !== "main_key_lgt")) {
-      const shadowLight = shadow.find(light => light.name === fabricLight.name);
-      assert.equal(shadowLight.intensity, fabricLight.intensity); assert.deepEqual(shadowLight.Location, fabricLight.Location);
+test("each camera keeps its own sun rotation and intensity", () => {
+  const expected = {
+    Sectional_Indoor_R: {
+      F: [2.5, { Pitch: -25.913912, Yaw: -13.933297, Roll: 4.209608 }],
+      FH: [2.3, { Pitch: -23.265797, Yaw: -8.445295, Roll: -4.469738 }],
+      TQ: [2.3, { Pitch: -45, Yaw: 0, Roll: -5.483881 }]
+    },
+    Sectional_Indoor_L: {
+      F: [2.5, { Pitch: -23.265797, Yaw: -8.445295, Roll: -4.469738 }],
+      FH: [2.3, { Pitch: -23.265797, Yaw: -8.445295, Roll: -4.469738 }],
+      TQ: [2.3, { Pitch: -45, Yaw: 12, Roll: 0 }]
     }
+  };
+  expected.Sectional_Indoor_U = expected.Sectional_Indoor_L;
+  for (const [scene, cameras] of Object.entries(expected)) for (const [camera, [intensity, rotation]] of Object.entries(cameras)) {
+    const [sun] = jobLights(rig, scene, camera);
+    assert.equal(sun.intensity, intensity, `${scene}/${camera} intensity`);
+    assert.deepEqual(sun.rotation, rotation, `${scene}/${camera} rotation`);
+    assert.deepEqual(sun.Location, { X: 0, Y: 0, Z: 161.417541 }, `${scene}/${camera} location`);
+  }
+});
+
+test("Shadow repeats the sheet while its shadow columns are empty, and still honours them when filled", () => {
+  for (const scene of ["Sectional_Indoor_R", "Sectional_Indoor_L", "Sectional_Indoor_U"]) for (const camera of ["F", "FH", "TQ"]) {
+    assert.deepEqual(jobLights(rig, scene, camera, "Shadow"), jobLights(rig, scene, camera), `${scene}/${camera}`);
   }
 
-  const large = { width: 700, depth: 500, height: 300 };
-  const fabricKey = jobLights(rig, "Sectional_Indoor_R", "F", large, "B").find(light => light.name === "main_key_lgt");
-  const shadowKey = jobLights(rig, "Sectional_Indoor_R", "F", large, "B", "Shadow").find(light => light.name === "main_key_lgt");
-  assert.ok(Math.abs((shadowKey.intensity / fabricKey.intensity) - (100 / 45)) < 0.000001, "both base intensities use the same size correction");
+  const header = "active,airtable_categories,environment,sequence_prefix,obj,light_name,light_sublevel_suffix,camera,default_location,default_rotation,shadow_location,shadow_rotation,default_intensity,default_InnerConeAngle,default_OuterConeAngle,shadow_intensity,shadow_InnerConeAngle,shadow_OuterConeAngle,default_x,default_y,default_z,default_pitch,default_yaw,default_roll,shadow_x,shadow_y,shadow_z,shadow_pitch,shadow_yaw,shadow_roll";
+  const row = "TRUE,Sectionals,Indoor,Sectional_Indoor_R,,key_lgt,KeyLight,F,,,,,2.5,,,9,45,60,0,0,160,-20,0,0,,,,,,";
+  const overridden = buildRig(parseCsv(`${header}
+${row}
+`));
+  const [shadowSun] = jobLights(overridden, "Sectional_Indoor_R", "F", "Shadow");
+  const [fabricSun] = jobLights(overridden, "Sectional_Indoor_R", "F");
+  assert.equal(fabricSun.intensity, 2.5); assert.equal(fabricSun.InnerConeAngle, -1);
+  assert.equal(shadowSun.intensity, 9); assert.equal(shadowSun.InnerConeAngle, 45); assert.equal(shadowSun.OuterConeAngle, 60);
+  assert.deepEqual(shadowSun.Location, fabricSun.Location, "an intensity override must not move the light");
 });
 
 test("equal material names become one BatchRender material group", () => {
@@ -283,11 +306,11 @@ test("Fabric and Shadow become ordered Unreal phases with the required Substrate
   assert.ok(plan[0].job.tasks[0].sequence.cameras.every(camera => camera.LayerResolutions.length === 1 && camera.LayerResolutions[0].Name === "Fabric"));
   assert.ok(plan[1].job.tasks[0].sequence.cameras.every(camera => camera.LayerResolutions.length === 1 && camera.LayerResolutions[0].Name === "Shadow"));
   const parentCamera = job.tasks[0].sequence.cameras[0], fabricCamera = plan[0].job.tasks[0].sequence.cameras[0], shadowCamera = plan[1].job.tasks[0].sequence.cameras[0];
-  assert.equal(parentCamera._rhLocalShadowLights.find(light => light.name === "main_key_lgt").intensity, 100);
-  assert.equal(fabricCamera.lights.find(light => light.name === "main_key_lgt").intensity, 45);
-  assert.equal(shadowCamera.lights.find(light => light.name === "main_key_lgt").intensity, 100);
-  assert.equal(shadowCamera.lights.find(light => light.name === "main_key_lgt").InnerConeAngle, 45);
-  assert.equal(shadowCamera.lights.find(light => light.name === "main_key_lgt").OuterConeAngle, 60);
+  assert.equal(parentCamera._rhLocalShadowLights.find(light => light.name === "key_lgt").intensity, 2.5);
+  assert.equal(fabricCamera.lights.find(light => light.name === "key_lgt").intensity, 2.5);
+  assert.equal(shadowCamera.lights.find(light => light.name === "key_lgt").intensity, 2.5);
+  assert.equal(shadowCamera.lights.find(light => light.name === "key_lgt").InnerConeAngle, -1);
+  assert.equal(shadowCamera.lights.find(light => light.name === "key_lgt").OuterConeAngle, -1);
   assert.ok(!("_rhLocalShadowLights" in fabricCamera)); assert.ok(!("_rhLocalShadowLights" in shadowCamera));
   assert.equal(plan[0].job.jobId, `${job.jobId}__fabric`); assert.equal(plan[1].job.jobId, `${job.jobId}__shadow`);
   assert.equal(JSON.stringify(job), original, "the saved parent job stays unchanged");
@@ -321,6 +344,35 @@ test("Shadow receives the exact Fabric transform and focal length with fit disab
     assert.equal(camera.fit, "none"); assert.equal(camera.Camera.OverrideLocation, true); assert.equal(camera.Camera.OverrideRotation, true);
     assert.equal(camera.Camera.OverrideFocalLength, true); assert.equal(camera.Camera.FocalLength, 155.25);
     assert.deepEqual(camera.LayerResolutions[0].SensorSize, { X: 108, Y: 36 });
+  }
+});
+
+test("camera Fit states persist across jobs and invalidate when fit inputs change", () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "rh-camera-fit-")), modelPath = path.join(temp, "MODEL_prod1.fbx");
+  const projectPath = path.join(temp, "rh_unreal_2.uproject"), cacheFile = path.join(temp, "camera-fits.json");
+  fs.writeFileSync(modelPath, "fbx-v1"); fs.writeFileSync(projectPath, "{}");
+  const previousCache = process.env.RH_CAMERA_FIT_CACHE_FILE;
+  process.env.RH_CAMERA_FIT_CACHE_FILE = cacheFile;
+  try {
+    const currentModel = { ...model, name: "MODEL_prod1", path: modelPath, materialIds: ["UPH", "Stitches", "Feet"] };
+    const job = buildJob({ ...baseInput, layers: ["Fabric", "Shadow"] }, currentModel, rig, path.join(temp, "renders"));
+    const states = new Map(job.tasks[0].sequence.cameras.map((camera, index) => [cameraStateKey(currentModel.name, camera.sequenceName), {
+      cameraLocation: { x: index, y: 1650, z: 120 }, cameraRotation: { pitch: -3, yaw: -90, roll: 0 }, focalLength: 140 + index
+    }]));
+    assert.equal(writeCameraFitStates(temp, job, states, { projectPath, rendererToken: "renderer-a" }).length, 3);
+    const cached = cameraFitStatesForJob(temp, job, { projectPath, rendererToken: "renderer-a" });
+    assert.equal(cached.hits, 3); assert.equal(cached.total, 3);
+    assert.equal(cached.states.get(cameraStateKey(currentModel.name, job.tasks[0].sequence.cameras[1].sequenceName)).focalLength, 141);
+
+    const changedYaw = JSON.parse(JSON.stringify(job));
+    changedYaw.tasks[0].sequence.cameras[0].Actor.Rotation.Yaw += 1;
+    assert.equal(cameraFitStatesForJob(temp, changedYaw, { projectPath, rendererToken: "renderer-a" }).hits, 2, "only the changed view is invalidated");
+    assert.equal(cameraFitStatesForJob(temp, job, { projectPath, rendererToken: "renderer-b" }).hits, 0, "a rebuilt renderer invalidates old camera states");
+    fs.appendFileSync(modelPath, "-changed");
+    assert.equal(cameraFitStatesForJob(temp, job, { projectPath, rendererToken: "renderer-a" }).hits, 0, "an updated FBX invalidates every view");
+  } finally {
+    if (previousCache === undefined) delete process.env.RH_CAMERA_FIT_CACHE_FILE; else process.env.RH_CAMERA_FIT_CACHE_FILE = previousCache;
+    fs.rmSync(temp, { recursive: true, force: true });
   }
 });
 
@@ -402,13 +454,14 @@ test("local render service completes Fabric before restarting for Substrate-off 
     const launches = fs.readFileSync(fakeLog, "utf8").trim().split(/\r?\n/).map(line => JSON.parse(line));
     assert.deepEqual(launches.map(item => item.phase), ["Fabric", "Shadow"]);
     assert.match(launches[0].substrateArgument, /r\.Substrate=True$/); assert.match(launches[1].substrateArgument, /r\.Substrate=False$/);
-    assert.equal(launches[0].keyLight.intensity, 45); assert.equal(launches[0].keyLight.InnerConeAngle, -1); assert.equal(launches[0].keyLight.OuterConeAngle, -1);
-    assert.equal(launches[1].keyLight.intensity, 100); assert.equal(launches[1].keyLight.InnerConeAngle, 45); assert.equal(launches[1].keyLight.OuterConeAngle, 60);
+    for (const launch of launches) {
+      assert.equal(launch.keyLight.intensity, 2.5); assert.equal(launch.keyLight.InnerConeAngle, -1); assert.equal(launch.keyLight.OuterConeAngle, -1);
+    }
     assert.ok(launches[1].cameras.every(camera => camera.fit === "none"));
     assert.deepEqual(launches[1].cameras.map(camera => camera.Camera.FocalLength), [140, 141, 142]);
     assert.ok(launches[1].cameras.every(camera => camera.Camera.OverrideLocation && camera.Camera.OverrideRotation && camera.Camera.OverrideFocalLength));
     assert.match(status.log, /Fabric is complete\. Restarting Unreal for Shadow with Substrate OFF/);
-    assert.match(status.log, /Applied 3 Fabric camera states to Shadow; fit disabled/);
+    assert.match(status.log, /Applied 3 camera states from Fabric handoff to Shadow; fit disabled/);
   } finally {
     service.kill();
     fs.rmSync(jobPath, { force: true }); fs.rmSync(output, { recursive: true, force: true }); fs.rmSync(fakeLog, { force: true });
@@ -549,23 +602,12 @@ test("Unreal launch points the stock BatchRender plugin at the local API", () =>
   assert.ok(shadow.args.includes("-ini:Engine:[/Script/Engine.RendererSettings]:r.Substrate=False"));
 });
 
-test("main page renders the light rig natively in the shared workspace", () => {
+test("main page renders the workspace, previews and dropdowns", () => {
   const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
   const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const styles = fs.readFileSync(path.join(root, "app.css"), "utf8");
-  assert.match(html, /class="rig-workspace"/);
-  assert.match(html, /id="rigPlan"/);
-  assert.match(html, /id="rigElevation"/);
-  assert.match(html, /id="rigWidthRange" class="rig-dimension-slider" type="range"/);
-  assert.match(html, /id="rigDepthRange" class="rig-dimension-slider" type="range"/);
-  assert.match(html, /id="rigHeightRange" class="rig-dimension-slider" type="range"/);
   assert.doesNotMatch(html, /<iframe/i);
-  assert.match(client, /data\/sectionals-indoor\.csv/);
-  assert.match(client, /Math\.max\(1, raw\)/);
-  assert.match(client, /position: \[x \* scale, y \* scale, z\]/);
-  assert.match(client, /const labelY = y - \(index % 2 \? 42 : 14\)/);
   assert.match(client, /canReachLocalService/);
-  assert.match(client, /range\.addEventListener\("input"/);
   assert.match(html, /id="modelDropTarget"/);
   assert.match(html, /id="modelFileInput" type="file" accept="\.fbx" multiple/);
   assert.match(client, /droppedFilePath/);
@@ -573,13 +615,9 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(client, /useDroppedModels/);
   assert.match(client, /const normalizedMaterialId = id =>/);
   assert.match(client, /data-material-ids=/);
-  assert.match(client, /render-composite-fabric/);
-  assert.match(client, /Fabric over Shadow · click to open/);
-  assert.match(client, /const openCombinedPreview = card =>/);
   assert.match(client, /const renderEta = render =>/);
   assert.match(client, /class="render-queue-name"/);
   assert.match(client, /active: "Rendering", complete: "Complete", partial: "Partial", pending: "Upcoming"/);
-  assert.match(client, /--fabric-width:/);
   assert.match(styles, /--bronze-strong:/);
   assert.match(styles, /--success-strong:/);
   assert.match(styles, /render-orb-pulse/);
@@ -590,10 +628,8 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(styles, /@keyframes accent-breathe/);
   assert.match(styles, /\.render-preview-card>span\{bottom:auto/);
   assert.match(styles, /\.render-preview-card\.render-combined:hover \.render-preview-media \.render-composite-fabric\{transform:translate\(-50%,-50%\)\}/);
-  assert.match(styles, /\.rig-batch-models\{display:grid;grid-template-columns:repeat\(2/);
   assert.match(styles, /render-soft-glow/);
   assert.match(styles, /aspect-ratio:3\/1!important/);
-  assert.match(styles, /\.rig-light-values\{gap:7px;margin-top:11px;font-size:11px/);
   assert.match(styles, /strong,b\{font-weight:500!important\}h1,h2,h3\{font-weight:550!important\}/);
   assert.match(styles, /\.selective-options input:checked\+span/);
   assert.match(styles, /\.render-preview-media/);
@@ -604,8 +640,6 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(client, /await loadModelMetadata\(\)/);
   assert.match(html, /id="historyList"/);
   assert.match(html, /id="historyDetail"/);
-  assert.match(html, /id="rigBatchModels"/);
-  assert.match(html, /id="rigRenderImages"/);
   assert.match(html, /id="jobDialog"/);
   assert.match(client, /const loadHistory = async/);
   assert.match(client, /data-history-action="rerun"/);
@@ -620,13 +654,9 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(client, /class="history-model-list"/);
   assert.match(client, /openLocal\("showJob"/);
   assert.match(client, /selectHistoryModel/);
-  assert.match(client, /state\.rigBatch/);
-  assert.match(client, /const card = render =>/);
   assert.doesNotMatch(client, /render\.processed \|\| render/);
   assert.doesNotMatch(client, /fabric\.processed \|\| fabric/);
-  assert.match(client, /Combined · RAW/);
   assert.doesNotMatch(client, /batch\.models\.slice\(0, 6\)/);
-  assert.match(styles, /\.rig-render-images img\{height:auto;aspect-ratio:auto;object-fit:contain\}/);
   assert.match(styles, /\.history-model-list\{max-height:206px;overflow:auto/);
   assert.match(styles, /\.render-preview-media\{background:var\(--preview-bg\)\}/);
   assert.match(html, /<pre id="renderLog" class="render-log"><\/pre>/);
@@ -652,14 +682,10 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(styles, /\[data-material-status\]\[data-state=found\]\{background:var\(--accent-soft\)/);
   assert.match(styles, /\[data-material-status\]\[data-state=missing\]\{background:var\(--danger-soft\)/);
   assert.doesNotMatch(styles, /\.render-preview-media\{background-color:[^}]*linear-gradient/);
-  assert.match(styles, /\.rig-section,\.history-section[^{]*\{margin-top:clamp\(/);
-  assert.match(styles, /\.rig-workspace\{display:grid/);
   assert.match(html, /Shadow runs in a fresh Unreal process with Substrate disabled/);
   assert.match(html, /name="renderProfile" value="low"/);
   assert.match(html, /name="renderProfile" value="high" checked/);
   assert.match(html, /name="cropMode" value="optimized"/);
-  assert.match(html, /id="rigDiagramToggle"/);
-  assert.match(html, /id="rigDiagramBody"[\s\S]*id="rigLights"[\s\S]*<\/div>\s*<div id="rigRenderGallery"/);
   assert.equal((html.match(/data-theme-value=/g) || []).length, 3);
   for (const value of ["light", "system", "dark"]) assert.match(html, new RegExp(`data-theme-value="${value}"`));
   assert.match(client, /allowed = \["light", "system", "dark"\]/);
@@ -685,9 +711,7 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.doesNotMatch(styles, /input:checked\+span:before\{content/);
   assert.doesNotMatch(html, /id="pipelineBar"/);
   assert.doesNotMatch(client, /stickyGenerate/);
-  assert.match(html, /name="rigLayer" value="Shadow"/);
   assert.match(client, /data-history-action="selective"/);
-  assert.match(client, /render-camera-group/);
   assert.match(client, /renderProfile: selected\("renderProfile"\)\[0\] \|\| "high"/);
   assert.match(client, /Substrate \$\{render\.substrate \? "ON" : "OFF"\}/);
   assert.doesNotMatch(client, /Open the local dashboard with npm start to resolve full model paths/);

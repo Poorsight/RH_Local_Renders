@@ -1,6 +1,6 @@
 # RH Local Renders
 
-Local control centre for RH BatchRender jobs. It keeps the sectional light-rig reference in the browser, reads model geometry and FBX component IDs, creates `.job.json` files from the live Google Sheet, and launches one-shot renders in `D:\GitHub\rh_unreal_2`.
+Local control centre for RH BatchRender jobs. It reads model geometry and FBX component IDs, creates `.job.json` files from the live Google Sheet, and launches one-shot renders in `D:\GitHub\rh_unreal_2`.
 
 ## Start
 
@@ -36,7 +36,7 @@ Override them with `RH_UNREAL_EDITOR`, `RH_UNREAL_PROJECT`, and `RH_MODELS_ROOT`
 
 Fabric and Shadow are separate Unreal phases because Substrate requires an editor restart. Fabric launches with the effective project override `r.Substrate=True`; Shadow launches in a fresh Unreal process with `r.Substrate=False`, which keeps Composure compatible. If both layers are selected, the service waits for Fabric `job_completed` and changed output files, closes Unreal, then starts Shadow. The override is passed with `-ini:Engine:[/Script/Engine.RendererSettings]` for that process only, so `rh_unreal_2/Config/DefaultEngine.ini` stays unchanged and its normal `r.Substrate=True` setting is preserved. The saved parent job keeps default camera lights plus its local Shadow-light variant; before each Unreal launch the runtime strips the local metadata and gives BatchRender only the active phase's normal `lights` array. For the current Sectionals rules, Shadow overrides `main_key_lgt` with base intensity `100`, inner cone `45`, and outer cone `60`; blank Shadow transform fields inherit the default transform. Both base intensities go through the same model-size/source-mode correction, and light Z remains fixed.
 
-The light rows are refreshed from the public Google Sheet (`gid=0`). `data/sectionals-indoor.csv` is a tracked offline startup copy of the same Sectionals/Indoor rules, not a user cache that needs to be cleared. A successful live refresh is kept in memory for the current service session; the tracked copy lets the service and static reference start with the latest verified rules when Google Sheets is unavailable.
+The light rows are refreshed from the public Google Sheet (`gid=0`). `data/sectionals-indoor.csv` is a tracked offline startup copy of the same Sectionals/Indoor rules, not a user cache that needs to be cleared. A successful live refresh is kept in memory for the current service session; the tracked copy lets the service start with the latest verified rules when Google Sheets is unavailable.
 
 ## Model batches, automatic inspection, and generated presets
 
@@ -48,7 +48,7 @@ Material assignments are normalized from the final component-name word with digi
 
 The static preview uses the same tracked `data/models.json`: dropping any batch made from the 16 known FBX files restores their expected `D:\GitHub\RH_Local_Renders\local\models\…` paths and groups their Material IDs without uploading files. First-time analysis of a new FBX, job generation, and Unreal launch require `Start_RH_Local_Renders.bat` because a public web page cannot run Blender or local processes.
 
-There are no bundled model presets. **Render & job history** discovers the JSON jobs and render files already stored under `local/`, including output from a completed plugin run even if a previous browser session missed its final event. A saved job can be selected, opened as a raw `application/json` document for JSONVue or the browser's built-in JSON viewer, shown in Explorer, or launched again. If a new tab is blocked, **View JSON** falls back to the in-page formatted dialog. **Review batch** loads its model list into the native light rig; selecting a model restores that job's dimensions, side, source mode, completion state, and disk render gallery. Each camera shows Fabric, Shadow, and a centered pixel-grid composite of Fabric over the 3:1 Shadow canvas on a neutral checkerboard.
+There are no bundled model presets. **Render & job history** discovers the JSON jobs and render files already stored under `local/`, including output from a completed plugin run even if a previous browser session missed its final event. A saved job can be selected, opened as a raw `application/json` document for JSONVue or the browser's built-in JSON viewer, shown in Explorer, or launched again. If a new tab is blocked, **View JSON** falls back to the in-page formatted dialog. Renders on disk are reached through **Open renders** and **Open POST**.
 
 ## Automatic delivery post-process
 
@@ -64,7 +64,7 @@ The legacy inches-as-centimetres FBX profile uses the opposite X handedness duri
 
 ## Light reference
 
-The sectional light-rig scaler and schematic are native parts of the dashboard, using the same controls, typography, colours, and responsive layout as the render workflow. The shared light scale is calculated only from the model's width/depth footprint. Height changes only the sofa silhouette in the elevation diagram and never changes any light position, rotation, intensity, cone, or source dimension. It reads the tracked `data/sectionals-indoor.csv` directly in the browser, so the reference also works on the static preview without the local service.
+Sectionals are lit by a single sun. The sheet carries one `key_lgt` per scene and camera; the job repeats its position, rotation, intensity and cone angles exactly as written, so nothing about the model changes a light. There is no footprint scale, no reference size and no source-geometry mode: a sofa twice the size gets the same lighting. Shadow reuses the same values unless the sheet fills the `shadow_*` columns, which still override per light.
 
 ## Verification
 

@@ -123,9 +123,6 @@
               <option value="U">U sectional</option>
             </select>
           </label>
-          <label>Source geometry
-            <select id="sourceMode"><option value="B">Fixed sources (production)</option><option value="A">Scaled sources</option></select>
-          </label>
         </div>
         <div class="output-fieldsets">
         <fieldset>
@@ -199,110 +196,6 @@
       <div class="history-workspace">
         <div id="historyList" class="history-list"><div class="empty-state">Render history requires the local service.</div></div>
         <article id="historyDetail" class="history-detail"><div class="empty-state">Choose a saved job to inspect its models, JSON, and render output.</div></article>
-      </div>
-    </section>
-    <section class="rig-section" aria-labelledby="rigTitle">
-      <div class="section-heading rig-heading">
-        <div>
-          <p class="eyebrow">LIGHT WORKSPACE</p>
-          <h2 id="rigTitle">Sectional light rig</h2>
-          <p>The same five-light setup used by generated jobs. X/Y follow one shared scale; every source keeps its tuned Z height.</p>
-        </div>
-        <div class="rig-readout" aria-label="Current light rig scale">
-          <span>RIG SCALE</span><strong id="rigScale">1.000×</strong><small id="rigScaleNote">Reference footprint</small>
-        </div>
-      </div>
-
-      <div id="rigBatchGroup" class="rig-control-group rig-batch-group" hidden>
-        <div class="rig-control-heading"><span>BATCH MODELS</span><small id="rigBatchCount"></small></div>
-        <div id="rigBatchModels" class="rig-batch-models"></div>
-      </div>
-
-      <div class="rig-workspace">
-        <aside class="rig-controls" aria-label="Light rig controls">
-          <div class="rig-control-group">
-            <div class="rig-control-heading"><span>SHOT</span><small id="rigShotHint">Front</small></div>
-            <div class="rig-segmented" role="radiogroup" aria-label="Light rig shot">
-              <label><input type="radio" name="rigShot" value="F" checked><span>F</span></label>
-              <label><input type="radio" name="rigShot" value="FH"><span>FH</span></label>
-              <label><input type="radio" name="rigShot" value="TQR"><span>TQ-R</span></label>
-              <label><input type="radio" name="rigShot" value="TQL"><span>TQ-L</span></label>
-            </div>
-          </div>
-
-          <div class="rig-control-group">
-            <div class="rig-control-heading"><span>SOFA DIMENSIONS</span><button id="rigUseModel" class="text-button" type="button" disabled>Use inspected model</button></div>
-            <div class="rig-dimensions">
-              <div class="rig-dimension-control">
-                <div class="rig-dimension-heading"><label for="rigWidth">Width · X</label><div class="rig-dimension-number"><input id="rigWidth" type="number" min="1" step="1" value="453"><span>cm</span></div></div>
-                <input id="rigWidthRange" class="rig-dimension-slider" type="range" min="1" max="1000" step="1" value="453" aria-label="Width slider">
-              </div>
-              <div class="rig-dimension-control">
-                <div class="rig-dimension-heading"><label for="rigDepth">Depth · Y</label><div class="rig-dimension-number"><input id="rigDepth" type="number" min="1" step="1" value="279"><span>cm</span></div></div>
-                <input id="rigDepthRange" class="rig-dimension-slider" type="range" min="1" max="700" step="1" value="279" aria-label="Depth slider">
-              </div>
-              <div class="rig-dimension-control">
-                <div class="rig-dimension-heading"><label for="rigHeight">Height · Z</label><div class="rig-dimension-number"><input id="rigHeight" type="number" min="1" step="1" value="79"><span>cm</span></div></div>
-                <input id="rigHeightRange" class="rig-dimension-slider" type="range" min="1" max="250" step="1" value="79" aria-label="Height slider">
-              </div>
-            </div>
-          </div>
-
-          <div class="rig-control-group">
-            <div class="rig-control-heading"><span>LIGHT BEHAVIOR</span><small>Fixed Z</small></div>
-            <div class="rig-segmented rig-layer-switch" role="radiogroup" aria-label="Light rig layer">
-              <label><input type="radio" name="rigLayer" value="Fabric" checked><span>Fabric</span></label>
-              <label><input type="radio" name="rigLayer" value="Shadow"><span>Shadow</span></label>
-            </div>
-            <label>Source geometry
-              <select id="rigMode">
-                <option value="B">Fixed sources · production</option>
-                <option value="A">Scaled sources</option>
-              </select>
-            </label>
-            <p class="rig-help">The five lights keep their tuned rotations and Z heights. Only X/Y move out when the shared scale exceeds the 453 × 279 × 79 cm reference.</p>
-          </div>
-
-          <div class="rig-control-group rig-reference-note">
-            <span>REFERENCE</span><strong>453 × 279 × 79 cm</strong><small>Positions and intensity remain 1:1 while k = 1.</small>
-          </div>
-        </aside>
-
-        <div class="rig-stage">
-          <button id="rigDiagramToggle" class="rig-diagram-toggle" type="button" aria-expanded="false" aria-controls="rigDiagramBody">
-            <span><strong>Lighting diagrams</strong><small>Plan + elevation</small></span><i aria-hidden="true">+</i>
-          </button>
-          <div id="rigDiagramBody" class="rig-diagram-body" hidden>
-            <div class="rig-toolbar">
-              <div class="rig-segmented" role="radiogroup" aria-label="Diagram layout">
-                <label><input type="radio" name="rigLayout" value="plan"><span>Plan</span></label>
-                <label><input type="radio" name="rigLayout" value="elevation"><span>Elevation</span></label>
-                <label><input type="radio" name="rigLayout" value="split" checked><span>Split</span></label>
-              </div>
-              <div class="rig-segmented" role="radiogroup" aria-label="Diagram color mode">
-                <label><input type="radio" name="rigColor" value="role" checked><span>Role</span></label>
-                <label><input type="radio" name="rigColor" value="kelvin"><span>Kelvin</span></label>
-              </div>
-            </div>
-
-            <div id="rigLoading" class="rig-loading">Loading Sectionals / Indoor light data…</div>
-            <div id="rigViews" class="rig-views" data-layout="split" hidden>
-              <article class="rig-view rig-plan-view">
-                <div class="rig-view-heading"><strong>Plan</strong><span>X · Y</span></div>
-                <svg id="rigPlan" role="img" aria-label="Top view of sectional and five-light rig" preserveAspectRatio="xMidYMid meet"></svg>
-              </article>
-              <article class="rig-view rig-elevation-view">
-                <div class="rig-view-heading"><strong>Elevation</strong><span>X · Z</span></div>
-                <svg id="rigElevation" role="img" aria-label="Side view of sectional and five-light rig" preserveAspectRatio="xMidYMid meet"></svg>
-              </article>
-            </div>
-            <div id="rigLights" class="rig-light-list" aria-label="Light values"></div>
-          </div>
-          <div id="rigRenderGallery" class="rig-render-gallery" hidden>
-            <div class="rig-render-gallery-heading"><div><span>DISK RENDERS</span><strong id="rigRenderModel"></strong></div><span id="rigRenderCount"></span></div>
-            <div id="rigRenderImages" class="rig-render-images"></div>
-          </div>
-        </div>
       </div>
     </section>
 

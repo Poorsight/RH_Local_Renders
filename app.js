@@ -1,35 +1,14 @@
 (() => {
   const $ = (id) => document.getElementById(id);
-  const state = { status: null, models: [], metadata: null, materialAssets: [], preflight: null, preflightTimer: null, batch: [], model: null, jobPath: null, poll: null, rig: null, history: [], historyBatch: null, historySelection: new Set(), rigBatch: null, historyModel: null, queueFocus: null };
+  const state = { status: null, models: [], metadata: null, materialAssets: [], preflight: null, preflightTimer: null, batch: [], model: null, jobPath: null, poll: null, history: [], historyBatch: null, historySelection: new Set(), historyModel: null, queueFocus: null };
   const canReachLocalService = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
   const LOCAL_MODELS_ROOT = "D:\\GitHub\\RH_Local_Renders\\local\\models";
   const THEME_KEY = "rh-local-renders-theme";
-  const RIG_REFERENCE = { width: 453, depth: 279, height: 79 };
-  const RIG_GEOMETRY = {
-    front_fill_lgt: { type: "rect", width: 500, height: 500, radius: 282.094791774 },
-    left_rim_lgt: { type: "spot", radius: 256, soft: 25 },
-    main_key_lgt: { type: "spot", radius: 52.479965 },
-    right_bounce_lgt: { type: "rect", width: 256, height: 256, radius: 144.432533388 },
-    right_rim_lgt: { type: "rect", width: 91.440002, height: 60.900002, radius: 42.101913103 }
-  };
-  const RIG_META = {
-    front_fill_lgt: { label: "Front fill", role: "fill", color: "#7f9fb9", kelvin: 6500 },
-    left_rim_lgt: { label: "Left rim", role: "rim", color: "#a08eae", kelvin: 6500 },
-    main_key_lgt: { label: "Main key", role: "key", color: "#d1b477", kelvin: 6500 },
-    right_bounce_lgt: { label: "Bounce", role: "bounce", color: "#88a98c", kelvin: 6000 },
-    right_rim_lgt: { label: "Right rim", role: "rim", color: "#74a5a2", kelvin: 6500 }
-  };
   const applyTheme = theme => {
     const allowed = ["light", "system", "dark"], value = allowed.includes(theme) ? theme : "system";
     document.documentElement.dataset.theme = value;
     document.querySelectorAll("[data-theme-value]").forEach(button => button.setAttribute("aria-pressed", String(button.dataset.themeValue === value)));
     try { localStorage.setItem(THEME_KEY, value); } catch {}
-  };
-  const setRigDiagramsExpanded = expanded => {
-    const open = Boolean(expanded), toggle = $("rigDiagramToggle");
-    $("rigDiagramBody").hidden = !open; toggle.setAttribute("aria-expanded", String(open)); toggle.querySelector("i").textContent = open ? "−" : "+";
-    try { localStorage.setItem("rh-local-renders-rig-diagrams", open ? "open" : "closed"); } catch {}
-    if (open) requestAnimationFrame(renderRig);
   };
   const api = async (path, options = {}) => {
     const response = await fetch(path, { headers: { "Content-Type": "application/json" }, ...options });
@@ -142,7 +121,7 @@
     $("width").value = model.dimensions.width; $("depth").value = model.dimensions.depth; $("height").value = model.dimensions.height; $("importYaw").value = model.importYaw;
     $("modelPath").value = model.path;
     $("modelWarning").hidden = !model.warning; $("modelWarning").textContent = model.warning || "";
-    $("rigUseModel").disabled = false; syncRigFromModel();
+    
     renderBatch(); validate();
   };
   const applyModel = (model, quiet = false) => {
@@ -183,155 +162,6 @@
     document.querySelectorAll("[data-material-key]").forEach(updateMaterialStatus);
   };
   const escapeHtml = (value) => String(value).replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[ch]);
-  const parseCsv = (text) => {
-    const rows = []; let row = [], cell = "", quoted = false;
-    for (let index = 0; index < text.length; index++) {
-      const char = text[index];
-      if (char === '"') {
-        if (quoted && text[index + 1] === '"') { cell += '"'; index++; } else quoted = !quoted;
-      } else if (char === "," && !quoted) { row.push(cell); cell = ""; }
-      else if ((char === "\n" || char === "\r") && !quoted) {
-        if (char === "\r" && text[index + 1] === "\n") index++;
-        row.push(cell); if (row.some(value => value !== "")) rows.push(row); row = []; cell = "";
-      } else cell += char;
-    }
-    if (cell || row.length) { row.push(cell); rows.push(row); }
-    const headers = rows.shift() || [];
-    return rows.map(values => Object.fromEntries(headers.map((header, index) => [header, values[index] || ""])));
-  };
-  const listValues = (value) => String(value || "").split(",").map(part => part.trim()).filter(Boolean);
-  const buildClientRig = (rows) => {
-    const rig = {};
-    rows.filter(row => row.active === "TRUE" && row.airtable_categories === "Sectionals" && row.environment === "Indoor").forEach(row => {
-      const light = {
-        name: row.light_name,
-        position: [+row.default_x, +row.default_y, +row.default_z],
-        rotation: { pitch: +row.default_pitch, yaw: +row.default_yaw, roll: +row.default_roll },
-        intensity: +row.default_intensity,
-        innerCone: row.default_InnerConeAngle === "" ? -1 : +row.default_InnerConeAngle,
-        outerCone: row.default_OuterConeAngle === "" ? -1 : +row.default_OuterConeAngle,
-        shadow: {
-          position: row.shadow_x === "" ? null : [+row.shadow_x, +row.shadow_y, +row.shadow_z],
-          rotation: row.shadow_pitch === "" ? null : { pitch: +row.shadow_pitch, yaw: +row.shadow_yaw, roll: +row.shadow_roll },
-          intensity: row.shadow_intensity === "" ? null : +row.shadow_intensity,
-          innerCone: row.shadow_InnerConeAngle === "" ? null : +row.shadow_InnerConeAngle,
-          outerCone: row.shadow_OuterConeAngle === "" ? null : +row.shadow_OuterConeAngle
-        }
-      };
-      listValues(row.sequence_prefix).forEach(scene => listValues(row.camera).forEach(camera => {
-        if (!["F", "FH", "TQ"].includes(camera)) return;
-        rig[scene] ||= {}; rig[scene][camera] ||= {}; rig[scene][camera][light.name] = light;
-      }));
-    });
-    return rig;
-  };
-  const kelvinColor = (kelvin) => {
-    const temperature = kelvin / 100; let red, green, blue;
-    if (temperature <= 66) { red = 255; green = 99.4708025861 * Math.log(temperature) - 161.1195681661; blue = temperature <= 19 ? 0 : 138.5177312231 * Math.log(temperature - 10) - 305.0447927307; }
-    else { red = 329.698727446 * Math.pow(temperature - 60, -0.1332047592); green = 288.1221695283 * Math.pow(temperature - 60, -0.0755148492); blue = 255; }
-    const hex = value => Math.max(0, Math.min(255, Math.round(value || 0))).toString(16).padStart(2, "0");
-    return `#${hex(red)}${hex(green)}${hex(blue)}`;
-  };
-  const currentRigShot = () => document.querySelector('input[name="rigShot"]:checked')?.value || "F";
-  const rigDimensions = () => ({
-    width: Math.max(1, +$("rigWidth").value || RIG_REFERENCE.width),
-    depth: Math.max(1, +$("rigDepth").value || RIG_REFERENCE.depth),
-    height: Math.max(1, +$("rigHeight").value || RIG_REFERENCE.height)
-  });
-  const currentRig = () => {
-    const shot = currentRigShot(), dimensions = rigDimensions(), mode = $("rigMode").value, layer = selected("rigLayer")[0] || "Fabric";
-    const side = shot === "TQR" ? "R" : shot === "TQL" ? "L" : sideFromModel();
-    const camera = shot.startsWith("TQ") ? "TQ" : shot;
-    const scene = `Sectional_Indoor_${side}`;
-    const source = state.rig?.[scene]?.[camera];
-    if (!source) return null;
-    const raw = Math.cbrt((dimensions.width / RIG_REFERENCE.width) * (dimensions.depth / RIG_REFERENCE.depth) * (dimensions.height / RIG_REFERENCE.height));
-    const scale = Math.max(1, raw);
-    const lights = Object.entries(source).map(([name, light]) => {
-      const shadow = layer === "Shadow" ? light.shadow || {} : {}, basePosition = shadow.position || light.position, baseRotation = shadow.rotation || light.rotation;
-      const baseIntensity = shadow.intensity ?? light.intensity, innerCone = shadow.innerCone ?? light.innerCone, outerCone = shadow.outerCone ?? light.outerCone;
-      const geometry = RIG_GEOMETRY[name] || {}, [x, y, z] = basePosition;
-      const distance2 = x * x + y * y + z * z, radius2 = (geometry.radius || 0) ** 2;
-      const intensity = mode === "A" ? baseIntensity * scale * scale : baseIntensity * ((scale * scale * distance2 + radius2) / (distance2 + radius2));
-      return { ...light, name, rotation: baseRotation, position: [x * scale, y * scale, z], intensity, innerCone, outerCone, changedForShadow: layer === "Shadow" && (shadow.intensity != null || shadow.innerCone != null || shadow.outerCone != null || shadow.position || shadow.rotation), geometry, meta: RIG_META[name] };
-    });
-    return { shot, side, camera, dimensions, mode, layer, raw, scale, lights, sofaYaw: shot === "TQR" ? -36 : shot === "TQL" ? 36 : 0 };
-  };
-  const svgGrid = (minX, maxX, minY, maxY, step = 100) => {
-    let markup = "";
-    for (let x = Math.ceil(minX / step) * step; x <= maxX; x += step) markup += `<line x1="${x}" y1="${minY}" x2="${x}" y2="${maxY}"/>`;
-    for (let y = Math.ceil(minY / step) * step; y <= maxY; y += step) markup += `<line x1="${minX}" y1="${y}" x2="${maxX}" y2="${y}"/>`;
-    return `<g class="rig-svg-grid">${markup}</g><g class="rig-svg-axes"><line x1="${minX}" y1="0" x2="${maxX}" y2="0"/><line x1="0" y1="${minY}" x2="0" y2="${maxY}"/></g>`;
-  };
-  const sofaPlanPoints = ({ width, depth }, yaw) => {
-    const radians = yaw * Math.PI / 180, cosine = Math.cos(radians), sine = Math.sin(radians);
-    return [[-width / 2, -depth / 2], [width / 2, -depth / 2], [width / 2, depth / 2], [-width / 2, depth / 2]].map(([x, y]) => [x * cosine - y * sine, -(x * sine + y * cosine)]);
-  };
-  const rigColor = (light) => document.querySelector('input[name="rigColor"]:checked')?.value === "kelvin" ? kelvinColor(light.meta.kelvin) : light.meta.color;
-  const renderRigPlan = (preview) => {
-    const svg = $("rigPlan"), sofa = sofaPlanPoints(preview.dimensions, preview.sofaYaw);
-    const points = [...sofa, ...preview.lights.map(light => [light.position[0], -light.position[1]])];
-    const pad = 150 * preview.scale, minX = Math.min(...points.map(point => point[0])) - pad, maxX = Math.max(...points.map(point => point[0])) + pad;
-    const minY = Math.min(...points.map(point => point[1])) - pad, maxY = Math.max(...points.map(point => point[1])) + pad;
-    svg.setAttribute("viewBox", `${minX} ${minY} ${maxX - minX} ${maxY - minY}`);
-    const lights = preview.lights.map(light => {
-      const [x, worldY] = light.position, y = -worldY, radians = light.rotation.yaw * Math.PI / 180, length = 120 * preview.scale;
-      const endX = x + Math.cos(radians) * length, endY = y - Math.sin(radians) * length, color = rigColor(light);
-      return `<g class="rig-svg-light" style="--light:${color}"><line x1="${x}" y1="${y}" x2="${endX}" y2="${endY}" marker-end="url(#rig-plan-arrow)"/><circle cx="${x}" cy="${y}" r="10"/><text x="${x + 16}" y="${y - 14}">${escapeHtml(light.meta.label)}</text></g>`;
-    }).join("");
-    svg.innerHTML = `<defs><marker id="rig-plan-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z"/></marker></defs>${svgGrid(minX, maxX, minY, maxY)}<polygon class="rig-svg-sofa" points="${sofa.map(point => point.join(",")).join(" ")}"/><text class="rig-svg-sofa-label" x="0" y="5">SECTIONAL · ${preview.dimensions.width} × ${preview.dimensions.depth}</text>${lights}`;
-  };
-  const renderRigElevation = (preview) => {
-    const points = preview.lights.map(light => [light.position[0], -light.position[2]]), pad = 120 * preview.scale;
-    const minX = Math.min(-preview.dimensions.width / 2, ...points.map(point => point[0])) - pad, maxX = Math.max(preview.dimensions.width / 2, ...points.map(point => point[0])) + pad;
-    const minY = Math.min(-preview.dimensions.height, ...points.map(point => point[1])) - pad, maxY = pad;
-    const svg = $("rigElevation"); svg.setAttribute("viewBox", `${minX} ${minY} ${maxX - minX} ${maxY - minY}`);
-    const lights = preview.lights.map((light, index) => {
-      const x = light.position[0], y = -light.position[2], pitch = light.rotation.pitch * Math.PI / 180, yaw = light.rotation.yaw * Math.PI / 180, length = 120 * preview.scale;
-      const endX = x + Math.cos(pitch) * Math.cos(yaw) * length, endY = y - Math.sin(pitch) * length, color = rigColor(light);
-      const labelY = y - (index % 2 ? 42 : 14);
-      return `<g class="rig-svg-light" style="--light:${color}"><line x1="${x}" y1="${y}" x2="${endX}" y2="${endY}" marker-end="url(#rig-elevation-arrow)"/><circle cx="${x}" cy="${y}" r="10"/><text x="${x + 16}" y="${labelY}">${escapeHtml(light.meta.label)}</text></g>`;
-    }).join("");
-    svg.innerHTML = `<defs><marker id="rig-elevation-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z"/></marker></defs>${svgGrid(minX, maxX, minY, maxY)}<rect class="rig-svg-sofa" x="${-preview.dimensions.width / 2}" y="${-preview.dimensions.height}" width="${preview.dimensions.width}" height="${preview.dimensions.height}" rx="12"/><text class="rig-svg-sofa-label" x="0" y="${-preview.dimensions.height / 2}">H ${preview.dimensions.height}</text>${lights}`;
-  };
-  const renderRig = () => {
-    const preview = currentRig(); if (!preview) return;
-    $("rigLoading").hidden = true; $("rigViews").hidden = false;
-    $("rigScale").textContent = `${preview.scale.toFixed(3)}×`;
-    $("rigScaleNote").textContent = `${preview.layer} · ${preview.scale === 1 ? "Reference footprint" : `Raw ${preview.raw.toFixed(3)}×`}`;
-    $("rigShotHint").textContent = ({ F: "Front", FH: "Front high", TQR: "Three-quarter · right", TQL: "Three-quarter · left" })[preview.shot];
-    renderRigPlan(preview); renderRigElevation(preview);
-    $("rigLights").innerHTML = preview.lights.map(light => {
-      const color = rigColor(light), size = light.geometry.type === "rect" ? `${Math.round(light.geometry.width * (preview.mode === "A" ? preview.scale : 1))} × ${Math.round(light.geometry.height * (preview.mode === "A" ? preview.scale : 1))}` : `r ${Math.round(light.geometry.radius * (preview.mode === "A" ? preview.scale : 1))}`;
-      const cones = light.innerCone >= 0 || light.outerCone >= 0 ? ` · cones ${light.innerCone}/${light.outerCone}` : "";
-      return `<article class="rig-light-card${light.changedForShadow ? " changed" : ""}"><div class="rig-light-name"><i class="rig-light-dot" style="color:${color};background:${color}"></i><strong>${escapeHtml(light.meta.label)}</strong>${light.changedForShadow ? "<em>Shadow override</em>" : ""}</div><div class="rig-light-values"><span>${light.intensity.toFixed(light.intensity < 10 ? 2 : 1)} cd · ${size} cm${escapeHtml(cones)}</span><span>${light.position.map(value => Math.round(value)).join(" · ")} cm</span></div></article>`;
-    }).join("");
-  };
-  const updateRigRange = range => {
-    const progress = ((+range.value - +range.min) / (+range.max - +range.min)) * 100;
-    range.style.setProperty("--range-progress", `${progress}%`);
-  };
-  const setRigDimensions = dimensions => {
-    if (!dimensions) return;
-    [["rigWidth", "rigWidthRange", "width"], ["rigDepth", "rigDepthRange", "depth"], ["rigHeight", "rigHeightRange", "height"]].forEach(([numberId, rangeId, dimension]) => {
-      const number = $(numberId), range = $(rangeId), value = Math.max(+number.min, +dimensions[dimension] || +number.value);
-      if (value > +range.max) range.max = value;
-      number.value = value; range.value = value; updateRigRange(range);
-    });
-    renderRig();
-  };
-  const syncRigFromModel = () => {
-    if (!state.model) return;
-    setRigDimensions(state.model.dimensions);
-  };
-  const loadRig = async () => {
-    try {
-      const response = await fetch("data/sectionals-indoor.csv", { cache: "no-cache" }); if (!response.ok) throw new Error(`Light data ${response.status}`);
-      state.rig = buildClientRig(parseCsv(await response.text()));
-      if (Object.keys(state.rig.Sectional_Indoor_R?.F || {}).length !== 5) throw new Error("Incomplete Sectionals / Indoor rig");
-      renderRig();
-    } catch (error) { $("rigLoading").dataset.state = "error"; $("rigLoading").textContent = `Light rig unavailable: ${error.message}`; }
-  };
   const droppedFilePath = (file, transfer) => {
     const directPath = typeof file?.path === "string" ? file.path : "";
     if (/^[a-z]:[\\/].+\.fbx$/i.test(directPath)) return directPath.replace(/\//g, "\\");
@@ -452,67 +282,19 @@
   const renderHistoryDetail = () => {
     const batch = state.historyBatch;
     if (!batch) { $("historyDetail").innerHTML = '<div class="empty-state">Choose a saved job to inspect its models, JSON, and render output.</div>'; return; }
-    const models = batch.models?.length ? `<div class="history-model-list" aria-label="Models in ${escapeHtml(batch.id)}">${batch.models.map((model, index) => `<div class="history-model-row"><label><input type="checkbox" data-history-model-select="${escapeHtml(model.name)}"${state.historySelection.has(model.name) ? " checked" : ""}><span>${String(index + 1).padStart(2, "0")}</span><strong>${escapeHtml(model.name)}</strong><small>${escapeHtml(model.side || "UNKNOWN")} · ${model.dimensions ? `${model.dimensions.width} × ${model.dimensions.depth} × ${model.dimensions.height} cm` : "No dimensions"} · ${model.renders.length}/${model.expectedRenders}</small></label><button type="button" data-history-action="review" data-model-index="${index}" title="Review in light rig">Rig</button></div>`).join("")}</div>` : '<div class="empty-state history-model-empty">No models stored in this job.</div>';
+    const models = batch.models?.length ? `<div class="history-model-list" aria-label="Models in ${escapeHtml(batch.id)}">${batch.models.map((model, index) => `<div class="history-model-row"><label><input type="checkbox" data-history-model-select="${escapeHtml(model.name)}"${state.historySelection.has(model.name) ? " checked" : ""}><span>${String(index + 1).padStart(2, "0")}</span><strong>${escapeHtml(model.name)}</strong><small>${escapeHtml(model.side || "UNKNOWN")} · ${model.dimensions ? `${model.dimensions.width} × ${model.dimensions.depth} × ${model.dimensions.height} cm` : "No dimensions"} · ${model.renders.length}/${model.expectedRenders}</small></label></div>`).join("")}</div>` : '<div class="empty-state history-model-empty">No models stored in this job.</div>';
     const selective = `<div class="selective-controls"><div><span>SELECTIVE RENDER</span><button type="button" data-history-action="selectAll">All</button><button type="button" data-history-action="selectNone">None</button></div><div class="selective-options"><label><input type="checkbox" data-select-camera value="F" checked><span>F</span></label><label><input type="checkbox" data-select-camera value="FH" checked><span>FH</span></label><label><input type="checkbox" data-select-camera value="TQ" checked><span>TQ</span></label><i></i><label><input type="checkbox" data-select-layer value="Fabric" checked><span>Fabric</span></label><label><input type="checkbox" data-select-layer value="Shadow" checked><span>Shadow</span></label></div></div>`;
     const needsPost = batch.renderCount > 0 && (batch.postProcessCount < batch.renderCount || !batch.readyToUpload?.complete);
     const openOutput = batch.readyToUpload?.files ? `<button class="secondary-button" type="button" data-history-action="openReady">Open POST</button>` : `<button class="secondary-button" type="button" data-history-action="openRenders"${batch.renderCount ? "" : " disabled"}>Open renders</button>`;
     $("historyDetail").innerHTML = `<div class="history-detail-heading"><div><span>SAVED JOB</span><strong>${escapeHtml(batch.id)}</strong><small>${escapeHtml(formatDate(batch.generatedAt))}</small></div><i class="history-state" data-state="${escapeHtml(batch.state)}">${escapeHtml(historyStateLabel(batch.state))}</i></div><div class="history-summary"><div><span>MODELS</span><strong>${batch.modelCount}</strong></div><div><span>RENDERS</span><strong>${batch.renderCount}/${batch.expectedRenders}</strong></div><div><span>POST</span><strong>${batch.postProcessCount || 0}/${batch.renderCount}</strong></div></div>${selective}${models}${batch.error ? `<p class="inline-warning">${escapeHtml(batch.error)}</p>` : ""}<code class="history-path" title="${escapeHtml(batch.jobPath)}">${escapeHtml(batch.jobPath)}</code><div class="history-actions"><button class="primary-button" type="button" data-history-action="selective"${batch.modelCount ? "" : " disabled"}>Edit selection</button><button class="secondary-button" type="button" data-history-action="rerun"${batch.state === "invalid" ? " disabled" : ""}>Run again</button>${needsPost ? `<button class="secondary-button" type="button" data-history-action="postprocess">Build POST</button>` : ""}${openOutput}<button class="quiet-button" type="button" data-history-action="viewJob">View JSON</button></div>`;
   };
-  const renderRigHistoryModels = () => {
-    const batch = state.rigBatch, group = $("rigBatchGroup");
-    group.hidden = !batch?.models?.length;
-    if (!batch?.models?.length) return;
-    $("rigBatchCount").textContent = `${batch.models.length} models`;
-    $("rigBatchModels").innerHTML = batch.models.map((model, index) => `<button type="button" class="rig-batch-model${state.historyModel === model ? " active" : ""}" data-state="${escapeHtml(model.state || "pending")}" data-history-model-index="${index}" title="${escapeHtml(model.name)}"><span>${String(index + 1).padStart(2, "0")}</span><strong>${escapeHtml(model.name)}</strong><small>${escapeHtml(model.state || "pending")} · ${model.dimensions ? `${model.dimensions.width} × ${model.dimensions.depth} × ${model.dimensions.height} cm` : "No dimensions"} · ${model.renders.length}/${model.expectedRenders}</small></button>`).join("");
-  };
-  const renderRigGallery = () => {
-    const model = state.historyModel, gallery = $("rigRenderGallery");
-    gallery.hidden = !model;
-    if (!model) return;
-    $("rigRenderModel").textContent = model.name; $("rigRenderCount").textContent = `${model.renders.length} file${model.renders.length === 1 ? "" : "s"}`;
-    const cameraRank = { F: 0, FH: 1, TQ: 2 }, cameras = [...new Set(model.renders.map(render => render.camera || "Other"))].sort((left, right) => (cameraRank[left] ?? 9) - (cameraRank[right] ?? 9));
-    const card = render => {
-      const issues = render.issues || [];
-      const diagnostics = [render.width && render.height ? `${render.width}×${render.height}` : "Unknown size", render.alpha === true ? "Alpha" : render.alpha === false ? "No alpha" : "Alpha unknown", ...(issues || [])];
-      return `<a class="render-preview-card${issues.length ? " render-warning" : ""}" data-layer="${escapeHtml(render.layer || "Fabric")}" href="${escapeHtml(render.url)}" target="_blank" rel="noreferrer"><div class="render-preview-media" style="--preview-aspect:${Number(render.width) || 1}/${Number(render.height) || 1}"><img src="${escapeHtml(render.url)}" alt="${escapeHtml(model.name)} ${escapeHtml(render.camera || "render")} ${escapeHtml(render.layer || "")}" loading="lazy"></div><span>${escapeHtml(render.layer || render.camera || render.name)} · RAW${issues.length ? " · Check" : ""}</span><small>${escapeHtml(diagnostics.join(" · "))}</small></a>`;
-    };
-    const combinedCard = (fabric, shadow) => {
-      if (!fabric || !shadow) return "";
-      const fabricWidth = Math.min(100, Math.max(1, (Number(fabric.width) || 1) / (Number(shadow.width) || 1) * 100));
-      const issues = [...(fabric.issues || []), ...(shadow.issues || [])];
-      return `<button type="button" class="render-preview-card render-combined${issues.length ? " render-warning" : ""}" data-layer="Combined" data-fabric-url="${escapeHtml(fabric.url)}" data-shadow-url="${escapeHtml(shadow.url)}" data-fabric-width="${fabricWidth}" data-combined-title="${escapeHtml(`${model.name} · ${fabric.camera || "render"} · Combined`)}"><div class="render-preview-media" style="--preview-aspect:${Number(shadow.width) || 1}/${Number(shadow.height) || 1};--fabric-width:${fabricWidth}%"><img class="render-composite-shadow" src="${escapeHtml(shadow.url)}" alt="" loading="lazy"><img class="render-composite-fabric" src="${escapeHtml(fabric.url)}" alt="${escapeHtml(model.name)} ${escapeHtml(fabric.camera || "render")} Fabric and Shadow combined" loading="lazy"></div><span>Combined · RAW${issues.length ? " · Check" : ""}</span><small>Fabric over Shadow · click to open</small></button>`;
-    };
-    $("rigRenderImages").innerHTML = model.renders.length ? cameras.map(camera => {
-      const renders = model.renders.filter(render => (render.camera || "Other") === camera).sort((left, right) => (left.layer === "Shadow" ? 1 : 0) - (right.layer === "Shadow" ? 1 : 0) || left.name.localeCompare(right.name));
-      const fabric = renders.find(render => render.layer === "Fabric"), shadow = renders.find(render => render.layer === "Shadow");
-      return `<section class="render-camera-group"><div><strong>${escapeHtml(camera)}</strong><span>${fabric && shadow ? "Fabric · Shadow · Combined" : `${renders.length} layer${renders.length === 1 ? "" : "s"}`}</span></div><div>${renders.map(card).join("")}${combinedCard(fabric, shadow)}</div></section>`;
-    }).join("") : '<div class="empty-state">This model has no render files on disk yet.</div>';
-  };
-  const openCombinedPreview = card => {
-    const popup = window.open("", "_blank");
-    if (!popup) return toast("Allow pop-ups to open the combined preview", true);
-    popup.opener = null;
-    const title = card.dataset.combinedTitle || "Combined render", fabric = card.dataset.fabricUrl, shadow = card.dataset.shadowUrl, fabricWidth = Number(card.dataset.fabricWidth) || 33.333;
-    popup.document.write(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title><style>html,body{height:100%;margin:0;background:#121418;color:#e8e8e5;font:14px Inter,Segoe UI,sans-serif}body{display:grid;grid-template-rows:auto 1fr}.bar{padding:14px 18px;border-bottom:1px solid #343941}.stage{min-height:0;display:grid;place-items:center;padding:20px}.frame{position:relative;width:min(100%,calc((100vh - 84px)*3));aspect-ratio:3/1;overflow:hidden;background:#1a1e23}.frame img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}.frame .fabric{left:50%;width:${fabricWidth}%;transform:translateX(-50%)}</style></head><body><div class="bar">${escapeHtml(title)}</div><div class="stage"><div class="frame"><img src="${escapeHtml(shadow)}" alt=""><img class="fabric" src="${escapeHtml(fabric)}" alt="${escapeHtml(title)}"></div></div></body></html>`);
-    popup.document.close();
-  };
   const selectHistoryModel = model => {
     if (!model) return;
-    state.historyModel = model; $("rigMode").value = model.sourceMode || "B";
-    if (currentRigShot().startsWith("TQ")) {
-      const shot = document.querySelector(`input[name="rigShot"][value="${model.side === "R" ? "TQR" : "TQL"}"]`); if (shot) shot.checked = true;
-    }
-    setRigDimensions(model.dimensions); renderRigHistoryModels(); renderRigGallery();
-  };
-  const reviewHistoryBatch = (batch, modelIndex = 0) => {
-    if (!batch?.models?.length) return;
-    state.historyBatch = batch; state.rigBatch = batch; renderHistoryList(); renderHistoryDetail(); renderRigHistoryModels();
-    selectHistoryModel(batch.models[Math.max(0, Math.min(modelIndex, batch.models.length - 1))]);
-    document.querySelector(".rig-section").scrollIntoView({ behavior: "smooth", block: "start" });
+    state.historyModel = model;
   };
   const selectHistoryBatch = batch => {
     state.historyBatch = batch; state.historySelection = new Set((batch.models || []).map(model => model.name));
-    state.rigBatch = batch; renderHistoryList(); renderHistoryDetail(); renderRigHistoryModels();
+    renderHistoryList(); renderHistoryDetail();
     if (batch.models?.length) selectHistoryModel(batch.models[0]);
   };
   const viewHistoryJob = async batch => {
@@ -578,11 +360,6 @@
       state.historyBatch = selectedBatch;
       if (changedBatch || !state.historySelection.size) state.historySelection = new Set((selectedBatch?.models || []).map(model => model.name));
       renderHistoryList(); renderHistoryDetail();
-      if (!state.rigBatch && selectedBatch?.models?.length) { state.rigBatch = selectedBatch; renderRigHistoryModels(); selectHistoryModel(selectedBatch.models[0]); }
-      if (state.rigBatch) state.rigBatch = batches.find(batch => batch.id === state.rigBatch.id) || null;
-      if (state.historyModel && state.rigBatch) {
-        const updated = state.rigBatch.models.find(model => model.name === state.historyModel.name); if (updated) selectHistoryModel(updated);
-      }
     } catch (error) { $("historyList").innerHTML = `<div class="empty-state">History unavailable: ${escapeHtml(error.message)}</div>`; }
   };
   const refreshSheet = async () => {
@@ -592,7 +369,6 @@
     finally { $("refreshSheet").disabled = false; }
   };
   const init = async () => {
-    loadRig();
     try { await loadModelMetadata(); } catch (error) { console.warn(`Model metadata unavailable: ${error.message}`); }
     try { await loadMaterialAssets(); } catch (error) { console.warn(`Unreal materials unavailable: ${error.message}`); }
     if (!canReachLocalService) { setConnection(false); $("sheetState").textContent = "STATIC"; $("unrealState").textContent = "OFFLINE"; return; }
@@ -633,22 +409,6 @@
     state.jobPath = null; $("jobResult").hidden = true; validate();
   }));
   $("copyJobPath").addEventListener("click", async () => { await navigator.clipboard.writeText(state.jobPath || ""); toast("Job path copied"); });
-  $("rigUseModel").addEventListener("click", syncRigFromModel);
-  [["rigWidth", "rigWidthRange"], ["rigDepth", "rigDepthRange"], ["rigHeight", "rigHeightRange"]].forEach(([numberId, rangeId]) => {
-    const number = $(numberId), range = $(rangeId);
-    number.addEventListener("input", () => { if (+number.value > +range.max) range.max = number.value; range.value = number.value; updateRigRange(range); renderRig(); });
-    number.addEventListener("change", () => {
-      const value = Math.max(+number.min, +number.value || +number.min);
-      if (value > +range.max) range.max = value;
-      number.value = value; range.value = value; updateRigRange(range); renderRig();
-    });
-    range.addEventListener("input", () => { number.value = range.value; updateRigRange(range); renderRig(); });
-    updateRigRange(range);
-  });
-  $("rigMode").addEventListener("change", renderRig);
-  document.querySelectorAll('input[name="rigShot"], input[name="rigColor"], input[name="rigLayer"]').forEach(node => node.addEventListener("change", renderRig));
-  document.querySelectorAll('input[name="rigLayout"]').forEach(node => node.addEventListener("change", () => { $("rigViews").dataset.layout = node.value; requestAnimationFrame(renderRig); }));
-  $("sceneSide").addEventListener("change", renderRig);
   $("refreshHistory").addEventListener("click", loadHistory);
   $("historySearch").addEventListener("input", renderHistoryList); $("historyFilter").addEventListener("change", renderHistoryList);
   $("historyList").addEventListener("click", event => {
@@ -661,7 +421,6 @@
     const action = button.dataset.historyAction;
     try {
       if (action === "edit") await editHistoryJob(batch);
-      else if (action === "review") reviewHistoryBatch(batch, +(button.dataset.modelIndex || 0));
       else if (action === "selectAll") { state.historySelection = new Set((batch.models || []).map(model => model.name)); renderHistoryDetail(); }
       else if (action === "selectNone") { state.historySelection.clear(); renderHistoryDetail(); }
       else if (action === "selective") {
@@ -682,21 +441,10 @@
     const input = event.target.closest("[data-history-model-select]"); if (!input) return;
     if (input.checked) state.historySelection.add(input.dataset.historyModelSelect); else state.historySelection.delete(input.dataset.historyModelSelect);
   });
-  $("rigBatchModels").addEventListener("click", event => {
-    const button = event.target.closest("[data-history-model-index]"); if (!button || !state.rigBatch) return;
-    selectHistoryModel(state.rigBatch.models[+button.dataset.historyModelIndex]);
-  });
-  $("rigRenderImages").addEventListener("click", event => {
-    const combined = event.target.closest("[data-fabric-url][data-shadow-url]");
-    if (combined) openCombinedPreview(combined);
-  });
   $("closeJobDialog").addEventListener("click", () => $("jobDialog").close());
   $("jobDialog").addEventListener("click", event => { if (event.target === $("jobDialog")) $("jobDialog").close(); });
   document.querySelectorAll("[data-theme-value]").forEach(button => button.addEventListener("click", () => applyTheme(button.dataset.themeValue)));
-  $("rigDiagramToggle").addEventListener("click", () => setRigDiagramsExpanded($("rigDiagramToggle").getAttribute("aria-expanded") !== "true"));
   applyTheme(document.documentElement.dataset.theme);
-  let diagramsOpen = false; try { diagramsOpen = localStorage.getItem("rh-local-renders-rig-diagrams") === "open"; } catch {}
-  setRigDiagramsExpanded(diagramsOpen);
   /* ── suggestion popups ────────────────────────────────────────────────────
      A native datalist popup cannot be styled, cannot be animated, and cuts long
      Unreal asset paths off, so inputs that carry a `list` are upgraded to their own

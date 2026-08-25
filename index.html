@@ -68,7 +68,7 @@
 
         <label class="wide-field">Model name or FBX path
           <div id="modelDropTarget" class="input-action model-drop-target">
-            <input id="modelPath" list="modelOptions" autocomplete="off" placeholder="prod9690053 or D:\…\model.fbx">
+            <input id="modelPath" list="modelOptions" data-suggest-primary="label" autocomplete="off" placeholder="prod9690053 or D:\…\model.fbx">
             <datalist id="modelOptions"></datalist>
             <div class="model-path-actions">
               <button id="chooseModel" class="secondary-button" type="button">Choose FBX</button>
@@ -138,14 +138,14 @@
         </fieldset>
         <fieldset>
           <legend>Render resolution</legend>
-          <div class="choice-row render-profile" role="radiogroup" aria-label="Render resolution">
+          <div class="choice-row render-profile segmented" role="radiogroup" aria-label="Render resolution">
             <label><input type="radio" name="renderProfile" value="low"><span>Low <small>Fast test</small></span></label>
             <label><input type="radio" name="renderProfile" value="high" checked><span>High <small>Production</small></span></label>
           </div>
         </fieldset>
         <fieldset>
           <legend>Frame crop</legend>
-          <div class="choice-row crop-mode" role="radiogroup" aria-label="Frame crop mode">
+          <div class="choice-row crop-mode segmented" role="radiogroup" aria-label="Frame crop mode">
             <label><input type="radio" name="cropMode" value="full" checked><span>Full frame <small>Original sensor</small></span></label>
             <label><input type="radio" name="cropMode" value="optimized"><span>Optimized <small>Safe cached crop</small></span></label>
           </div>

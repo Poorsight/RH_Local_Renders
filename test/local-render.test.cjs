@@ -645,6 +645,19 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(styles, /\.output-panel>\.preflight\{flex:1 1 auto;min-height:0\}/);
   assert.match(styles, /\.output-panel>\.preflight>\.preflight-checks\{flex:1 1 0;min-height:0\}/);
   assert.match(styles, /\.render-status span\{[^}]*overflow-wrap:anywhere\}/);
+  // dropdowns are the app's own surface, not a flat OS window
+  assert.match(styles, /@supports \(appearance:base-select\)/);
+  assert.match(styles, /select:open::picker\(select\)\{opacity:1;transform:none\}/);
+  assert.match(styles, /@supports not \(appearance:base-select\)/);
+  assert.match(styles, /\.suggest-pop:popover-open\{opacity:1;transform:none\}/);
+  assert.match(client, /input\[list\]/);
+  assert.match(client, /showPopover\(\)/);
+  // one ring slides between the options of a single-choice group
+  assert.match(styles, /\.segmented:has\(>label:nth-of-type\(2\)>input:checked\):before/);
+  assert.match(styles, /transition:transform \.34s/);
+  // switching a control must never change its size
+  assert.doesNotMatch(styles, /input:checked\+span\{[^}]*font-weight/);
+  assert.doesNotMatch(styles, /input:checked\+span:before\{content/);
   assert.doesNotMatch(html, /id="pipelineBar"/);
   assert.doesNotMatch(client, /stickyGenerate/);
   assert.match(html, /name="rigLayer" value="Shadow"/);

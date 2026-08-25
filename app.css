@@ -153,7 +153,12 @@ label{display:flex;flex-direction:column;gap:8px;font-size:12px;font-weight:560;
 input:where(:not([type=checkbox]):not([type=radio]):not([type=range])),select,textarea{width:100%;padding:12px 14px;border:0;border-radius:var(--radius-xs);background:var(--inset);box-shadow:var(--press);color:var(--text);font-size:13.5px;font-weight:500;transition:box-shadow .16s}
 input:where(:not([type=checkbox]):not([type=radio]):not([type=range])):hover,select:hover{box-shadow:var(--press),0 0 0 1px var(--line)}
 input:focus,select:focus,textarea:focus{outline:0;box-shadow:var(--press),0 0 0 2px var(--accent-line)}
-select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--faint) 50%),linear-gradient(135deg,var(--faint) 50%,transparent 50%);background-position:calc(100% - 19px) 50%,calc(100% - 14px) 50%;background-size:5px 5px,5px 5px;background-repeat:no-repeat;padding-right:38px}
+/* Only browsers without the customisable select need a drawn chevron and the room to
+   put it in -- with base-select the engine supplies ::picker-icon, and keeping this
+   would show two arrows. */
+@supports not (appearance:base-select){
+  select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--faint) 50%),linear-gradient(135deg,var(--faint) 50%,transparent 50%);background-position:calc(100% - 19px) 50%,calc(100% - 14px) 50%;background-size:5px 5px,5px 5px;background-repeat:no-repeat;padding-right:38px}
+}
 option{background:var(--surface);color:var(--text)}
 input::placeholder{color:var(--faint)}
 input[type=number]{font-variant-numeric:tabular-nums}
@@ -174,10 +179,10 @@ legend{padding:0;color:var(--faint);font-size:10.5px;font-weight:750;letter-spac
 .choice-row label>span{flex:1;display:flex;flex-direction:column;gap:3px;align-items:center;justify-content:center;text-align:center;padding:11px 14px;border-radius:var(--radius-xs);background:var(--surface-2);box-shadow:var(--press-sm);color:var(--muted);font-size:13px;font-weight:560;transition:color .16s,box-shadow .16s,background .16s}
 .choice-row label>span small{font-size:10.5px;font-weight:500;color:var(--faint);letter-spacing:.01em}
 .choice-row label:hover>span{color:var(--text)}
-.choice-row input:checked+span{background:transparent;box-shadow:var(--sel-ring);color:var(--accent-ink);font-weight:650}
+/* No size change when a pill switches on: the ring and the colour carry the state, so
+   there is no inserted tick and no heavier weight to reflow the label. */
+.choice-row input:checked+span{background:transparent;box-shadow:var(--sel-ring);color:var(--accent-ink)}
 .choice-row input:checked+span small{color:var(--accent-ink);opacity:.85}
-/* a mark as well as a tint: the state must not rest on colour alone */
-.choice-row input:checked+span:before{content:"";width:13px;height:7px;margin-bottom:1px;border:solid currentColor;border-width:0 0 2px 2px;border-radius:0 0 0 2px;transform:rotate(-45deg) translate(1px,-2px)}
 .choice-row input:focus-visible+span{outline:2px solid var(--accent);outline-offset:2px}
 .choice-row.layers label,.choice-row.render-profile label,.choice-row.crop-mode label{min-width:130px}
 
@@ -187,7 +192,7 @@ legend{padding:0;color:var(--faint);font-size:10.5px;font-weight:750;letter-spac
 .rig-segmented input{position:absolute;opacity:0;width:0;height:0}
 .rig-segmented label>span{flex:1;text-align:center;padding:8px 10px;border-radius:var(--radius-pill);color:var(--muted);font-size:12px;font-weight:600;transition:color .16s,background .16s,box-shadow .16s}
 .rig-segmented label:hover>span{color:var(--text)}
-.rig-segmented input:checked+span{background:transparent;box-shadow:var(--sel-ring);color:var(--accent-ink);font-weight:700}
+.rig-segmented input:checked+span{background:transparent;box-shadow:var(--sel-ring);color:var(--accent-ink)}
 .rig-segmented input:focus-visible+span{outline:2px solid var(--accent);outline-offset:2px}
 
 /* range */
@@ -246,10 +251,10 @@ input[type=range]:active::-webkit-slider-thumb{cursor:grabbing;box-shadow:var(--
 .preflight{padding:15px;border-radius:var(--radius-sm);background:var(--surface-2);box-shadow:var(--press-sm);display:flex;flex-direction:column;gap:11px}
 .preflight-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12.5px}
 .preflight-heading strong{font-weight:620}
-.preflight-heading span{color:var(--muted);font-size:12px}
-.preflight[data-state=ready] .preflight-heading span{color:var(--accent-ink);font-weight:560}
-.preflight[data-state=warning] .preflight-heading span{color:var(--amber);font-weight:560}
-.preflight[data-state=error] .preflight-heading span{color:var(--danger);font-weight:560}
+.preflight-heading span{color:var(--muted);font-size:12px;font-weight:560}
+.preflight[data-state=ready] .preflight-heading span{color:var(--accent-ink)}
+.preflight[data-state=warning] .preflight-heading span{color:var(--amber)}
+.preflight[data-state=error] .preflight-heading span{color:var(--danger)}
 /* One card per check: the label reads first, its sentence sits under it, and the dot
    carries the level. The server sends level as data-level="ok|warning|error", so the
    colours key off the attribute -- the old .ok/.error class rules never matched, which
@@ -689,6 +694,7 @@ input[type=radio]:checked{animation:accent-breathe 3.6s ease-in-out infinite}
   .output-panel fieldset{gap:7px}
   .output-panel legend{font-size:9.5px;letter-spacing:.14em}
   .output-panel .choice-row{gap:6px}
+  .output-panel .segmented{--seg-gap:6px}
   .output-panel .choice-row label{min-width:0}
   .output-panel .choice-row.layers label,.output-panel .choice-row.render-profile label,.output-panel .choice-row.crop-mode label{min-width:0}
   .output-panel .choice-row label>span{padding:7px 9px;font-size:12px;gap:2px}
@@ -709,4 +715,113 @@ input[type=radio]:checked{animation:accent-breathe 3.6s ease-in-out infinite}
   .output-panel .actions{gap:9px}
   .output-panel .primary-button{padding:10px 18px;font-size:12.5px}
   .output-panel .secondary-button{padding:9px 15px;font-size:12.5px}
+}
+
+/* ── dropdowns ─────────────────────────────────────────────────────────────
+   Native select popups and datalist popups are flat OS windows: they cannot take the
+   panel's surface, radius or shadow, and they cut long asset paths off. Chromium's
+   customisable select fixes the first case; the second is our own listbox (see the
+   suggestion popups in app.js). Both open with the same short rise so the page has one
+   dropdown language. */
+@supports (appearance:base-select){
+  select,::picker(select){appearance:base-select}
+  select{display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left;cursor:pointer;transition:box-shadow .16s,color .16s}
+  select:hover{color:var(--accent-ink)}
+  select:open{box-shadow:var(--press),inset 0 0 0 1px var(--accent-edge)}
+  select::picker-icon{color:var(--faint);transition:transform .24s cubic-bezier(.2,.8,.2,1),color .16s}
+  select:open::picker-icon{transform:rotate(180deg);color:var(--accent)}
+  ::picker(select){border:0;padding:7px;border-radius:var(--radius-sm);background:var(--surface-raised);box-shadow:var(--lift-lg);opacity:0;transform:translateY(-7px) scale(.985);transition:opacity .17s ease,transform .22s cubic-bezier(.2,.8,.2,1),overlay .22s allow-discrete,display .22s allow-discrete}
+  select:open::picker(select){opacity:1;transform:none}
+  @starting-style{select:open::picker(select){opacity:0;transform:translateY(-7px) scale(.985)}}
+  select option{display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:var(--radius-xs);background:transparent;color:var(--text);font-size:13px;font-weight:500;transition:background .14s,color .14s}
+  select option:hover,select option:focus{outline:none;background:var(--surface-2);color:var(--accent-ink)}
+  select option:checked{color:var(--accent-ink)}
+  select option::checkmark{content:"";order:1;width:6px;height:6px;margin-left:auto;border-radius:50%;background:var(--accent);opacity:0;transition:opacity .16s}
+  select option:checked::checkmark{opacity:1}
+}
+
+/* Our suggestion listbox: same surface as a raised card, and the full path always
+   wraps instead of being cut -- reading the whole asset path is the point of it. */
+.suggest-pop{position:fixed;margin:0;inset:auto;z-index:60;display:flex;flex-direction:column;gap:3px;padding:7px;border:0;border-radius:var(--radius-sm);background:var(--surface-raised);box-shadow:var(--lift-lg);overflow:auto;opacity:0;transform:translateY(-7px) scale(.985);transition:opacity .17s ease,transform .22s cubic-bezier(.2,.8,.2,1),overlay .22s allow-discrete,display .22s allow-discrete}
+.suggest-pop[data-flip=up]{transform:translateY(7px) scale(.985)}
+.suggest-pop:popover-open{opacity:1;transform:none}
+@starting-style{
+  .suggest-pop:popover-open{opacity:0;transform:translateY(-7px) scale(.985)}
+  .suggest-pop[data-flip=up]:popover-open{opacity:0;transform:translateY(7px) scale(.985)}
+}
+.suggest-item{display:flex;flex-direction:column;gap:2px;padding:8px 11px;border-radius:var(--radius-xs);cursor:pointer;transition:background .13s,box-shadow .13s}
+.suggest-item>b{color:var(--text);font-size:12.5px;font-weight:580;line-height:1.35;overflow-wrap:anywhere}
+.suggest-item>small{color:var(--faint);font-size:10.5px;line-height:1.45;overflow-wrap:anywhere}
+.suggest-item.active{background:var(--surface-2);box-shadow:var(--sel-ring)}
+.suggest-item.active>b{color:var(--accent-ink)}
+.suggest-more{padding:7px 11px 3px;color:var(--faint);font-size:10.5px;text-align:center}
+
+/* ── motion ────────────────────────────────────────────────────────────────
+   Single-choice groups share one selection ring that slides between the options
+   instead of one ring blinking out and another blinking in. The thumb is a pseudo
+   element on the group: --n comes from how many options the group has, --i from which
+   one is checked, so the same three rules drive the render profile, the crop mode, the
+   rig segments and the theme switcher without any per-group markup. */
+.segmented,.rig-segmented,.theme-switcher{position:relative}
+.segmented{--seg-gap:9px;--seg-pad:0px;--seg-radius:var(--radius-xs);flex-wrap:nowrap}
+.rig-segmented{--seg-gap:3px;--seg-pad:4px;--seg-radius:var(--radius-pill)}
+.theme-switcher{--seg-gap:2px;--seg-pad:4px;--seg-radius:var(--radius-pill)}
+.segmented:before,.rig-segmented:before,.theme-switcher:before{
+  content:"";position:absolute;inset:var(--seg-pad) auto var(--seg-pad) var(--seg-pad);
+  width:calc((100% - 2*var(--seg-pad) - (var(--n,2) - 1)*var(--seg-gap))/var(--n,2));
+  border-radius:var(--seg-radius);box-shadow:var(--sel-ring);opacity:0;pointer-events:none;
+  transform:translateX(0);
+  transition:transform .34s cubic-bezier(.34,1.2,.5,1),opacity .18s ease,box-shadow .18s}
+/* how many options: the last nth-of-type that exists wins */
+.segmented:has(>label:nth-of-type(2)),.rig-segmented:has(>label:nth-of-type(2)),.theme-switcher:has(>button:nth-of-type(2)){--n:2}
+.segmented:has(>label:nth-of-type(3)),.rig-segmented:has(>label:nth-of-type(3)),.theme-switcher:has(>button:nth-of-type(3)){--n:3}
+.segmented:has(>label:nth-of-type(4)),.rig-segmented:has(>label:nth-of-type(4)),.theme-switcher:has(>button:nth-of-type(4)){--n:4}
+/* which one is on -- the offset is written into the transform rather than into a
+   custom property the transform reads: interpolating a registered custom property
+   snapped part way through, transform interpolates reliably */
+.segmented:has(>label:nth-of-type(2)>input:checked):before,.rig-segmented:has(>label:nth-of-type(2)>input:checked):before,.theme-switcher:has(>button:nth-of-type(2)[aria-pressed=true]):before{transform:translateX(calc(100% + var(--seg-gap)))}
+.segmented:has(>label:nth-of-type(3)>input:checked):before,.rig-segmented:has(>label:nth-of-type(3)>input:checked):before,.theme-switcher:has(>button:nth-of-type(3)[aria-pressed=true]):before{transform:translateX(calc(200% + 2*var(--seg-gap)))}
+.segmented:has(>label:nth-of-type(4)>input:checked):before,.rig-segmented:has(>label:nth-of-type(4)>input:checked):before,.theme-switcher:has(>button:nth-of-type(4)[aria-pressed=true]):before{transform:translateX(calc(300% + 3*var(--seg-gap)))}
+.segmented:has(input:checked):before,.rig-segmented:has(input:checked):before,.theme-switcher:has([aria-pressed=true]):before{opacity:1}
+/* the option itself keeps the colour change and the tick; the ring is the thumb's job */
+.segmented input:checked+span,.rig-segmented input:checked+span,.theme-switcher button[aria-pressed=true]{box-shadow:none;animation:none}
+/* the inputs in these rows are visually hidden, so nothing should breathe on them */
+.choice-row input:checked,.rig-segmented input:checked{animation:none}
+.segmented label>span,.rig-segmented label>span{position:relative;z-index:1}
+/* the thumb is one option wide, so the options have to be equal: flex-basis 0, not auto */
+.segmented label,.rig-segmented label{flex:1 1 0;min-width:0}
+
+/* Panels and cards settle in when the page loads, and a card lifts under the pointer. */
+@keyframes rise-in{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
+.workspace-col>.panel{animation:rise-in .4s cubic-bezier(.2,.8,.2,1) both}
+.workspace-col:nth-child(2)>.panel{animation-delay:.06s}
+.workspace-col:nth-child(3)>.panel{animation-delay:.12s}
+.history-card,.batch-model,.material-row,.render-preview-card{transition:transform .16s,box-shadow .18s,background .18s}
+.batch-model:hover,.material-row:hover{transform:translateY(-1px);box-shadow:var(--lift)}
+.status-badge,[data-material-status],.history-state,.preflight-heading span{transition:background .2s,color .2s,box-shadow .2s}
+
+/* Preflight cards fade up as they arrive, slightly staggered, so a re-check reads as an
+   update rather than a flicker. */
+@keyframes check-in{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+.preflight-checks>span{animation:check-in .26s ease both}
+.preflight-checks>span:nth-child(2){animation-delay:.03s}
+.preflight-checks>span:nth-child(3){animation-delay:.06s}
+.preflight-checks>span:nth-child(4){animation-delay:.09s}
+.preflight-checks>span:nth-child(n+5){animation-delay:.12s}
+
+/* The JSON dialog grows out of the page instead of appearing on top of it. */
+.job-dialog{opacity:0;transform:translateY(10px) scale(.99);transition:opacity .2s ease,transform .26s cubic-bezier(.2,.8,.2,1),overlay .26s allow-discrete,display .26s allow-discrete}
+.job-dialog[open]{opacity:1;transform:none}
+.job-dialog::backdrop{background:rgba(0,0,0,.46);backdrop-filter:blur(2px);opacity:0;transition:opacity .22s ease,overlay .22s allow-discrete,display .22s allow-discrete}
+.job-dialog[open]::backdrop{opacity:1}
+@starting-style{
+  .job-dialog[open]{opacity:0;transform:translateY(10px) scale(.99)}
+  .job-dialog[open]::backdrop{opacity:0}
+}
+
+@media (prefers-reduced-motion:reduce){
+  .segmented:before,.rig-segmented:before,.theme-switcher:before{transition:opacity .01s}
+  .workspace-col>.panel,.preflight-checks>span{animation:none}
+  .job-dialog,.job-dialog::backdrop,.suggest-pop,::picker(select){transition:opacity .01s}
+  .batch-model:hover,.material-row:hover{transform:none}
 }

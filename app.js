@@ -683,6 +683,116 @@
   applyTheme(document.documentElement.dataset.theme);
   let diagramsOpen = false; try { diagramsOpen = localStorage.getItem("rh-local-renders-rig-diagrams") === "open"; } catch {}
   setRigDiagramsExpanded(diagramsOpen);
+  /* ── suggestion popups ────────────────────────────────────────────────────
+     A native datalist popup cannot be styled, cannot be animated, and cuts long
+     Unreal asset paths off, so inputs that carry a `list` are upgraded to their own
+     listbox on first focus: the datalist stays as the data source, the popup is ours.
+     It lives in the top layer as a popover, so a row inside a scrolling list can open
+     it without being clipped. */
+  const suggest = { input: null, items: [], index: -1, pop: null, committing: false };
+  const suggestPop = () => {
+    if (suggest.pop) return suggest.pop;
+    const pop = document.createElement("div");
+    pop.id = "suggestPop"; pop.className = "suggest-pop"; pop.setAttribute("popover", "manual"); pop.setAttribute("role", "listbox");
+    pop.addEventListener("mousedown", event => {
+      const item = event.target.closest("[data-suggest-value]");
+      if (!item) return;
+      event.preventDefault(); commitSuggestion(item.dataset.suggestValue);
+    });
+    pop.addEventListener("mousemove", event => {
+      const item = event.target.closest("[data-suggest-value]");
+      if (item) setSuggestIndex([...pop.children].indexOf(item), false);
+    });
+    document.body.append(pop); suggest.pop = pop; return pop;
+  };
+  const suggestSource = input => {
+    const list = input.dataset.suggest && $(input.dataset.suggest);
+    return list ? [...list.options].map(option => ({ value: option.value, label: option.textContent })) : [];
+  };
+  const closeSuggestions = () => {
+    const input = suggest.input;
+    if (!input) return;
+    suggest.input = null; suggest.items = []; suggest.index = -1;
+    input.setAttribute("aria-expanded", "false"); input.removeAttribute("aria-activedescendant");
+    if (suggest.pop?.matches(":popover-open")) suggest.pop.hidePopover();
+  };
+  const setSuggestIndex = (index, scroll = true) => {
+    const options = [...(suggest.pop?.children || [])].filter(node => node.dataset.suggestValue !== undefined);
+    if (!options.length) return;
+    suggest.index = (index + options.length) % options.length;
+    options.forEach((node, position) => {
+      const active = position === suggest.index;
+      node.classList.toggle("active", active); node.setAttribute("aria-selected", active ? "true" : "false");
+      if (!active) return node.removeAttribute("id");
+      node.id = "suggestActive"; suggest.input?.setAttribute("aria-activedescendant", "suggestActive");
+      if (scroll) node.scrollIntoView({ block: "nearest" });
+    });
+  };
+  const placeSuggestions = () => {
+    const input = suggest.input, pop = suggest.pop;
+    if (!input || !pop) return;
+    const rect = input.getBoundingClientRect(), width = Math.min(Math.max(rect.width, 300), window.innerWidth - 24);
+    const below = window.innerHeight - rect.bottom - 16, above = rect.top - 16, up = below < 190 && above > below;
+    pop.style.width = `${Math.round(width)}px`;
+    pop.style.left = `${Math.round(Math.max(12, Math.min(rect.left, window.innerWidth - width - 12)))}px`;
+    pop.style.maxHeight = `${Math.round(Math.max(150, Math.min(326, up ? above : below)))}px`;
+    pop.dataset.flip = up ? "up" : "down";
+    if (up) { pop.style.top = "auto"; pop.style.bottom = `${Math.round(window.innerHeight - rect.top + 7)}px`; }
+    else { pop.style.bottom = "auto"; pop.style.top = `${Math.round(rect.bottom + 7)}px`; }
+  };
+  const renderSuggestions = input => {
+    const query = input.value.trim().toLowerCase(), nameFirst = input.dataset.suggestPrimary === "label";
+    const matches = suggestSource(input).filter(item => !query || item.value.toLowerCase().includes(query) || item.label.toLowerCase().includes(query));
+    if (!matches.length) return closeSuggestions();
+    const shown = matches.slice(0, 80), pop = suggestPop();
+    pop.innerHTML = shown.map(item => {
+      const title = nameFirst ? item.label : item.value, meta = nameFirst ? item.value : item.label;
+      return `<div class="suggest-item" role="option" aria-selected="false" data-suggest-value="${escapeHtml(item.value)}"><b>${escapeHtml(title)}</b>${meta && meta !== title ? `<small>${escapeHtml(meta)}</small>` : ""}</div>`;
+    }).join("") + (matches.length > shown.length ? `<p class="suggest-more">${matches.length - shown.length} more · keep typing to narrow</p>` : "");
+    suggest.input = input; suggest.items = shown; suggest.index = -1;
+    input.setAttribute("role", "combobox"); input.setAttribute("aria-controls", "suggestPop");
+    input.setAttribute("aria-autocomplete", "list"); input.setAttribute("aria-expanded", "true");
+    if (!pop.matches(":popover-open")) pop.showPopover();
+    placeSuggestions();
+  };
+  const commitSuggestion = value => {
+    const input = suggest.input;
+    if (!input) return;
+    input.value = value; closeSuggestions();
+    suggest.committing = true;
+    input.dispatchEvent(new Event("input", { bubbles: true })); input.dispatchEvent(new Event("change", { bubbles: true }));
+    suggest.committing = false; input.focus();
+  };
+  document.addEventListener("focusin", event => {
+    const input = event.target.closest?.("input[list]");
+    if (input) { input.dataset.suggest = input.getAttribute("list"); input.removeAttribute("list"); }
+    if (suggest.input && event.target !== suggest.input && !event.target.closest?.(".suggest-pop")) closeSuggestions();
+  });
+  document.addEventListener("input", event => {
+    if (suggest.committing) return;
+    const input = event.target.closest?.("input[data-suggest]");
+    if (input) renderSuggestions(input);
+  });
+  document.addEventListener("pointerdown", event => {
+    const input = event.target.closest?.("input[data-suggest]");
+    if (input) { if (suggest.input !== input) requestAnimationFrame(() => renderSuggestions(input)); return; }
+    if (!event.target.closest?.(".suggest-pop")) closeSuggestions();
+  });
+  document.addEventListener("keydown", event => {
+    const input = event.target.closest?.("input[data-suggest]");
+    if (!input) return;
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      if (suggest.input !== input) return renderSuggestions(input);
+      const step = event.key === "ArrowDown" ? 1 : -1;
+      setSuggestIndex(suggest.index < 0 ? (step === 1 ? 0 : -1) : suggest.index + step);
+    } else if (event.key === "Enter" && suggest.input === input && suggest.index >= 0) {
+      event.preventDefault(); commitSuggestion(suggest.items[suggest.index].value);
+    } else if (event.key === "Escape" && suggest.input === input) { event.preventDefault(); closeSuggestions(); }
+    else if (event.key === "Tab") closeSuggestions();
+  });
+  window.addEventListener("resize", () => placeSuggestions());
+  document.addEventListener("scroll", () => placeSuggestions(), true);
   document.querySelectorAll("input,select").forEach(node => node.addEventListener("change", validate));
   init();
 })();

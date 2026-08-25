@@ -248,11 +248,25 @@ input[type=range]:active::-webkit-slider-thumb{cursor:grabbing;box-shadow:var(--
 .preflight-heading strong{font-weight:620}
 .preflight-heading span{color:var(--muted);font-size:12px}
 .preflight[data-state=ready] .preflight-heading span{color:var(--accent-ink);font-weight:560}
-.preflight[data-state=blocked] .preflight-heading span{color:var(--amber);font-weight:560}
-.preflight-checks{display:flex;flex-wrap:wrap;gap:7px;color:var(--muted);font-size:11.5px}
-.preflight-checks>span{padding:6px 11px;border-radius:var(--radius-pill);background:var(--surface);box-shadow:var(--lift-sm)}
-.preflight-checks>span.ok{color:var(--accent-ink)}
-.preflight-checks>span.error{color:var(--danger)}
+.preflight[data-state=warning] .preflight-heading span{color:var(--amber);font-weight:560}
+.preflight[data-state=error] .preflight-heading span{color:var(--danger);font-weight:560}
+/* One card per check: the label reads first, its sentence sits under it, and the dot
+   carries the level. The server sends level as data-level="ok|warning|error", so the
+   colours key off the attribute -- the old .ok/.error class rules never matched, which
+   is why every check came out as one grey run-on line. */
+.preflight-checks{display:grid;grid-template-columns:repeat(auto-fit,minmax(196px,1fr));gap:8px;min-height:0;color:var(--muted);font-size:11px}
+.preflight-checks>span{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:start;column-gap:9px;row-gap:3px;padding:9px 11px;border-radius:var(--radius-xs);background:var(--surface);box-shadow:var(--lift-sm)}
+.preflight-checks>span[data-level]:before{content:"";grid-row:1/span 2;width:7px;height:7px;margin-top:4px;border-radius:50%;background:var(--faint)}
+.preflight-checks>span>b{min-width:0;color:var(--text);font-size:11px;font-weight:640;line-height:1.35;overflow-wrap:anywhere}
+.preflight-checks>span>small{min-width:0;color:var(--muted);font-size:10.5px;line-height:1.5;overflow-wrap:anywhere}
+.preflight-checks>span[data-level=ok]:before{background:var(--accent)}
+.preflight-checks>span[data-level=ok]>b{color:var(--accent-ink)}
+.preflight-checks>span[data-level=warning]:before{background:var(--amber)}
+.preflight-checks>span[data-level=warning]>b{color:var(--amber)}
+.preflight-checks>span[data-level=error]:before{background:var(--danger)}
+.preflight-checks>span[data-level=error]>b{color:var(--danger)}
+/* the idle and checking placeholders are a bare sentence, not a labelled check */
+.preflight-checks>span:not([data-level]){grid-column:1/-1;grid-template-columns:minmax(0,1fr);padding:10px 12px;line-height:1.55}
 .job-result{display:flex;align-items:center;justify-content:space-between;gap:11px;padding:12px 14px;border-radius:var(--radius-sm);background:var(--accent-soft);color:var(--accent-ink);font-size:11.5px;font-weight:600;letter-spacing:.02em}
 .job-result button{color:inherit;text-decoration:underline;text-underline-offset:3px;font-size:12px}
 .inline-warning{padding:11px 13px;border-radius:var(--radius-xs);background:var(--amber-soft);color:var(--amber);font-size:12px;line-height:1.55}
@@ -266,7 +280,7 @@ input[type=range]:active::-webkit-slider-thumb{cursor:grabbing;box-shadow:var(--
 .render-status{display:flex;align-items:center;gap:14px;padding:15px;border-radius:var(--radius-sm);background:var(--surface-2);box-shadow:var(--press-sm)}
 .render-status>div:last-child{display:flex;flex-direction:column;gap:4px;min-width:0}
 .render-status strong{font-size:13.5px;font-weight:600}
-.render-status span{color:var(--muted);font-size:12px;line-height:1.5}
+.render-status span{color:var(--muted);font-size:12px;line-height:1.5;overflow-wrap:anywhere}
 .status-orb{width:12px;height:12px;flex:none;border-radius:50%;background:var(--faint);box-shadow:0 0 0 4px var(--surface)}
 .render-status.active .status-orb{background:var(--accent);box-shadow:0 0 0 4px var(--accent-soft);animation:pulse 1.9s ease-in-out infinite}
 .render-status.error .status-orb{background:var(--danger);box-shadow:0 0 0 4px var(--danger-soft)}
@@ -636,7 +650,7 @@ input[type=radio]:checked{animation:accent-breathe 3.6s ease-in-out infinite}
   /* Nothing forces the row height any more: every panel that could is now a scroll
      area contributing no min-content. Without a floor the whole workspace collapses
      to Render setup's fixed fields (~406px) and the split halves are unusable. */
-  .workspace{min-height:min(86vh,1040px)}
+  .workspace{min-height:min(92vh,1120px)}
   .workspace-col{height:100%}
   /* Render setup and Material assignments each own their column outright. */
   .setup-panel,.materials-panel{flex:1 1 auto;min-height:0}
@@ -683,10 +697,15 @@ input[type=radio]:checked{animation:accent-breathe 3.6s ease-in-out infinite}
   .output-panel .field-grid{gap:10px}
   .output-panel label{gap:6px;font-size:11px}
   .output-panel select{padding:9px 12px;font-size:12.5px}
-  .output-panel .preflight{padding:11px;gap:8px}
+  .output-panel .preflight{padding:12px;gap:9px}
   .output-panel .preflight-heading{font-size:11.5px}
-  .output-panel .preflight-checks{gap:5px;font-size:10.5px}
-  .output-panel .preflight-checks>span{padding:4px 9px}
+  .output-panel .preflight-checks{grid-template-columns:repeat(auto-fit,minmax(176px,1fr));gap:7px;overflow:auto;padding:2px}
+  /* the panel height is fixed, so the checks absorb the difference: the heading,
+     the fieldsets and the buttons keep their size and the cards scroll. */
+  .output-panel>.panel-heading,.output-panel>.field-grid,.output-panel>.output-fieldsets,.output-panel>.actions,.output-panel>.job-result{flex:none}
+  .output-panel>.preflight{flex:1 1 auto;min-height:0}
+  .output-panel>.preflight>.preflight-checks{flex:1 1 0;min-height:0}
+  .output-panel .preflight-checks>span{padding:8px 10px}
   .output-panel .actions{gap:9px}
   .output-panel .primary-button{padding:10px 18px;font-size:12.5px}
   .output-panel .secondary-button{padding:9px 15px;font-size:12.5px}

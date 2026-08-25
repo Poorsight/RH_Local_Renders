@@ -87,7 +87,9 @@
     const panel = $("preflight"), checks = result?.checks || [];
     panel.dataset.state = result?.waiting ? "idle" : !result ? "checking" : result.ok ? "ready" : checks.some(check => check.level === "error") ? "error" : "warning";
     $("preflightState").textContent = result?.waiting ? "Waiting for setup" : !result ? "Checking…" : result.ok ? `${result.counts.expectedRenders} renders ready` : `${checks.filter(check => check.level === "error").length} issue${checks.filter(check => check.level === "error").length === 1 ? "" : "s"}`;
-    $("preflightChecks").innerHTML = checks.length ? checks.map(check => `<span data-level="${escapeHtml(check.level)}"><b>${escapeHtml(check.label)}</b><small>${escapeHtml(check.detail)}</small></span>`).join("") : `<span>${result?.waiting ? "Add models and material assignments to validate the job." : "Checking models, materials, lights, output, and Unreal…"}</span>`;
+    const rank = { error: 0, warning: 1 }, ordered = checks.map((check, index) => ({ check, index }))
+      .sort((a, b) => (rank[a.check.level] ?? 2) - (rank[b.check.level] ?? 2) || a.index - b.index).map(item => item.check);
+    $("preflightChecks").innerHTML = ordered.length ? ordered.map(check => `<span data-level="${escapeHtml(check.level)}"><b>${escapeHtml(check.label)}</b><small>${escapeHtml(check.detail)}</small></span>`).join("") : `<span>${result?.waiting ? "Add models and material assignments to validate the job." : "Checking models, materials, lights, output, and Unreal…"}</span>`;
   };
   const refreshPreflight = async () => {
     const basicReady = canReachLocalService && state.batch.length > 0 && materialRows().length > 0 && materialRows().every(row => row.material) && selected("camera").length && selected("layer").length;

@@ -639,6 +639,12 @@ test("main page renders the light rig natively in the shared workspace", () => {
   for (const value of ["light", "system", "dark"]) assert.match(html, new RegExp(`data-theme-value="${value}"`));
   assert.match(client, /allowed = \["light", "system", "dark"\]/);
   assert.match(html, /id="preflight"/);
+  assert.match(styles, /\.preflight-checks>span\[data-level=ok\]>b\{color:var\(--accent-ink\)\}/);
+  assert.match(styles, /\.preflight-checks>span\[data-level=error\]>b\{color:var\(--danger\)\}/);
+  assert.doesNotMatch(styles, /\.preflight-checks>span\.(ok|error)\{/);
+  assert.match(styles, /\.output-panel>\.preflight\{flex:1 1 auto;min-height:0\}/);
+  assert.match(styles, /\.output-panel>\.preflight>\.preflight-checks\{flex:1 1 0;min-height:0\}/);
+  assert.match(styles, /\.render-status span\{[^}]*overflow-wrap:anywhere\}/);
   assert.doesNotMatch(html, /id="pipelineBar"/);
   assert.doesNotMatch(client, /stickyGenerate/);
   assert.match(html, /name="rigLayer" value="Shadow"/);

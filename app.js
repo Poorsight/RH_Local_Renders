@@ -369,10 +369,10 @@
     } catch (error) { toast(error.message, true); }
     finally { $("generateJob").textContent = "Generate job"; validate(false); }
   };
-  const launch = async () => {
+  const launch = async (resume = false) => {
     try {
-      const result = await api("/api/renders", { method: "POST", body: JSON.stringify({ jobPath: state.jobPath }) });
-      toast(`Unreal started (PID ${result.pid})`); updateRender(result); startPolling();
+      const result = await api("/api/renders", { method: "POST", body: JSON.stringify({ jobPath: state.jobPath, resume }) });
+      toast(resume ? "Resuming incomplete models in Unreal" : `Unreal started (PID ${result.pid})`); updateRender(result); startPolling();
     } catch (error) { toast(error.message, true); }
   };
   const updateRender = (render) => {
@@ -411,7 +411,7 @@
     const batch = state.historyBatch;
     if (!batch) { $("historyDetail").innerHTML = '<div class="empty-state">Choose a saved job to inspect its models, JSON, and render output.</div>'; return; }
     const models = batch.models?.length ? `<div class="history-model-list" aria-label="Models in ${escapeHtml(batch.id)}">${batch.models.map((model, index) => `<div class="history-model-row"><label><input type="checkbox" data-history-model-select="${escapeHtml(model.name)}"${state.historySelection.has(model.name) ? " checked" : ""}><span>${String(index + 1).padStart(2, "0")}</span><strong>${escapeHtml(model.name)}</strong><small>${escapeHtml(model.side || "UNKNOWN")} · ${model.dimensions ? `${model.dimensions.width} × ${model.dimensions.depth} × ${model.dimensions.height} cm` : "No dimensions"} · ${model.renders.length}/${model.expectedRenders}</small></label><button type="button" data-history-action="review" data-model-index="${index}" title="Review in light rig">Rig</button></div>`).join("")}</div>` : '<div class="empty-state history-model-empty">No models stored in this job.</div>';
-    const selective = `<div class="selective-controls"><div><span>SELECTIVE RENDER</span><button type="button" data-history-action="selectAll">All</button><button type="button" data-history-action="selectNone">None</button></div><div class="selective-options"><label><input type="checkbox" data-select-camera value="F" checked>F</label><label><input type="checkbox" data-select-camera value="FH" checked>FH</label><label><input type="checkbox" data-select-camera value="TQ" checked>TQ</label><i></i><label><input type="checkbox" data-select-layer value="Fabric" checked>Fabric</label><label><input type="checkbox" data-select-layer value="Shadow" checked>Shadow</label></div></div>`;
+    const selective = `<div class="selective-controls"><div><span>SELECTIVE RENDER</span><button type="button" data-history-action="selectAll">All</button><button type="button" data-history-action="selectNone">None</button></div><div class="selective-options"><label><input type="checkbox" data-select-camera value="F" checked><span>F</span></label><label><input type="checkbox" data-select-camera value="FH" checked><span>FH</span></label><label><input type="checkbox" data-select-camera value="TQ" checked><span>TQ</span></label><i></i><label><input type="checkbox" data-select-layer value="Fabric" checked><span>Fabric</span></label><label><input type="checkbox" data-select-layer value="Shadow" checked><span>Shadow</span></label></div></div>`;
     $("historyDetail").innerHTML = `<div class="history-detail-heading"><div><span>SAVED JOB</span><strong>${escapeHtml(batch.id)}</strong><small>${escapeHtml(formatDate(batch.generatedAt))}</small></div><i class="history-state" data-state="${escapeHtml(batch.state)}">${escapeHtml(historyStateLabel(batch.state))}</i></div><div class="history-summary"><div><span>MODELS</span><strong>${batch.modelCount}</strong></div><div><span>RENDERS</span><strong>${batch.renderCount}/${batch.expectedRenders}</strong></div><div><span>OUTPUT</span><strong>${batch.renderCount ? "On disk" : "Empty"}</strong></div></div>${selective}${models}${batch.error ? `<p class="inline-warning">${escapeHtml(batch.error)}</p>` : ""}<code class="history-path" title="${escapeHtml(batch.jobPath)}">${escapeHtml(batch.jobPath)}</code><div class="history-actions"><button class="primary-button" type="button" data-history-action="selective"${batch.modelCount ? "" : " disabled"}>Load selection</button><button class="secondary-button" type="button" data-history-action="edit"${batch.modelCount ? "" : " disabled"}>Load all & edit</button><button class="secondary-button" type="button" data-history-action="review"${batch.modelCount ? "" : " disabled"}>Review rig</button><button class="secondary-button" type="button" data-history-action="rerun"${batch.state === "invalid" ? " disabled" : ""}>Run again</button><button class="quiet-button" type="button" data-history-action="viewJob">View JSON</button><button class="quiet-button" type="button" data-history-action="showJob">Show JSON</button><button class="quiet-button" type="button" data-history-action="openRenders"${batch.renderCount ? "" : " disabled"}>Open renders</button></div>`;
   };
   const renderRigHistoryModels = () => {
@@ -419,7 +419,7 @@
     group.hidden = !batch?.models?.length;
     if (!batch?.models?.length) return;
     $("rigBatchCount").textContent = `${batch.models.length} models`;
-    $("rigBatchModels").innerHTML = batch.models.map((model, index) => `<button type="button" class="rig-batch-model${state.historyModel === model ? " active" : ""}" data-history-model-index="${index}" title="${escapeHtml(model.name)}"><span>${String(index + 1).padStart(2, "0")}</span><strong>${escapeHtml(model.name)}</strong><small>${model.dimensions ? `${model.dimensions.width} × ${model.dimensions.depth} × ${model.dimensions.height} cm` : "No dimensions"} · ${model.renders.length} renders</small></button>`).join("");
+    $("rigBatchModels").innerHTML = batch.models.map((model, index) => `<button type="button" class="rig-batch-model${state.historyModel === model ? " active" : ""}" data-state="${escapeHtml(model.state || "pending")}" data-history-model-index="${index}" title="${escapeHtml(model.name)}"><span>${String(index + 1).padStart(2, "0")}</span><strong>${escapeHtml(model.name)}</strong><small>${escapeHtml(model.state || "pending")} · ${model.dimensions ? `${model.dimensions.width} × ${model.dimensions.depth} × ${model.dimensions.height} cm` : "No dimensions"} · ${model.renders.length}/${model.expectedRenders}</small></button>`).join("");
   };
   const renderRigGallery = () => {
     const model = state.historyModel, gallery = $("rigRenderGallery");
@@ -429,11 +429,18 @@
     const cameraRank = { F: 0, FH: 1, TQ: 2 }, cameras = [...new Set(model.renders.map(render => render.camera || "Other"))].sort((left, right) => (cameraRank[left] ?? 9) - (cameraRank[right] ?? 9));
     const card = render => {
       const diagnostics = [render.width && render.height ? `${render.width}×${render.height}` : "Unknown size", render.alpha === true ? "Alpha" : render.alpha === false ? "No alpha" : "Alpha unknown", ...(render.issues || [])];
-      return `<a class="${render.issues?.length ? "render-warning" : ""}" data-layer="${escapeHtml(render.layer || "Fabric")}" href="${escapeHtml(render.url)}" target="_blank" rel="noreferrer"><img src="${escapeHtml(render.url)}" alt="${escapeHtml(model.name)} ${escapeHtml(render.camera || "render")} ${escapeHtml(render.layer || "")}" loading="lazy"><span>${escapeHtml(render.layer || render.camera || render.name)}${render.issues?.length ? " · Check" : ""}</span><small>${escapeHtml(diagnostics.join(" · "))}</small></a>`;
+      return `<a class="render-preview-card${render.issues?.length ? " render-warning" : ""}" data-layer="${escapeHtml(render.layer || "Fabric")}" href="${escapeHtml(render.url)}" target="_blank" rel="noreferrer"><div class="render-preview-media" style="--preview-aspect:${Number(render.width) || 1}/${Number(render.height) || 1}"><img src="${escapeHtml(render.url)}" alt="${escapeHtml(model.name)} ${escapeHtml(render.camera || "render")} ${escapeHtml(render.layer || "")}" loading="lazy"></div><span>${escapeHtml(render.layer || render.camera || render.name)}${render.issues?.length ? " · Check" : ""}</span><small>${escapeHtml(diagnostics.join(" · "))}</small></a>`;
+    };
+    const combinedCard = (fabric, shadow) => {
+      if (!fabric || !shadow) return "";
+      const fabricWidth = Math.min(100, Math.max(1, (Number(fabric.width) || 1) / (Number(shadow.width) || 1) * 100));
+      const issues = [...(fabric.issues || []), ...(shadow.issues || [])];
+      return `<div class="render-preview-card render-combined${issues.length ? " render-warning" : ""}" data-layer="Combined"><div class="render-preview-media" style="--preview-aspect:${Number(shadow.width) || 1}/${Number(shadow.height) || 1};--fabric-width:${fabricWidth}%"><img class="render-composite-shadow" src="${escapeHtml(shadow.url)}" alt="" loading="lazy"><img class="render-composite-fabric" src="${escapeHtml(fabric.url)}" alt="${escapeHtml(model.name)} ${escapeHtml(fabric.camera || "render")} Fabric and Shadow combined" loading="lazy"></div><span>Combined${issues.length ? " · Check" : ""}</span><small>Fabric over Shadow · alpha preview</small></div>`;
     };
     $("rigRenderImages").innerHTML = model.renders.length ? cameras.map(camera => {
       const renders = model.renders.filter(render => (render.camera || "Other") === camera).sort((left, right) => (left.layer === "Shadow" ? 1 : 0) - (right.layer === "Shadow" ? 1 : 0) || left.name.localeCompare(right.name));
-      return `<section class="render-camera-group"><div><strong>${escapeHtml(camera)}</strong><span>${renders.length} files · Fabric then Shadow</span></div><div>${renders.map(card).join("")}</div></section>`;
+      const fabric = renders.find(render => render.layer === "Fabric"), shadow = renders.find(render => render.layer === "Shadow");
+      return `<section class="render-camera-group"><div><strong>${escapeHtml(camera)}</strong><span>${fabric && shadow ? "Fabric · Shadow · Combined" : `${renders.length} layer${renders.length === 1 ? "" : "s"}`}</span></div><div>${renders.map(card).join("")}${combinedCard(fabric, shadow)}</div></section>`;
     }).join("") : '<div class="empty-state">This model has no render files on disk yet.</div>';
   };
   const selectHistoryModel = model => {
@@ -563,7 +570,7 @@
   [["width", "width"], ["depth", "depth"], ["height", "height"]].forEach(([id, key]) => $(id).addEventListener("input", () => { if (state.model && +$(id).value > 0) { state.model.dimensions[key] = +$(id).value; renderBatch(); validate(); } }));
   $("importYaw").addEventListener("input", () => { if (state.model) { state.model.importYaw = +$("importYaw").value || 0; validate(); } });
   $("generateJob").addEventListener("click", generate); $("launchRender").addEventListener("click", launch); $("stickyGenerate").addEventListener("click", generate); $("stickyLaunch").addEventListener("click", launch); $("refreshSheet").addEventListener("click", refreshSheet);
-  $("retryRender").addEventListener("click", launch);
+  $("retryRender").addEventListener("click", () => launch(true));
   document.querySelectorAll('input[name="renderProfile"]').forEach(input => input.addEventListener("change", () => {
     const low = input.checked && input.value === "low";
     $("fabricResolutionLabel").textContent = low ? "Path Trace · 500" : "Path Trace · 5K";

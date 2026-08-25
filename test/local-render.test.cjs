@@ -309,6 +309,47 @@ test("local render service completes Fabric before restarting for Substrate-off 
   }
 });
 
+test("local render service automatically resumes after an Unreal crash and skips completed models", async () => {
+  const suffix = `${process.pid}_${Date.now()}`, port = 57000 + process.pid % 4000;
+  const jobsRoot = path.join(root, "local", "jobs", "generated"), output = path.join(root, "local", "renders", `test_resume_${suffix}`);
+  const jobPath = path.join(jobsRoot, `test_resume_${suffix}.job.json`), fakeLog = path.join(os.tmpdir(), `rh-fake-resume-${suffix}.log`), crashMarker = path.join(os.tmpdir(), `rh-fake-resume-${suffix}.crashed`);
+  fs.mkdirSync(jobsRoot, { recursive: true }); fs.mkdirSync(output, { recursive: true });
+  const second = { ...model, name: "TEST_SECOND_prod2", path: "D:\\models\\TEST_SECOND_prod2.fbx" };
+  const job = buildBatchJob([
+    { model, input: { ...baseInput, layers: ["Fabric", "Shadow"] } },
+    { model: second, input: { ...baseInput, layers: ["Fabric", "Shadow"] } }
+  ], rig, output, `test_resume_${suffix}`);
+  fs.writeFileSync(jobPath, JSON.stringify(job));
+  const service = spawn(process.execPath, [path.join(root, "server.cjs")], {
+    cwd: root, windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, RH_LOCAL_RENDERS_PORT: String(port), RH_UNREAL_EDITOR: process.execPath, RH_UNREAL_PROJECT: path.join(root, "test", "fake-unreal.cjs"), RH_FAKE_UNREAL_LOG: fakeLog, RH_FAKE_UNREAL_CRASH_ONCE: crashMarker }
+  });
+  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+  try {
+    let online = false;
+    for (let attempt = 0; attempt < 50 && !online; attempt++) { try { online = (await fetch(`http://127.0.0.1:${port}/api/status`)).ok; } catch {} if (!online) await sleep(50); }
+    assert.equal(online, true);
+    const launch = await fetch(`http://127.0.0.1:${port}/api/renders`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jobPath }) });
+    assert.equal(launch.status, 202);
+    let status;
+    for (let attempt = 0; attempt < 300; attempt++) {
+      status = await (await fetch(`http://127.0.0.1:${port}/api/renders/status`)).json();
+      if (status.state !== "running") break;
+      await sleep(50);
+    }
+    assert.equal(status.state, "success", status.log);
+    assert.equal(status.autoRestarts, 1);
+    assert.ok(status.queue.every(item => item.state === "complete" && item.rendered === item.expected));
+    const launches = fs.readFileSync(fakeLog, "utf8").trim().split(/\r?\n/).map(line => JSON.parse(line));
+    assert.deepEqual(launches.map(item => item.phase), ["Fabric", "Fabric", "Shadow"]);
+    assert.deepEqual(launches[1].taskIds, [second.name]);
+    assert.match(status.log, /Automatic Fabric resume 1\/3; completed models stay skipped/);
+  } finally {
+    service.kill();
+    fs.rmSync(jobPath, { force: true }); fs.rmSync(output, { recursive: true, force: true }); fs.rmSync(fakeLog, { force: true }); fs.rmSync(crashMarker, { force: true });
+  }
+});
+
 test("legacy light-rig project files stay out of the unified project", () => {
   for (const legacy of ["handoff", "light-rig-reference.html", "comments.php", "ONBOARDING.md", ".claude"]) {
     assert.equal(fs.existsSync(path.join(root, legacy)), false, legacy);
@@ -373,6 +414,11 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(client, /useDroppedModels/);
   assert.match(client, /const normalizedMaterialId = id =>/);
   assert.match(client, /data-material-ids=/);
+  assert.match(client, /render-composite-fabric/);
+  assert.match(client, /Fabric over Shadow · alpha preview/);
+  assert.match(styles, /--bronze-strong:/);
+  assert.match(styles, /\.selective-options input:checked\+span/);
+  assert.match(styles, /\.render-preview-media/);
   assert.match(html, /id="modelBatch"/);
   assert.match(client, /LOCAL_MODELS_ROOT = "D:\\\\GitHub\\\\RH_Local_Renders\\\\local\\\\models"/);
   assert.match(client, /const metadataModel = query =>/);

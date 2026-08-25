@@ -48,7 +48,7 @@ Material assignments are normalized from the final component-name word with digi
 
 The static preview uses the same tracked `data/models.json`: dropping any batch made from the 16 known FBX files restores their expected `D:\GitHub\RH_Local_Renders\local\models\…` paths and groups their Material IDs without uploading files. First-time analysis of a new FBX, job generation, and Unreal launch require `Start_RH_Local_Renders.bat` because a public web page cannot run Blender or local processes.
 
-There are no bundled model presets. **Render & job history** discovers the JSON jobs and render files already stored under `local/`, including output from a completed plugin run even if a previous browser session missed its final event. A saved job can be selected, opened as a raw `application/json` document for JSONVue or the browser's built-in JSON viewer, shown in Explorer, or launched again. If a new tab is blocked, **View JSON** falls back to the in-page formatted dialog. **Review batch** loads its model list into the native light rig; selecting a model restores that job's dimensions, side, source mode, and disk render gallery.
+There are no bundled model presets. **Render & job history** discovers the JSON jobs and render files already stored under `local/`, including output from a completed plugin run even if a previous browser session missed its final event. A saved job can be selected, opened as a raw `application/json` document for JSONVue or the browser's built-in JSON viewer, shown in Explorer, or launched again. If a new tab is blocked, **View JSON** falls back to the in-page formatted dialog. **Review batch** loads its model list into the native light rig; selecting a model restores that job's dimensions, side, source mode, completion state, and disk render gallery. Each camera shows Fabric, Shadow, and a centered pixel-grid composite of Fabric over the 3:1 Shadow canvas on a neutral checkerboard.
 
 The legacy inches-as-centimetres FBX profile uses the opposite X handedness during Unreal import. Automatic inspection accounts for this when deriving import yaw; the affected `prod9910052` model therefore uses `+90°`, while normal metre exports keep the established orientation rule.
 
@@ -72,7 +72,7 @@ UnrealEditor.exe rh_unreal_2.uproject `
   -ini:Editor:[/Script/BatchRenderEditor.BatchRenderSettings]:ApiUrl=http://127.0.0.1:5500/api/unreal
 ```
 
-Each generated phase job is served once to its Unreal process. A phase advances only after the plugin posts `job_completed` and at least one output image was created or updated; the dashboard then closes that Unreal process. A combined Fabric/Shadow run is successful only when both ordered phases complete. No source, persistent config edit, batch file, binary, or commit is required in `rh_unreal_2` or its BatchRender submodule.
+Each generated phase job is served once per Unreal attempt. Completion is measured from actual output files for every model, camera, and layer. If Unreal exits before the phase is complete, the service automatically restarts that phase up to three times with only incomplete models; completed model output and Fabric camera handoff data stay in place. Manual **Retry failed** uses resume mode and also skips complete files. A phase advances only when every expected output exists (and Fabric has supplied all camera states); the dashboard then closes that Unreal process. A combined Fabric/Shadow run is successful only when both ordered phases complete. No persistent config edit is made in `rh_unreal_2`.
 
 ## Source and local data
 

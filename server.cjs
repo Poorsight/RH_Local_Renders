@@ -33,6 +33,7 @@ const runtimeSourceToken = () => {
 };
 const RUNTIME_STARTED_AT = new Date().toISOString();
 const RUNTIME_SOURCE_TOKEN = runtimeSourceToken();
+const MAX_PHASE_RESTARTS = 3;
 let render = { state: "idle", pid: null, jobPath: null, startedAt: null, finishedAt: null, exitCode: null, log: "" };
 let child = null, bridge = null, activeRun = null, lastUnrealContactAt = null;
 let unrealMaterialCache = null;
@@ -61,6 +62,48 @@ function changedImages(folder, before) {
   });
 }
 
+const imageLayer = file => /(?:^|_)shadow(?:_|\.)/i.test(path.basename(file)) ? "Shadow" : "Fabric";
+const taskLayerExpected = (task, layerName) => {
+  const layer = (task.layers || []).find(item => !item.doNotRender && String(item.name || "").toLowerCase() === layerName.toLowerCase());
+  if (!layer) return 0;
+  const cameras = task.sequence?.cameras?.length || 0;
+  const variants = layerName === "Fabric" && !layer._rhLocalPrefit
+    ? (task.materials || []).reduce((product, group) => product * Math.max(group.list?.length || 0, 1), 1)
+    : 1;
+  return cameras * variants;
+};
+const taskOutputFolder = (task, layerName) => path.resolve(String((task.layers || []).find(layer => String(layer.name || "").toLowerCase() === layerName.toLowerCase())?.output?.folder || ""));
+const runProducedImages = (run, folder, layerName) => scanImages(folder).filter(file => imageLayer(file) === layerName && run.before.get(file) !== `${fs.statSync(file).size}:${fs.statSync(file).mtimeMs}`);
+
+function phaseTaskProgress(run, phaseName) {
+  const phase = run.phases.find(item => item.name === phaseName);
+  return (phase?.job?.tasks || []).map(task => {
+    const expected = taskLayerExpected(task, phaseName), folder = taskOutputFolder(task, phaseName);
+    const rendered = folder && fs.existsSync(folder) ? runProducedImages(run, folder, phaseName).length : 0;
+    const cameraReady = phaseName !== "Fabric" || (task.sequence?.cameras || []).every(camera => run.cameraStates.has(cameraStateKey(task.taskId, camera.sequenceName || camera.name)));
+    return { name: task.taskId, expected, rendered: Math.min(rendered, expected), complete: expected > 0 && rendered >= expected && cameraReady };
+  });
+}
+
+function refreshRunProgress() {
+  if (!activeRun) return;
+  const phases = activeRun.phases.map(phase => [phase.name, new Map(phaseTaskProgress(activeRun, phase.name).map(item => [item.name, item]))]);
+  render.queue = (activeRun.job.tasks || []).map(task => {
+    const records = phases.map(([, rows]) => rows.get(task.taskId)).filter(Boolean);
+    const expected = records.reduce((sum, item) => sum + item.expected, 0), rendered = records.reduce((sum, item) => sum + item.rendered, 0);
+    const state = expected > 0 && rendered >= expected ? "complete" : rendered > 0 ? "partial" : task.taskId === render.currentTask ? "active" : "queued";
+    return { name: task.taskId, state, rendered, expected };
+  });
+  render.rendered = render.queue.reduce((sum, item) => sum + item.rendered, 0);
+}
+
+function remainingPhaseJob(run, phase) {
+  const remaining = new Set(phaseTaskProgress(run, phase.name).filter(item => !item.complete).map(item => item.name));
+  const job = JSON.parse(JSON.stringify(phase.job));
+  job.tasks = (job.tasks || []).filter(task => remaining.has(task.taskId));
+  return job;
+}
+
 function finishBridge(state, message) {
   if (!bridge || bridge.completed) return;
   const produced = changedImages(bridge.outputFolder, bridge.before);
@@ -86,40 +129,62 @@ function finishRun(state, message) {
   activeRun = null; bridge = null;
 }
 
+function advancePhaseOrFinish(message) {
+  if (!activeRun) return;
+  refreshRunProgress();
+  const phase = activeRun.phases[activeRun.index], remaining = phaseTaskProgress(activeRun, phase.name).filter(item => !item.complete);
+  if (remaining.length) return restartRenderPhase(`${message}; ${remaining.length} incomplete model${remaining.length === 1 ? "" : "s"}`);
+  if (activeRun.index + 1 < activeRun.phases.length) {
+    activeRun.index += 1; render.pid = null; render.phase = `Preparing ${activeRun.phases[activeRun.index].name}`; render.phaseIndex = activeRun.index + 1; render.substrate = null; render.currentTask = null;
+    appendRenderLog(`${phase.name} is complete. Restarting Unreal for ${activeRun.phases[activeRun.index].name} with Substrate ${activeRun.phases[activeRun.index].substrate ? "ON" : "OFF"}.\n`);
+    setTimeout(startRenderPhase, 300);
+  } else finishRun("success", `${activeRun.phases.length} phase${activeRun.phases.length === 1 ? "" : "s"} completed`);
+}
+
+function restartRenderPhase(reason) {
+  if (!activeRun) return;
+  const phase = activeRun.phases[activeRun.index], used = activeRun.phaseRestarts.get(phase.name) || 0;
+  refreshRunProgress();
+  if (used >= MAX_PHASE_RESTARTS) return finishRun("failed", `${phase.name} stopped after ${used} automatic restarts: ${reason}`);
+  activeRun.phaseRestarts.set(phase.name, used + 1); render.pid = null; render.phase = `Restarting ${phase.name}`; render.autoRestarts = (render.autoRestarts || 0) + 1; render.message = `Unreal exited · resuming incomplete models (${used + 1}/${MAX_PHASE_RESTARTS})`;
+  appendRenderLog(`\nUnreal interruption: ${reason}. Automatic ${phase.name} resume ${used + 1}/${MAX_PHASE_RESTARTS}; completed models stay skipped.\n`);
+  setTimeout(startRenderPhase, 2500);
+}
+
 function startRenderPhase() {
   if (!activeRun) return;
   const phase = activeRun.phases[activeRun.index], apiUrl = `http://${HOST}:${PORT}/api/unreal`;
+  let phaseJob = remainingPhaseJob(activeRun, phase);
+  if (!phaseJob.tasks.length) return advancePhaseOrFinish(`${phase.name} already complete`);
   if (phase.name === "Shadow" && activeRun.phases.some((item, index) => index < activeRun.index && item.name === "Fabric")) {
-    const handoff = applyCameraHandoff(phase.job, activeRun.cameraStates);
+    const handoff = applyCameraHandoff(phaseJob, activeRun.cameraStates);
     if (handoff.missing.length) return finishRun("failed", `Fabric camera handoff missing for ${handoff.missing.join(", ")}`);
-    phase.job = handoff.job;
+    phaseJob = handoff.job;
     appendRenderLog(`Applied ${handoff.applied.length} Fabric camera state${handoff.applied.length === 1 ? "" : "s"} to Shadow; fit disabled.\n`);
   }
-  bridge = { job: phase.job, jobPath: activeRun.jobPath, outputFolder: activeRun.outputFolder, before: imageSnapshot(activeRun.outputFolder), delivered: false, completed: false, success: false, phase };
+  bridge = { job: phaseJob, jobPath: activeRun.jobPath, outputFolder: activeRun.outputFolder, before: imageSnapshot(activeRun.outputFolder), delivered: false, completed: false, success: false, phase, exitHandled: false };
   const phaseBridge = bridge, launch = buildUnrealLaunch(UNREAL_EDITOR, UNREAL_PROJECT, apiUrl, { substrate: phase.substrate });
-  appendRenderLog(`\nStarting ${phase.name} phase ${activeRun.index + 1}/${activeRun.phases.length}; Substrate ${phase.substrate ? "ON" : "OFF"}.\n${launch.command}\n${launch.args.join(" ")}\n`);
+  appendRenderLog(`\nStarting ${phase.name} phase ${activeRun.index + 1}/${activeRun.phases.length}; ${phaseJob.tasks.length} incomplete model${phaseJob.tasks.length === 1 ? "" : "s"}; Substrate ${phase.substrate ? "ON" : "OFF"}.\n${launch.command}\n${launch.args.join(" ")}\n`);
   child = spawn(launch.command, launch.args, launch.options);
   const phaseProcess = child;
   render.pid = child.pid; render.phase = phase.name; render.phaseIndex = activeRun.index + 1; render.phaseCount = activeRun.phases.length; render.substrate = phase.substrate;
   child.stdout.on("data", appendRenderLog); child.stderr.on("data", appendRenderLog);
   child.on("error", launchError => {
+    if (phaseBridge.exitHandled) return; phaseBridge.exitHandled = true;
     appendRenderLog(`\n${launchError.message}\n`);
     if (child === phaseProcess) child = null;
     if (bridge === phaseBridge) bridge = null;
-    finishRun("failed", `${phase.name} could not start`);
+    restartRenderPhase(`${phase.name} could not start`);
   });
   child.on("exit", code => {
+    if (phaseBridge.exitHandled) return; phaseBridge.exitHandled = true;
     render.exitCode = code;
     if (child === phaseProcess) child = null;
     if (bridge === phaseBridge) bridge = null;
     if (!activeRun) return;
-    if (!phaseBridge.completed) return finishRun("failed", `${phase.name} exited before job_completed`);
-    if (!phaseBridge.success) return finishRun("failed", `${phase.name} did not produce render files`);
-    if (activeRun.index + 1 < activeRun.phases.length) {
-      activeRun.index += 1; render.pid = null; render.phase = `Preparing ${activeRun.phases[activeRun.index].name}`; render.phaseIndex = activeRun.index + 1; render.substrate = null;
-      appendRenderLog(`Fabric is complete. Restarting Unreal for ${activeRun.phases[activeRun.index].name} with Substrate OFF.\n`);
-      setTimeout(startRenderPhase, 300);
-    } else finishRun("success", `${activeRun.phases.length} phase${activeRun.phases.length === 1 ? "" : "s"} completed`);
+    if (!phaseBridge.completed) return advancePhaseOrFinish(`${phase.name} exited before job_completed`);
+    if (!phaseBridge.success) return restartRenderPhase(`${phase.name} did not produce render files`);
+    advancePhaseOrFinish(`${phase.name} job_completed`);
   });
 }
 
@@ -249,12 +314,12 @@ async function api(request, response, url) {
     if (bridge) {
       if (data.taskId) {
         render.currentTask = data.taskId;
-        render.queue = (render.queue || []).map(item => ({ ...item, state: item.name === data.taskId ? "active" : item.state === "active" ? "complete" : item.state }));
+        refreshRunProgress();
       }
       const sequenceName = data.sequenceName || data.camera?.sequenceName || data.camera?.name || "";
       if (sequenceName) render.currentCamera = String(sequenceName).split("_").pop();
       if (data.message) render.message = data.message;
-      if (eventName === "render_finished") render.rendered = Number(render.rendered || 0) + 1;
+      if (eventName === "render_finished") refreshRunProgress();
     }
     const matchesJob = bridge && (!data.jobId || data.jobId === bridge.job.jobId || data.jobId === activeRun?.job?.jobId);
     if (matchesJob && bridge?.phase?.name === "Fabric" && eventName === "sequence_camera_data") {
@@ -269,7 +334,7 @@ async function api(request, response, url) {
       }
     }
     if (matchesJob && eventName === "job_completed") {
-      render.queue = (render.queue || []).map(item => ({ ...item, state: item.state === "active" ? "complete" : item.state }));
+      refreshRunProgress();
       finishBridge("success", `job ${data.jobId || bridge.job.jobId} completed`);
     }
     if (matchesJob && eventName === "error") finishBridge("failed", data.error || "plugin reported an error");
@@ -306,10 +371,11 @@ async function api(request, response, url) {
     const rendersRoot = path.join(ROOT, "local", "renders"), outputFolder = path.resolve(String(job._rhLocal?.outputFolder || ""));
     if (!within(outputFolder, rendersRoot)) return error(response, 400, "Job output must stay inside RH_Local_Renders/local/renders");
     const phases = buildRenderPlan(job);
-    activeRun = { job, jobPath, outputFolder, before: imageSnapshot(outputFolder), phases, index: 0, cameraStates: new Map() };
+    activeRun = { job, jobPath, outputFolder, before: input.resume ? new Map() : imageSnapshot(outputFolder), phases, index: 0, cameraStates: new Map(), phaseRestarts: new Map() };
     const queue = (job.tasks || []).map(task => ({ name: task.taskId, state: "queued" }));
     const totalRenders = (job.tasks || []).reduce((total, task) => total + expectedRenders(task) + (task.layers || []).filter(layer => layer._rhLocalPrefit && !layer.doNotRender).length * (task.sequence?.cameras?.length || 0), 0);
-    render = { state: "running", pid: null, jobPath, startedAt: new Date().toISOString(), finishedAt: null, exitCode: null, rendered: 0, totalRenders, currentTask: null, currentCamera: null, message: "Queued", queue, phase: null, phaseIndex: 0, phaseCount: phases.length, substrate: null, log: `Queued ${phases.map(phase => phase.name).join(" → ")} render plan.\nLocal BatchRender API: http://${HOST}:${PORT}/api/unreal\n` };
+    render = { state: "running", pid: null, jobPath, startedAt: new Date().toISOString(), finishedAt: null, exitCode: null, rendered: 0, totalRenders, currentTask: null, currentCamera: null, message: input.resume ? "Resuming completed files" : "Queued", queue, phase: null, phaseIndex: 0, phaseCount: phases.length, substrate: null, autoRestarts: 0, log: `Queued ${phases.map(phase => phase.name).join(" → ")} render plan${input.resume ? " in resume mode" : ""}.\nLocal BatchRender API: http://${HOST}:${PORT}/api/unreal\n` };
+    refreshRunProgress();
     startRenderPhase();
     return json(response, 202, currentRender());
   }

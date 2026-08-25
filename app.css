@@ -298,15 +298,22 @@ input[type=range]:active::-webkit-slider-thumb{cursor:grabbing;box-shadow:var(--
 .render-progress-track{height:9px;border-radius:99px;background:var(--inset);box-shadow:var(--press-sm);overflow:hidden}
 .render-progress-track>i{display:block;height:100%;width:0;border-radius:99px;background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 60%,#fff));transition:width .3s ease}
 .render-queue{display:flex;flex-direction:column;gap:7px;max-height:min(34vh,300px);overflow:auto;padding:2px}
-.render-queue>div{display:flex;align-items:center;justify-content:space-between;gap:11px;padding:11px 13px;border-radius:var(--radius-xs);background:var(--surface-2);box-shadow:var(--press-sm);font-size:12.5px}
-.render-queue-name{display:flex;align-items:center;gap:9px;min-width:0;color:var(--soft);font-weight:520}
-.render-queue-name .bar{width:3px;height:15px;flex:none;border-radius:99px;background:var(--faint)}
+/* A queue row is <span data-state><b>index</b><span name><i>state</i><small>n/m</small></span>.
+   The old rules here matched .render-queue>div, a .bar element and span:last-child --
+   none of which exist in that markup, so the rows fell back to page defaults and
+   span:last-child happened to catch the last row in the list, which is why one entry
+   came out small and grey. */
+.render-queue>span{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:center;gap:4px 10px;padding:9px 11px;border-radius:var(--radius-xs);background:var(--surface-2);box-shadow:var(--press-sm);font-size:12px}
+.render-queue>span>b{color:var(--faint);font-size:10px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:.06em}
+.render-queue-name{min-width:0;color:var(--soft);font-size:12px;font-weight:520;overflow-wrap:anywhere;line-height:1.35}
+.render-queue>span>i{color:var(--muted);font-size:10.5px;font-style:normal;font-weight:600;white-space:nowrap}
+.render-queue>span>small{color:var(--faint);font-size:11px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.render-queue>span[data-state=active]{box-shadow:var(--sel-ring)}
+.render-queue>span[data-state=active]>i,.render-queue>span[data-state=complete]>i{color:var(--accent-ink)}
+.render-queue>span[data-state=partial]>i{color:var(--amber)}
+.render-queue>span[data-state=failed]>i,.render-queue>span[data-state=error]>i{color:var(--danger)}
+.render-queue>span[data-state=queued],.render-queue>span[data-state=pending]{opacity:.72}
 
-.render-queue>div.active .bar{background:var(--accent)}
-.render-queue>div.error .bar{background:var(--danger)}
-.render-queue span:last-child{flex:none;color:var(--muted);font-size:11.5px;font-weight:560}
-.render-queue>div.active span:last-child{color:var(--accent-ink)}
-.render-queue>div.error span:last-child{color:var(--danger)}
 .render-log{max-height:230px;overflow:auto;padding:14px;border-radius:var(--radius-sm);background:var(--inset);box-shadow:var(--press-sm);color:var(--muted);font-size:11.5px;line-height:1.65;white-space:pre-wrap;word-break:break-word}
 .render-camera-group{display:flex;flex-direction:column;gap:9px}
 .render-preview-card{display:flex;flex-direction:column;gap:9px;padding:12px;border-radius:var(--radius-sm);background:var(--surface-2);box-shadow:var(--press-sm)}
@@ -506,7 +513,6 @@ input[type=range]:active::-webkit-slider-thumb{cursor:grabbing;box-shadow:var(--
 .render-preview-card.render-combined:hover .render-preview-media .render-composite-shadow{transform:none}
 .render-preview-card.render-combined:hover .render-preview-media .render-composite-fabric{transform:translate(-50%,-50%)}
 .render-preview-card.render-warning{outline:2px solid var(--danger);outline-offset:-2px}
-.render-queue>div.active{box-shadow:var(--sel-ring)}
 .render-preview-card:focus-visible{outline:2px solid var(--bronze-strong);outline-offset:-2px}
 
 /* status orb: soft pulse plus a blurred halo behind it */
@@ -566,7 +572,7 @@ input[type=range]:active::-webkit-slider-thumb{cursor:grabbing;box-shadow:var(--
 /* one weight scale for the whole interface */
 body{font-weight:400}
 strong,b{font-weight:500!important}h1,h2,h3{font-weight:550!important}
-.render-queue-name{display:block;min-width:0;padding:0;border:0;background:transparent;color:inherit;font:inherit;white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;line-height:1.35}
+
 
 @media (max-width:980px){
   .rig-batch-models{grid-template-columns:1fr}

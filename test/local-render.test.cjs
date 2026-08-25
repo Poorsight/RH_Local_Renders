@@ -637,6 +637,13 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(styles, /\.log-panel \.render-log\{height:300px/);
   assert.match(styles, /\.render-queue\{[^}]*max-height:min\(34vh,300px\);overflow:auto/);
   assert.doesNotMatch(styles, /box-shadow:box-shadow/);
+  // queue rows are spans with data-state, so nothing may style them as divs or by
+  // position: span:last-child used to catch the last row in the whole list
+  assert.match(client, /<span data-state="\$\{escapeHtml\(itemState\)\}"/);
+  assert.match(styles, /\.render-queue>span\{display:grid/);
+  assert.match(styles, /\.render-queue>span\[data-state=active\]\{box-shadow:var\(--sel-ring\)\}/);
+  assert.doesNotMatch(styles, /\.render-queue>div[.{]/);
+  assert.doesNotMatch(styles, /\.render-queue span:last-child/);
   assert.match(html, /class="output-fieldsets"/);
   assert.match(html, /workspace-col-status">\s*<section class="panel output-panel"/);
   assert.match(styles, /\[data-material-status\]\[data-state=found\]\{background:var\(--accent-soft\)/);

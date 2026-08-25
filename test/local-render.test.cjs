@@ -574,7 +574,7 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(styles, /render-orb-pulse/);
   assert.match(styles, /render-progress-flow/);
   assert.match(styles, /\.render-queue-name/);
-  assert.match(styles, /background:#c8cdd2/);
+  assert.match(styles, /input\[type=checkbox\]:checked,input\[type=radio\]:checked\{background:var\(--accent/);
   assert.match(styles, /\.render-preview-card>span\{bottom:auto/);
   assert.match(styles, /\.render-preview-card\.render-combined:hover \.render-preview-media \.render-composite-fabric\{transform:translate\(-50%,-50%\)\}/);
   assert.match(styles, /\.rig-batch-models\{display:grid;grid-template-columns:repeat\(2/);
@@ -636,7 +636,8 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(client, /renderProfile: selected\("renderProfile"\)\[0\] \|\| "high"/);
   assert.match(client, /Substrate \$\{render\.substrate \? "ON" : "OFF"\}/);
   assert.doesNotMatch(client, /Open the local dashboard with npm start to resolve full model paths/);
-  assert.match(styles, /main\{width:min\(\d+px,calc\(100% - clamp\(/);
+  assert.match(styles, /main\{width:calc\(100% - clamp\([^)]*\)\);max-width:none/);
   assert.match(styles, /\.workspace\{display:grid/);
-  assert.match(styles, /grid-template-areas:"setup materials queue" "setup output queue"/);
+  assert.match(styles, /\.workspace-col\{display:flex;flex-direction:column/);
+  assert.match(html, /class="workspace-col workspace-col-status"/);
 });

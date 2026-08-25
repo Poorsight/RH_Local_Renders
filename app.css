@@ -80,7 +80,7 @@ svg{display:block}
 a{color:var(--accent-ink)}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
 ::selection{background:var(--accent-soft)}
-main{width:min(1620px,calc(100% - clamp(20px,4vw,56px)));margin:0 auto;padding-bottom:72px}
+main{width:calc(100% - clamp(18px,2.4vw,44px));max-width:none;margin:0 auto;padding-bottom:72px}
 
 /* ── topbar ─────────────────────────────────────────────────────── */
 .topbar{position:sticky;top:0;z-index:20;height:78px;padding:0 clamp(16px,3vw,44px);display:flex;align-items:center;justify-content:space-between;gap:16px;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(18px) saturate(1.2);border-bottom:1px solid var(--line-soft)}
@@ -94,7 +94,7 @@ main{width:min(1620px,calc(100% - clamp(20px,4vw,56px)));margin:0 auto;padding-b
 .theme-switcher{display:flex;gap:2px;padding:4px;border-radius:var(--radius-pill);background:var(--surface-2);box-shadow:var(--press-sm)}
 .theme-switcher button{width:36px;height:30px;border-radius:var(--radius-pill);display:grid;place-items:center;color:var(--faint);transition:color .16s,background .16s,box-shadow .16s}
 .theme-switcher button:hover{color:var(--soft)}
-.theme-switcher button[aria-pressed=true]{color:var(--text);background:var(--surface-raised);box-shadow:var(--lift-sm)}
+.theme-switcher button[aria-pressed=true]{color:var(--accent-ink);background:var(--accent-soft);box-shadow:inset 0 0 0 1.5px var(--accent-line)}
 .theme-switcher button svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 
 .connection{display:flex;align-items:center;gap:8px;padding:9px 15px 9px 13px;border-radius:var(--radius-pill);background:var(--surface-raised);box-shadow:var(--lift-sm);color:var(--soft);font-size:12.5px;white-space:nowrap}
@@ -114,17 +114,10 @@ main{width:min(1620px,calc(100% - clamp(20px,4vw,56px)));margin:0 auto;padding-b
 @media (min-width:1000px){.hero{grid-template-columns:minmax(0,1fr) minmax(320px,auto)}}
 
 /* ── workspace grid ─────────────────────────────────────────────── */
-.workspace{display:grid;gap:clamp(16px,1.4vw,22px);grid-template-columns:minmax(0,1fr)}
-/* `grid-area` only inside these blocks: named areas on a container that has no
-   grid-template-areas generate implicit zero-width tracks, which collapsed the
-   single-column layout on narrow screens. */
-@media (min-width:1080px){
-  .workspace{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:"setup materials" "setup output" "queue queue"}
-  .setup-panel{grid-area:setup}.materials-panel{grid-area:materials}.output-panel{grid-area:output}.queue-panel{grid-area:queue}
-}
-@media (min-width:1500px){
-  .workspace{grid-template-columns:minmax(0,.92fr) minmax(0,1.04fr) minmax(0,1fr);grid-template-areas:"setup materials queue" "setup output queue";align-items:start}
-}
+.workspace{display:grid;gap:clamp(16px,1.2vw,20px);grid-template-columns:minmax(0,1fr);align-items:start}
+.workspace-col{display:flex;flex-direction:column;gap:clamp(16px,1.2vw,20px);min-width:0}
+@media (min-width:1000px){.workspace{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.workspace-col-status{grid-column:1/-1}}
+@media (min-width:1440px){.workspace{grid-template-columns:minmax(0,.9fr) minmax(0,1fr) minmax(0,1.15fr)}.workspace-col-status{grid-column:auto}}
 
 /* ── panels ─────────────────────────────────────────────────────── */
 .panel,.history-detail{background:var(--surface);border-radius:var(--radius);box-shadow:var(--lift);padding:var(--pad);display:flex;flex-direction:column;gap:16px;min-width:0}
@@ -179,9 +172,11 @@ legend{padding:0;color:var(--faint);font-size:10.5px;font-weight:750;letter-spac
 .choice-row label>span{flex:1;display:flex;flex-direction:column;gap:3px;align-items:center;justify-content:center;text-align:center;padding:11px 14px;border-radius:var(--radius-xs);background:var(--surface-2);box-shadow:var(--press-sm);color:var(--muted);font-size:13px;font-weight:560;transition:color .16s,box-shadow .16s,background .16s}
 .choice-row label>span small{font-size:10.5px;font-weight:500;color:var(--faint);letter-spacing:.01em}
 .choice-row label:hover>span{color:var(--text)}
-.choice-row input:checked+span{background:var(--surface-raised);box-shadow:var(--lift-sm);color:var(--text)}
-.choice-row input:checked+span small{color:var(--accent-ink)}
-.choice-row input:focus-visible+span{box-shadow:var(--lift-sm),0 0 0 2px var(--accent-line)}
+.choice-row input:checked+span{background:var(--accent-soft);box-shadow:inset 0 0 0 1.5px var(--accent-line);color:var(--accent-ink);font-weight:650}
+.choice-row input:checked+span small{color:var(--accent-ink);opacity:.85}
+/* a mark as well as a tint: the state must not rest on colour alone */
+.choice-row input:checked+span:before{content:"";width:13px;height:7px;margin-bottom:1px;border:solid currentColor;border-width:0 0 2px 2px;border-radius:0 0 0 2px;transform:rotate(-45deg) translate(1px,-2px)}
+.choice-row input:focus-visible+span{outline:2px solid var(--accent);outline-offset:2px}
 .choice-row.layers label,.choice-row.render-profile label,.choice-row.crop-mode label{min-width:130px}
 
 /* segmented control (rig) */
@@ -190,8 +185,8 @@ legend{padding:0;color:var(--faint);font-size:10.5px;font-weight:750;letter-spac
 .rig-segmented input{position:absolute;opacity:0;width:0;height:0}
 .rig-segmented label>span{flex:1;text-align:center;padding:8px 10px;border-radius:var(--radius-pill);color:var(--muted);font-size:12px;font-weight:600;transition:color .16s,background .16s,box-shadow .16s}
 .rig-segmented label:hover>span{color:var(--text)}
-.rig-segmented input:checked+span{background:var(--surface-raised);box-shadow:var(--lift-sm);color:var(--text)}
-.rig-segmented input:focus-visible+span{box-shadow:var(--lift-sm),0 0 0 2px var(--accent-line)}
+.rig-segmented input:checked+span{background:var(--accent-soft);box-shadow:inset 0 0 0 1.5px var(--accent-line);color:var(--accent-ink);font-weight:700}
+.rig-segmented input:focus-visible+span{outline:2px solid var(--accent);outline-offset:2px}
 
 /* range */
 input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:22px;background:none;box-shadow:none;padding:0}
@@ -217,7 +212,7 @@ input[type=range]:active::-webkit-slider-thumb{cursor:grabbing;box-shadow:var(--
 .model-batch-heading strong{font-size:12.5px;font-weight:600}
 .model-batch-list{display:flex;flex-direction:column;gap:7px;max-height:236px;overflow:auto}
 .batch-model{display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:var(--radius-xs);background:var(--surface);box-shadow:var(--lift-sm);font-size:12.5px}
-.batch-model.active{box-shadow:var(--lift-sm),0 0 0 1.5px var(--accent-line)}
+.batch-model.active{background:var(--accent-soft);box-shadow:inset 0 0 0 1.5px var(--accent-line)}
 .batch-model-select{flex:1;min-width:0;text-align:left;color:var(--text);font-size:12.5px;font-weight:520;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .batch-model-select:hover{color:var(--accent-ink)}
 .batch-model-remove{width:24px;height:24px;flex:none;border-radius:7px;color:var(--faint);font-size:15px;line-height:1;display:grid;place-items:center}
@@ -366,7 +361,7 @@ input[type=range]:active::-webkit-slider-thumb{cursor:grabbing;box-shadow:var(--
 .rig-render-gallery-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:11px}
 .rig-render-gallery-heading span{color:var(--faint);font-size:10px;font-weight:750;letter-spacing:.16em}
 .rig-render-gallery-heading strong{display:block;margin-top:4px;font-size:13px;font-weight:560;overflow-wrap:anywhere}
-.rig-render-images{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
+.rig-render-images{display:flex;flex-direction:column;gap:12px}
 .rig-render-images img,.history-model-preview img,.catalog-image img{display:block;width:100%;height:auto;border-radius:var(--radius-xs);background:var(--inset)}
 
 /* ── history ────────────────────────────────────────────────────── */
@@ -378,7 +373,7 @@ input[type=range]:active::-webkit-slider-thumb{cursor:grabbing;box-shadow:var(--
 .history-list{display:flex;flex-direction:column;gap:10px;max-height:min(70vh,660px);overflow:auto;padding-right:3px}
 .history-card{display:flex;flex-direction:column;gap:9px;padding:14px;border-radius:var(--radius-sm);background:var(--surface);box-shadow:var(--lift);text-align:left;width:100%;transition:transform .14s,box-shadow .16s}
 .history-card:hover{transform:translateY(-1px)}
-.history-card.active{box-shadow:var(--lift),0 0 0 1.5px var(--accent-line)}
+.history-card.active{box-shadow:var(--lift),inset 3px 0 0 var(--accent),0 0 0 1.5px var(--accent-line)}
 .history-card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
 .history-card-top strong{font-size:12.5px;font-weight:600;overflow-wrap:anywhere;line-height:1.45}
 .history-card-meta{display:flex;flex-wrap:wrap;gap:8px;color:var(--faint);font-size:11px}
@@ -397,9 +392,9 @@ input[type=range]:active::-webkit-slider-thumb{cursor:grabbing;box-shadow:var(--
 .history-path{padding:11px 13px;border-radius:var(--radius-xs);background:var(--inset);box-shadow:var(--press-sm);color:var(--muted);font-family:ui-monospace,Consolas,monospace;font-size:11px;overflow-wrap:anywhere}
 .history-model-list{display:flex;flex-direction:column;gap:9px}
 .history-model-row{display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:var(--radius-xs);background:var(--surface-2);box-shadow:var(--press-sm);font-size:12.5px;flex-wrap:wrap}
-.history-model-row.active{box-shadow:var(--press-sm),0 0 0 1.5px var(--accent-line)}
+.history-model-row.active{background:var(--accent-soft);box-shadow:inset 0 0 0 1.5px var(--accent-line)}
 .history-model-empty{color:var(--faint);font-size:12px}
-.history-model-preview{display:grid;gap:9px;grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
+.history-model-preview{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr))}
 
 /* ── catalog / reference blocks (rendered by app.js) ────────────── */
 .catalog-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
@@ -453,7 +448,7 @@ input[type=range]:active::-webkit-slider-thumb{cursor:grabbing;box-shadow:var(--
 .render-camera-group>div:first-child{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 13px;border-bottom:1px solid var(--line-soft)}
 .render-camera-group>div:first-child strong{font-size:11px}
 .render-camera-group>div:first-child span{color:var(--faint);font-size:9px}
-.render-camera-group>div:last-child{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--line-soft);align-items:stretch}
+.render-camera-group>div:last-child{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,330px),1fr));gap:1px;background:var(--line-soft);align-items:stretch}
 .render-preview-card{position:relative;display:flex;flex-direction:column;min-width:0;height:auto;min-height:0;padding:0 0 24px;border:0;border-radius:0;background:var(--preview-bg);text-decoration:none;overflow:hidden;font:inherit;text-align:left;box-shadow:none}
 .render-preview-media{position:relative;flex:0 0 auto;display:grid;place-items:center;width:100%;height:auto;aspect-ratio:3/1!important;overflow:hidden;background:var(--preview-bg);border-radius:0;box-shadow:none;transition:transform .18s}
 .render-preview-media img{display:block;width:100%;height:100%;object-fit:contain;transition:transform .18s}
@@ -505,7 +500,9 @@ input[type=range]:active::-webkit-slider-thumb{cursor:grabbing;box-shadow:var(--
 /* batch list in the rig section is a two-column grid of compact rows */
 .rig-batch-models{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;max-height:326px;overflow:auto;padding-right:4px}
 .rig-batch-model{display:grid;grid-template-columns:24px minmax(0,1fr);gap:3px 8px;width:100%;padding:9px 10px;border-radius:8px;background:var(--surface-2);box-shadow:var(--press-sm);color:var(--text);text-align:left}
-.rig-batch-model:hover,.rig-batch-model.active{background:var(--surface-raised);box-shadow:var(--lift-sm)}
+.rig-batch-model:hover{background:var(--surface-raised);box-shadow:var(--lift-sm)}
+.rig-batch-model.active{background:var(--accent-soft);box-shadow:inset 0 0 0 1.5px var(--accent-line)}
+.rig-batch-model.active strong{color:var(--accent-ink)}
 .rig-batch-model>span{grid-row:span 2;color:var(--accent-ink);font:9px/1.4 ui-monospace,Consolas,monospace}
 .rig-batch-model strong,.rig-batch-model small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rig-batch-model strong{font-size:10px}
@@ -551,3 +548,52 @@ strong,b{font-weight:500!important}h1,h2,h3{font-weight:550!important}
   :root:not([data-theme=light]) .rig-render-images>a{background-color:#20241f;background-image:linear-gradient(45deg,#171a16 25%,transparent 25%),linear-gradient(-45deg,#171a16 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#171a16 75%),linear-gradient(-45deg,transparent 75%,#171a16 75%)}
 }
 :root[data-theme=dark] .rig-render-images>a{background-color:#20241f;background-image:linear-gradient(45deg,#171a16 25%,transparent 25%),linear-gradient(-45deg,#171a16 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#171a16 75%),linear-gradient(-45deg,transparent 75%,#171a16 75%)}
+
+/* ── second pass: form controls, wrapping names, bigger renders ──────
+   Selectors here follow the markup app.js actually emits (b/small inside
+   .material-id, a label wrapping the input inside .history-model-row), which the
+   first pass guessed wrong -- hence unstyled native checkboxes and a "found"
+   line that spilled out of its card. */
+
+/* real checkboxes and radios. The pill and segmented controls hide their input
+   and style the sibling span, so exclude them. */
+input[type=checkbox],input[type=radio]{appearance:none;-webkit-appearance:none;width:17px;height:17px;flex:none;margin:0;border-radius:5px;background:var(--inset);box-shadow:var(--press-sm);cursor:pointer;position:relative;transition:background .14s,box-shadow .14s}
+input[type=radio]{border-radius:50%}
+input[type=checkbox]:hover,input[type=radio]:hover{box-shadow:var(--press-sm),0 0 0 1px var(--line-strong)}
+/* same language as every other toggle: a soft accent tint with an accent ring and an
+   accent mark. A solid saturated fill on a 17px box read as a foreign element. */
+input[type=checkbox]:checked,input[type=radio]:checked{background:var(--accent-soft);box-shadow:inset 0 0 0 1.5px var(--accent-line)}
+input[type=checkbox]:checked:after{content:"";position:absolute;left:4px;top:2px;width:6px;height:10px;border:solid var(--accent-ink);border-width:0 2px 2px 0;transform:rotate(42deg)}
+input[type=radio]:checked:after{content:"";position:absolute;inset:4px;border-radius:50%;background:var(--accent-ink)}
+input[type=checkbox]:focus-visible,input[type=radio]:focus-visible{outline:2px solid var(--accent-line);outline-offset:2px}
+.choice-row input,.rig-segmented input,.selective-options input{appearance:auto;-webkit-appearance:auto;width:0;height:0;box-shadow:none;background:none}
+.choice-row input:after,.rig-segmented input:after,.selective-options input:after{content:none}
+
+/* material assignment: label and the "N models / M component IDs" line wrap */
+.material-id{display:flex;flex-direction:column;gap:4px;min-width:0}
+.material-id b{font-size:13px;font-weight:500;overflow-wrap:anywhere;line-height:1.4}
+.material-id small{color:var(--faint);font-size:11px;line-height:1.5;overflow-wrap:anywhere}
+.material-row{align-items:start}
+.material-input-wrap input{padding-right:30px}
+
+/* model batch: names wrap onto a second line instead of being cut off */
+.batch-model{align-items:flex-start;gap:10px}
+.batch-model-select{display:flex;flex-direction:column;gap:3px;white-space:normal;overflow:visible;text-overflow:clip;line-height:1.4}
+.batch-model-select span{color:var(--faint);font-size:10px;font-weight:750;letter-spacing:.1em}
+.batch-model-select strong,.batch-model-select small{overflow-wrap:anywhere;white-space:normal}
+.batch-model-select small{color:var(--muted);font-size:11px}
+.model-batch-list{max-height:none}
+.rig-batch-model{align-items:start}
+.rig-batch-model strong,.rig-batch-model small{overflow:visible;text-overflow:clip;white-space:normal;overflow-wrap:anywhere;line-height:1.4}
+
+/* history model rows: the input sits inside a label together with index, name and meta */
+.history-model-row>label{flex:1;display:grid;grid-template-columns:auto auto minmax(0,1fr);align-items:center;gap:4px 11px;min-width:0;cursor:pointer;flex-direction:row}
+.history-model-row>label>span{color:var(--faint);font:10px/1.4 ui-monospace,Consolas,monospace;font-weight:750}
+.history-model-row>label>strong{font-size:12px;overflow-wrap:anywhere;line-height:1.4}
+.history-model-row>label>small{grid-column:3;color:var(--muted);font-size:11px;overflow-wrap:anywhere}
+.history-list{max-height:none}
+
+/* pressable buttons need a visible pressed state too, not just a hover lift */
+.secondary-button:active:not(:disabled),.quiet-button:active:not(:disabled){box-shadow:var(--press-sm);transform:translateY(0)}
+.rig-diagram-toggle[aria-expanded=true]{box-shadow:var(--lift),inset 0 0 0 1.5px var(--accent-line)}
+.rig-diagram-toggle[aria-expanded=true]>i{background:var(--accent-soft);box-shadow:none}

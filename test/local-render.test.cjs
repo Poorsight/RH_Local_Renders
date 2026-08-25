@@ -631,8 +631,12 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(styles, /\.render-preview-media\{background:var\(--preview-bg\)\}/);
   assert.match(html, /<pre id="renderLog" class="render-log"><\/pre>/);
   assert.match(client, /log\.hidden = false;/);
-  assert.match(styles, /\.workspace-col-status>\.output-panel\{overflow:visible;flex:3 1 0/);
-  assert.match(styles, /\.workspace-col-status>\.queue-panel\{flex:2 1 0\}/);
+  assert.match(styles, /\.workspace-col-status>\.output-panel\{overflow:visible;flex:1 1 auto/);
+  assert.match(styles, /\.workspace-col-status>\.queue-panel\{flex:0 0 auto\}/);
+  assert.match(html, /<section class="panel log-panel"[\s\S]*?<pre id="renderLog" class="render-log"><\/pre>/);
+  assert.match(styles, /\.log-panel \.render-log\{height:100px/);
+  assert.match(styles, /\.render-queue\{[^}]*max-height:min\(34vh,300px\);overflow:auto/);
+  assert.doesNotMatch(styles, /box-shadow:box-shadow/);
   assert.match(html, /class="output-fieldsets"/);
   assert.match(html, /workspace-col-status">\s*<section class="panel output-panel"/);
   assert.match(styles, /\[data-material-status\]\[data-state=found\]\{background:var\(--accent-soft\)/);
@@ -653,8 +657,8 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(styles, /\.preflight-checks>span\[data-level=ok\]>b\{color:var\(--accent-ink\)\}/);
   assert.match(styles, /\.preflight-checks>span\[data-level=error\]>b\{color:var\(--danger\)\}/);
   assert.doesNotMatch(styles, /\.preflight-checks>span\.(ok|error)\{/);
-  assert.match(styles, /\.output-panel>\.preflight\{flex:1 1 auto;min-height:0\}/);
-  assert.match(styles, /\.output-panel>\.preflight>\.preflight-checks\{flex:1 1 0;min-height:0\}/);
+  assert.match(styles, /\.output-panel>\.preflight\{flex:1 1 auto\}/);
+  assert.match(styles, /\.output-panel>\.preflight>\.preflight-checks\{flex:1 1 0;min-height:132px\}/);
   assert.match(styles, /\.render-status span\{[^}]*overflow-wrap:anywhere\}/);
   // dropdowns are the app's own surface, not a flat OS window
   assert.match(styles, /@supports \(appearance:base-select\)/);

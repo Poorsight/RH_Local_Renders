@@ -616,14 +616,17 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(styles, /\.rig-render-images img\{height:auto;aspect-ratio:auto;object-fit:contain\}/);
   assert.match(styles, /\.history-model-list\{max-height:206px;overflow:auto/);
   assert.match(styles, /\.rig-render-images>a\{background-color:#d7d7d7;background-image:/);
-  assert.match(styles, /\.rig-section\{margin-top:52px;padding:22px 22px 34px;background:/);
+  assert.match(styles, /\.rig-section,\.history-section[^{]*\{margin-top:clamp\(/);
+  assert.match(styles, /\.rig-workspace\{display:grid/);
   assert.match(html, /Shadow runs in a fresh Unreal process with Substrate disabled/);
   assert.match(html, /name="renderProfile" value="low"/);
   assert.match(html, /name="renderProfile" value="high" checked/);
   assert.match(html, /name="cropMode" value="optimized"/);
   assert.match(html, /id="rigDiagramToggle"/);
   assert.match(html, /id="rigDiagramBody"[\s\S]*id="rigLights"[\s\S]*<\/div>\s*<div id="rigRenderGallery"/);
-  assert.equal((html.match(/data-theme-value=/g) || []).length, 5);
+  assert.equal((html.match(/data-theme-value=/g) || []).length, 3);
+  for (const value of ["light", "system", "dark"]) assert.match(html, new RegExp(`data-theme-value="${value}"`));
+  assert.match(client, /allowed = \["light", "system", "dark"\]/);
   assert.match(html, /id="preflight"/);
   assert.doesNotMatch(html, /id="pipelineBar"/);
   assert.doesNotMatch(client, /stickyGenerate/);
@@ -633,5 +636,7 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(client, /renderProfile: selected\("renderProfile"\)\[0\] \|\| "high"/);
   assert.match(client, /Substrate \$\{render\.substrate \? "ON" : "OFF"\}/);
   assert.doesNotMatch(client, /Open the local dashboard with npm start to resolve full model paths/);
-  assert.match(styles, /@media\(min-width:981px\)\{main\{width:calc\(100% - 48px\);max-width:none\}\}/);
+  assert.match(styles, /main\{width:min\(\d+px,calc\(100% - clamp\(/);
+  assert.match(styles, /\.workspace\{display:grid/);
+  assert.match(styles, /grid-template-areas:"setup materials queue" "setup output queue"/);
 });

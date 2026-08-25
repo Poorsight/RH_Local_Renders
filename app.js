@@ -20,7 +20,7 @@
     right_rim_lgt: { label: "Right rim", role: "rim", color: "#74a5a2", kelvin: 6500 }
   };
   const applyTheme = theme => {
-    const allowed = ["graphite", "slate", "navy", "espresso", "stone"], value = allowed.includes(theme) ? theme : "graphite";
+    const allowed = ["light", "system", "dark"], value = allowed.includes(theme) ? theme : "system";
     document.documentElement.dataset.theme = value;
     document.querySelectorAll("[data-theme-value]").forEach(button => button.setAttribute("aria-pressed", String(button.dataset.themeValue === value)));
     try { localStorage.setItem(THEME_KEY, value); } catch {}

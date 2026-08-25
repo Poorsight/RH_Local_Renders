@@ -408,6 +408,7 @@ input[type=range]:active::-webkit-slider-thumb{cursor:grabbing;box-shadow:var(--
 .history-state.failed,.history-state.error{background:var(--danger-soft);color:var(--danger)}
 .history-detail{gap:15px}
 .history-detail-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:13px;flex-wrap:wrap}
+.history-detail-heading>div{display:grid;gap:3px;min-width:0}
 .history-detail-heading strong{font-size:15px;font-weight:620;overflow-wrap:anywhere}
 .history-summary{display:grid;gap:9px;grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
 .history-summary>div{padding:12px;border-radius:var(--radius-xs);background:var(--surface-2);box-shadow:var(--press-sm);display:flex;flex-direction:column;gap:4px}

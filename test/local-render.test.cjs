@@ -119,6 +119,7 @@ test("processed renders publish into an isolated ready-to-upload model structure
       fs.writeFileSync(source, `raw-${camera}-${layer}`); fs.writeFileSync(processedPathFor(source), `post-${camera}-${layer}`);
     }
     const delivery = publishReadyToUpload(job, { root, config: { outputSuffix: "_POST" } });
+    assert.equal(READY_FOLDER_NAME, "POST");
     assert.equal(delivery.files, 6); assert.equal(delivery.models, 1); assert.equal(delivery.complete, true);
     const modelFolder = path.join(output, READY_FOLDER_NAME, model.name);
     assert.deepEqual(fs.readdirSync(modelFolder).sort(), [
@@ -442,6 +443,8 @@ test("local render service calibrates, saves and applies an optimized crop befor
     assert.equal(status.state, "success", status.log);
     assert.equal(status.rendered, 4); assert.equal(status.totalRenders, 4);
     assert.equal(status.postProcess.total, 2, "calibration frames are not delivery outputs"); assert.equal(status.postProcess.state, "success");
+    assert.ok(fs.existsSync(path.join(output, READY_FOLDER_NAME, "manifest.json")), "automatic post-process publishes directly into POST");
+    assert.equal(fs.readdirSync(output).filter(name => /_POST\.png$/i.test(name)).length, 0, "processed copies are not left beside RAW files");
     const launches = fs.readFileSync(fakeLog, "utf8").trim().split(/\r?\n/).map(line => JSON.parse(line));
     assert.deepEqual(launches.map(item => item.phase), ["Crop calibration · Fabric", "Crop calibration · Shadow", "Fabric", "Shadow"]);
     const saved = JSON.parse(fs.readFileSync(jobPath, "utf8")), [fabric, shadow] = saved.tasks[0].sequence.cameras[0].LayerResolutions;
@@ -598,7 +601,7 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(html, /id="jobDialog"/);
   assert.match(client, /const loadHistory = async/);
   assert.match(client, /data-history-action="rerun"/);
-  assert.match(client, /data-history-action="edit"/);
+  assert.match(client, />Edit selection<\/button>/);
   assert.match(client, /data-history-action="openReady"/);
   assert.match(client, /const editHistoryJob = async \(batch, options = \{\}\) =>/);
   assert.match(client, /window\.open\(batch\.jobUrl, "_blank"\)/);

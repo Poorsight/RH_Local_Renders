@@ -149,7 +149,7 @@
             <label><input type="radio" name="cropMode" value="full" checked><span>Full frame <small>Original sensor</small></span></label>
             <label><input type="radio" name="cropMode" value="optimized"><span>Optimized <small>Safe cached crop</small></span></label>
           </div>
-          <p class="field-hint">Optimized uses one saved profile per model and camera. Missing profiles automatically run a 500px Fabric + Shadow calibration before final renders.</p>
+          <p class="field-hint">Full frame never calibrates. Optimized reuses a saved safe crop, or automatically renders one 500px Fabric + Shadow calibration for each missing model/camera profile before the final frames.</p>
         </fieldset>
         <fieldset>
           <legend>Layers</legend>

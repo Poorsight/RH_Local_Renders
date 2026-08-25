@@ -165,9 +165,9 @@ function startPostProcessing(job, jobPath, files, options = {}) {
   }).then(results => {
     const created = results.filter(result => !result.skipped).length, skipped = results.length - created;
     render.state = "success"; render.finishedAt = new Date().toISOString(); render.currentTask = null; render.currentCamera = null;
-    render.message = `${created} processed image${created === 1 ? "" : "s"} ready${skipped ? ` · ${skipped} already current` : ""} · upload folder ready`;
+    render.message = `${created} processed image${created === 1 ? "" : "s"} ready${skipped ? ` · ${skipped} already current` : ""} · POST folder ready`;
     render.postProcess = { ...render.postProcess, state: "success", completed: results.length, created, skipped, readyToUpload, finishedAt: render.finishedAt };
-    appendRenderLog(`Post-process complete: ${created} created, ${skipped} already current. Processed files use the _POST suffix beside untouched originals. Ready to upload: ${readyToUpload?.folder || "not created"} (${readyToUpload?.files || 0} files).\n`);
+    appendRenderLog(`Post-process complete: ${created} created, ${skipped} already current. RAW originals stay untouched; processed files are isolated in ${readyToUpload?.folder || "POST"} (${readyToUpload?.files || 0} files).\n`);
     updateCatalog(jobPath);
   }).catch(postError => {
     render.state = options.automatic ? "success" : "failed"; render.finishedAt = new Date().toISOString(); render.currentTask = null; render.currentCamera = null;

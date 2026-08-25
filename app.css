@@ -633,12 +633,20 @@ input[type=radio]:checked{animation:accent-breathe 3.6s ease-in-out infinite}
    how many models are in the batch. Only at the three-column breakpoint: stacked,
    every panel is its natural height. */
 @media (min-width:1440px){
+  /* Nothing forces the row height any more: every panel that could is now a scroll
+     area contributing no min-content. Without a floor the whole workspace collapses
+     to Render setup's fixed fields (~406px) and the split halves are unusable. */
+  .workspace{min-height:min(86vh,1040px)}
   .workspace-col{height:100%}
-  .setup-panel,.queue-panel{flex:1 1 auto;min-height:0}
-  /* whichever of the two is on screen fills the leftover space */
-  #modelEmpty,#modelBatch{flex:1 1 0;min-height:0}
-  #modelEmpty{display:grid;place-items:center}
-  #batchList{flex:1 1 0;min-height:0}
+  /* Render setup and Material assignments each own their column outright. */
+  .setup-panel,.materials-panel{flex:1 1 auto;min-height:0}
+  /* Views & output and Render status share column three in half. Both scroll inside,
+     so a tall fieldset stack never puts the Launch button out of reach. */
+  .workspace-col-status>.panel{flex:1 1 0;min-height:0;overflow:auto}
+  /* whichever of a pair is on screen fills the leftover space */
+  #modelEmpty,#modelBatch,#materialsEmpty,#materialsList{flex:1 1 0;min-height:0}
+  #modelEmpty,#materialsEmpty{display:grid;place-items:center}
+  #batchList,#materialsList{flex:1 1 0;min-height:0;overflow:auto}
   #renderLog{flex:1 1 0;min-height:0}
 }
 .render-log{max-height:none}

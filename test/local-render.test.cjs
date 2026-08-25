@@ -595,6 +595,7 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(html, /name="renderProfile" value="high" checked/);
   assert.match(html, /name="cropMode" value="optimized"/);
   assert.match(html, /id="rigDiagramToggle"/);
+  assert.match(html, /id="rigDiagramBody"[\s\S]*id="rigLights"[\s\S]*<\/div>\s*<div id="rigRenderGallery"/);
   assert.equal((html.match(/data-theme-value=/g) || []).length, 5);
   assert.match(html, /id="preflight"/);
   assert.doesNotMatch(html, /id="pipelineBar"/);

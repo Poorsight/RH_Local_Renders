@@ -574,7 +574,7 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(styles, /render-orb-pulse/);
   assert.match(styles, /render-progress-flow/);
   assert.match(styles, /\.render-queue-name/);
-  assert.match(styles, /input\[type=checkbox\]:checked,input\[type=radio\]:checked\{background:var\(--accent/);
+  assert.match(styles, /input\[type=checkbox\]:checked,input\[type=radio\]:checked\{background:transparent;box-shadow:inset 0 0 0 1\.5px var\(--accent\)/);
   assert.match(styles, /\.render-preview-card>span\{bottom:auto/);
   assert.match(styles, /\.render-preview-card\.render-combined:hover \.render-preview-media \.render-composite-fabric\{transform:translate\(-50%,-50%\)\}/);
   assert.match(styles, /\.rig-batch-models\{display:grid;grid-template-columns:repeat\(2/);
@@ -615,7 +615,7 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.doesNotMatch(client, /batch\.models\.slice\(0, 6\)/);
   assert.match(styles, /\.rig-render-images img\{height:auto;aspect-ratio:auto;object-fit:contain\}/);
   assert.match(styles, /\.history-model-list\{max-height:206px;overflow:auto/);
-  assert.match(styles, /\.rig-render-images>a\{background-color:#d7d7d7;background-image:/);
+  assert.match(styles, /\.render-preview-media\{background-color:#dee2db;background-image:/);
   assert.match(styles, /\.rig-section,\.history-section[^{]*\{margin-top:clamp\(/);
   assert.match(styles, /\.rig-workspace\{display:grid/);
   assert.match(html, /Shadow runs in a fresh Unreal process with Substrate disabled/);

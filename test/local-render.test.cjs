@@ -405,6 +405,7 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(client, /data\/sectionals-indoor\.csv/);
   assert.match(client, /Math\.max\(1, raw\)/);
   assert.match(client, /position: \[x \* scale, y \* scale, z\]/);
+  assert.match(client, /const labelY = y - \(index % 2 \? 42 : 14\)/);
   assert.match(client, /canReachLocalService/);
   assert.match(client, /range\.addEventListener\("input"/);
   assert.match(html, /id="modelDropTarget"/);
@@ -418,6 +419,8 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(client, /Fabric over Shadow · aligned preview/);
   assert.match(client, /const renderEta = render =>/);
   assert.match(client, /class="render-queue-name"/);
+  assert.match(client, /active: "Rendering", complete: "Complete", partial: "Partial", pending: "Upcoming"/);
+  assert.match(client, /--fabric-width:/);
   assert.match(styles, /--bronze-strong:/);
   assert.match(styles, /--success-strong:/);
   assert.match(styles, /render-orb-pulse/);
@@ -425,6 +428,10 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(styles, /\.render-queue-name/);
   assert.match(styles, /background:#c8cdd2/);
   assert.match(styles, /\.render-preview-card>span\{bottom:auto/);
+  assert.match(styles, /\.rig-batch-models\{display:grid;grid-template-columns:repeat\(2/);
+  assert.match(styles, /render-soft-glow/);
+  assert.match(styles, /aspect-ratio:3\/1!important/);
+  assert.match(styles, /\.rig-light-values\{gap:7px;margin-top:11px;font-size:11px/);
   assert.match(styles, /\.selective-options input:checked\+span/);
   assert.match(styles, /\.render-preview-media/);
   assert.match(html, /id="modelBatch"/);
@@ -460,7 +467,8 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(html, /name="renderProfile" value="low"/);
   assert.match(html, /name="renderProfile" value="high" checked/);
   assert.match(html, /id="preflight"/);
-  assert.match(html, /id="pipelineBar"/);
+  assert.doesNotMatch(html, /id="pipelineBar"/);
+  assert.doesNotMatch(client, /stickyGenerate/);
   assert.match(html, /name="rigLayer" value="Shadow"/);
   assert.match(client, /data-history-action="selective"/);
   assert.match(client, /render-camera-group/);

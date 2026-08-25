@@ -31,17 +31,6 @@
       </div>
     </section>
 
-    <nav id="pipelineBar" class="pipeline-bar" aria-label="Render pipeline summary">
-      <div class="pipeline-summary">
-        <strong id="pipelineSummary">No models selected</strong>
-        <span id="pipelineDetail">Add FBX models to prepare a render job.</span>
-      </div>
-      <div class="pipeline-actions">
-        <button id="stickyGenerate" class="secondary-button" type="button" disabled>Generate</button>
-        <button id="stickyLaunch" class="primary-button" type="button" disabled>Launch</button>
-      </div>
-    </nav>
-
     <div class="workspace">
       <section class="panel setup-panel" aria-labelledby="setupTitle">
         <div class="panel-heading">
@@ -189,13 +178,13 @@
         </div>
       </div>
 
+      <div id="rigBatchGroup" class="rig-control-group rig-batch-group" hidden>
+        <div class="rig-control-heading"><span>BATCH MODELS</span><small id="rigBatchCount"></small></div>
+        <div id="rigBatchModels" class="rig-batch-models"></div>
+      </div>
+
       <div class="rig-workspace">
         <aside class="rig-controls" aria-label="Light rig controls">
-          <div id="rigBatchGroup" class="rig-control-group rig-batch-group" hidden>
-            <div class="rig-control-heading"><span>BATCH MODELS</span><small id="rigBatchCount"></small></div>
-            <div id="rigBatchModels" class="rig-batch-models"></div>
-          </div>
-
           <div class="rig-control-group">
             <div class="rig-control-heading"><span>SHOT</span><small id="rigShotHint">Front</small></div>
             <div class="rig-segmented" role="radiogroup" aria-label="Light rig shot">

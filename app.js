@@ -65,17 +65,10 @@
     importYaw: +$("importYaw").value || 0,
     cameras: selected("camera"), layers: selected("layer"), materials: materialRows()
   });
-  const updatePipelineSummary = () => {
-    const cameras = selected("camera").length, layers = selected("layer"), models = state.batch.length;
-    const expected = models * cameras * layers.length;
-    $("pipelineSummary").textContent = models ? `${models} model${models === 1 ? "" : "s"} · ${expected} render${expected === 1 ? "" : "s"}` : "No models selected";
-    $("pipelineDetail").textContent = models ? `${selected("renderProfile")[0] === "low" ? "Low" : "High"} · ${layers.join(" → ") || "No layers"} · ${state.preflight?.ok ? "Ready" : "Preflight required"}` : "Add FBX models to prepare a render job.";
-  };
   const syncActionButtons = basicReady => {
     const ready = basicReady && state.preflight?.ok === true;
-    $("generateJob").disabled = !ready; $("stickyGenerate").disabled = !ready;
-    $("launchRender").disabled = !state.jobPath; $("stickyLaunch").disabled = !state.jobPath;
-    updatePipelineSummary();
+    $("generateJob").disabled = !ready;
+    $("launchRender").disabled = !state.jobPath;
   };
   const renderPreflight = result => {
     const panel = $("preflight"), checks = result?.checks || [];
@@ -278,10 +271,11 @@
     const minX = Math.min(-preview.dimensions.width / 2, ...points.map(point => point[0])) - pad, maxX = Math.max(preview.dimensions.width / 2, ...points.map(point => point[0])) + pad;
     const minY = Math.min(-preview.dimensions.height, ...points.map(point => point[1])) - pad, maxY = pad;
     const svg = $("rigElevation"); svg.setAttribute("viewBox", `${minX} ${minY} ${maxX - minX} ${maxY - minY}`);
-    const lights = preview.lights.map(light => {
+    const lights = preview.lights.map((light, index) => {
       const x = light.position[0], y = -light.position[2], pitch = light.rotation.pitch * Math.PI / 180, yaw = light.rotation.yaw * Math.PI / 180, length = 120 * preview.scale;
       const endX = x + Math.cos(pitch) * Math.cos(yaw) * length, endY = y - Math.sin(pitch) * length, color = rigColor(light);
-      return `<g class="rig-svg-light" style="--light:${color}"><line x1="${x}" y1="${y}" x2="${endX}" y2="${endY}" marker-end="url(#rig-elevation-arrow)"/><circle cx="${x}" cy="${y}" r="10"/><text x="${x + 16}" y="${y - 14}">${escapeHtml(light.meta.label)}</text></g>`;
+      const labelY = y - (index % 2 ? 42 : 14);
+      return `<g class="rig-svg-light" style="--light:${color}"><line x1="${x}" y1="${y}" x2="${endX}" y2="${endY}" marker-end="url(#rig-elevation-arrow)"/><circle cx="${x}" cy="${y}" r="10"/><text x="${x + 16}" y="${labelY}">${escapeHtml(light.meta.label)}</text></g>`;
     }).join("");
     svg.innerHTML = `<defs><marker id="rig-elevation-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z"/></marker></defs>${svgGrid(minX, maxX, minY, maxY)}<rect class="rig-svg-sofa" x="${-preview.dimensions.width / 2}" y="${-preview.dimensions.height}" width="${preview.dimensions.width}" height="${preview.dimensions.height}" rx="12"/><text class="rig-svg-sofa-label" x="0" y="${-preview.dimensions.height / 2}">H ${preview.dimensions.height}</text>${lights}`;
   };
@@ -408,7 +402,8 @@
     $("renderProgressBar").style.width = `${percent}%`;
     $("renderQueue").innerHTML = (render.queue || []).map((item, index) => {
       const itemState = render.state === "running" && item.name === render.currentTask ? "active" : item.state || "queued";
-      return `<span data-state="${escapeHtml(itemState)}" title="${escapeHtml(item.name)}"><b>${String(index + 1).padStart(2, "0")}</b><span class="render-queue-name">${escapeHtml(item.name)}</span><small>${Number(item.rendered || 0)}/${Number(item.expected || 0)}</small></span>`;
+      const stateLabel = ({ active: "Rendering", complete: "Complete", partial: "Partial", pending: "Upcoming", queued: "Upcoming" })[itemState] || itemState;
+      return `<span data-state="${escapeHtml(itemState)}" title="${escapeHtml(item.name)}"><b>${String(index + 1).padStart(2, "0")}</b><span class="render-queue-name">${escapeHtml(item.name)}</span><i>${escapeHtml(stateLabel)}</i><small>${Number(item.rendered || 0)}/${Number(item.expected || 0)}</small></span>`;
     }).join("");
     $("retryRender").hidden = render.state !== "failed" || !render.jobPath;
     log.hidden = !render.log; log.textContent = render.log || "";
@@ -452,8 +447,9 @@
     };
     const combinedCard = (fabric, shadow) => {
       if (!fabric || !shadow) return "";
+      const fabricWidth = Math.min(100, Math.max(1, (Number(fabric.width) || 1) / (Number(shadow.width) || 1) * 100));
       const issues = [...(fabric.issues || []), ...(shadow.issues || [])];
-      return `<div class="render-preview-card render-combined${issues.length ? " render-warning" : ""}" data-layer="Combined"><div class="render-preview-media" style="--preview-aspect:${Number(shadow.width) || 1}/${Number(shadow.height) || 1}"><img class="render-composite-shadow" src="${escapeHtml(shadow.url)}" alt="" loading="lazy"><img class="render-composite-fabric" src="${escapeHtml(fabric.url)}" alt="${escapeHtml(model.name)} ${escapeHtml(fabric.camera || "render")} Fabric and Shadow combined" loading="lazy"></div><span>Combined${issues.length ? " · Check" : ""}</span><small>Fabric over Shadow · aligned preview</small></div>`;
+      return `<div class="render-preview-card render-combined${issues.length ? " render-warning" : ""}" data-layer="Combined"><div class="render-preview-media" style="--preview-aspect:${Number(shadow.width) || 1}/${Number(shadow.height) || 1};--fabric-width:${fabricWidth}%"><img class="render-composite-shadow" src="${escapeHtml(shadow.url)}" alt="" loading="lazy"><img class="render-composite-fabric" src="${escapeHtml(fabric.url)}" alt="${escapeHtml(model.name)} ${escapeHtml(fabric.camera || "render")} Fabric and Shadow combined" loading="lazy"></div><span>Combined${issues.length ? " · Check" : ""}</span><small>Fabric over Shadow · aligned preview</small></div>`;
     };
     $("rigRenderImages").innerHTML = model.renders.length ? cameras.map(camera => {
       const renders = model.renders.filter(render => (render.camera || "Other") === camera).sort((left, right) => (left.layer === "Shadow" ? 1 : 0) - (right.layer === "Shadow" ? 1 : 0) || left.name.localeCompare(right.name));
@@ -587,7 +583,7 @@
   });
   [["width", "width"], ["depth", "depth"], ["height", "height"]].forEach(([id, key]) => $(id).addEventListener("input", () => { if (state.model && +$(id).value > 0) { state.model.dimensions[key] = +$(id).value; renderBatch(); validate(); } }));
   $("importYaw").addEventListener("input", () => { if (state.model) { state.model.importYaw = +$("importYaw").value || 0; validate(); } });
-  $("generateJob").addEventListener("click", generate); $("launchRender").addEventListener("click", launch); $("stickyGenerate").addEventListener("click", generate); $("stickyLaunch").addEventListener("click", launch); $("refreshSheet").addEventListener("click", refreshSheet);
+  $("generateJob").addEventListener("click", generate); $("launchRender").addEventListener("click", launch); $("refreshSheet").addEventListener("click", refreshSheet);
   $("retryRender").addEventListener("click", () => launch(true));
   document.querySelectorAll('input[name="renderProfile"]').forEach(input => input.addEventListener("change", () => {
     const low = input.checked && input.value === "low";

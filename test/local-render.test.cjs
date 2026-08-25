@@ -620,7 +620,9 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(styles, /\.render-preview-media\{background:var\(--preview-bg\)\}/);
   assert.match(html, /<pre id="renderLog" class="render-log"><\/pre>/);
   assert.match(client, /log\.hidden = false;/);
-  assert.match(styles, /\.workspace-col-status>\.panel\{flex:1 1 0;min-height:0;overflow:auto\}/);
+  assert.match(styles, /\.workspace-col-status>\.output-panel\{overflow:visible;flex:3 1 0/);
+  assert.match(styles, /\.workspace-col-status>\.queue-panel\{flex:2 1 0\}/);
+  assert.match(html, /class="output-fieldsets"/);
   assert.match(html, /workspace-col-status">\s*<section class="panel output-panel"/);
   assert.match(styles, /\[data-material-status\]\[data-state=found\]\{background:var\(--accent-soft\)/);
   assert.match(styles, /\[data-material-status\]\[data-state=missing\]\{background:var\(--danger-soft\)/);

@@ -1,0 +1,16 @@
+{
+  "canvas": {
+    "width": 15000,
+    "height": 5000
+  },
+  "dpi": 300,
+  "outputSuffix": "_POST",
+  "shadow": {
+    "color": "#120C06",
+    "alphaBoostPercent": {
+      "F": 25,
+      "FH": 25,
+      "TQ": 25
+    }
+  }
+}

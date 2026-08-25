@@ -12,6 +12,7 @@ const { buildRenderPlan, cameraStateKey, applyCameraHandoff } = require("./lib/r
 const { CALIBRATION_FOLDER, modelFingerprint, readCropProfiles, writeCropProfiles, cropProfileFor, analyzeCalibrationPair, applyCropProfileToCamera, calibrationFiles } = require("./lib/crop.cjs");
 const { buildUnrealLaunch } = require("./lib/unreal.cjs");
 const { history, expectedRenders } = require("./lib/history.cjs");
+const { availability: postProcessAvailability, isProcessedImage, originalFilesForJob, processJob } = require("./lib/post-process.cjs");
 
 const ROOT = __dirname;
 const HOST = "127.0.0.1";
@@ -20,7 +21,7 @@ const UNREAL_EDITOR = process.env.RH_UNREAL_EDITOR || "D:\\Unreal_Engine\\UE_5.6
 const UNREAL_PROJECT = process.env.RH_UNREAL_PROJECT || "D:\\GitHub\\rh_unreal_2\\rh_unreal_2.uproject";
 const sheet = new SheetStore(ROOT), models = new ModelStore(ROOT);
 const RUNTIME_FILES = [
-  "server.cjs", "package.json", "lib/crop.cjs", "lib/csv.cjs", "lib/history.cjs", "lib/jobs.cjs", "lib/models.cjs", "lib/render-plan.cjs",
+  "server.cjs", "package.json", "data/postprocess.json", "assets/AdobeRGB1998.icc", "lib/crop.cjs", "lib/csv.cjs", "lib/history.cjs", "lib/jobs.cjs", "lib/models.cjs", "lib/post-process.cjs", "lib/render-plan.cjs",
   "lib/rig.cjs", "lib/unreal.cjs", "scripts/inspect_fbx.py"
 ];
 const runtimeSourceToken = () => {
@@ -37,6 +38,7 @@ const RUNTIME_SOURCE_TOKEN = runtimeSourceToken();
 const MAX_PHASE_RESTARTS = 3;
 let render = { state: "idle", pid: null, jobPath: null, startedAt: null, finishedAt: null, exitCode: null, log: "" };
 let child = null, bridge = null, activeRun = null, lastUnrealContactAt = null;
+let postProcessPromise = null;
 let unrealMaterialCache = null;
 
 const json = (response, status, body) => { response.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" }); response.end(JSON.stringify(body)); };
@@ -125,12 +127,53 @@ function finishBridge(state, message) {
 
 function finishRun(state, message) {
   if (!activeRun) return;
-  const produced = changedImages(activeRun.outputFolder, activeRun.before);
-  render.finishedAt = new Date().toISOString(); render.pid = null;
-  render.state = state === "success" && produced.length > 0 ? "success" : "failed";
-  appendRenderLog(`\nRender plan ${render.state}: ${message}; changed images: ${produced.length}\n`);
-  if (render.state === "success") updateCatalog(activeRun.jobPath);
+  const run = activeRun, produced = changedImages(run.outputFolder, run.before), originals = new Set(originalFilesForJob(run.job).map(file => path.resolve(file))), deliverables = produced.filter(file => originals.has(path.resolve(file))), succeeded = state === "success" && deliverables.length > 0;
+  render.pid = null;
+  appendRenderLog(`\nRender plan ${succeeded ? "success" : "failed"}: ${message}; changed images: ${produced.length}\n`);
   activeRun = null; bridge = null;
+  if (!succeeded) {
+    render.state = "failed"; render.finishedAt = new Date().toISOString();
+    return;
+  }
+  if (run.cameraStates.size) {
+    run.job._rhLocal = { ...(run.job._rhLocal || {}), cameraStates: Object.fromEntries(run.cameraStates) };
+    fs.writeFileSync(run.jobPath, `${JSON.stringify(run.job, null, 2)}\n`, "utf8");
+  }
+  updateCatalog(run.jobPath);
+  startPostProcessing(run.job, run.jobPath, deliverables, { automatic: true, cameraStates: run.cameraStates });
+}
+
+function startPostProcessing(job, jobPath, files, options = {}) {
+  if (postProcessPromise) throw new Error("Post-processing is already running");
+  if (!files.length) throw new Error("No original PNG files were found for post-processing");
+  const startedAt = new Date().toISOString(), phaseCount = Math.max(Number(render.phaseCount) || 0, 1) + (options.automatic ? 1 : 0);
+  render.state = "running"; render.pid = null; render.jobPath = jobPath; render.finishedAt = null; render.phase = "Post-processing";
+  render.phaseIndex = phaseCount; render.phaseCount = phaseCount; render.substrate = null; render.currentTask = null; render.currentCamera = null;
+  render.message = `Preparing ${files.length} delivery image${files.length === 1 ? "" : "s"}`;
+  render.postProcess = { state: "running", completed: 0, total: files.length, startedAt, automatic: Boolean(options.automatic) };
+  appendRenderLog(`Starting post-process for ${files.length} original PNG${files.length === 1 ? "" : "s"}: transparent 15000x5000 canvas, AdobeRGB1998, 300 DPI, and Shadow delivery treatment. Originals stay unchanged.\n`);
+  postProcessPromise = processJob(ROOT, job, {
+    files,
+    cameraStates: options.cameraStates,
+    onProgress: progress => {
+      render.currentTask = progress.task; render.currentCamera = path.basename(progress.file).match(/_(F|FH|TQ)_/)?.[1] || null;
+      render.postProcess.completed = progress.completed;
+      render.message = progress.completed >= progress.total ? "Finalizing delivery images" : `Post-processing ${progress.completed + 1} of ${progress.total}`;
+    }
+  }).then(results => {
+    const created = results.filter(result => !result.skipped).length, skipped = results.length - created;
+    render.state = "success"; render.finishedAt = new Date().toISOString(); render.currentTask = null; render.currentCamera = null;
+    render.message = `${created} processed image${created === 1 ? "" : "s"} ready${skipped ? ` · ${skipped} already current` : ""}`;
+    render.postProcess = { ...render.postProcess, state: "success", completed: results.length, created, skipped, finishedAt: render.finishedAt };
+    appendRenderLog(`Post-process complete: ${created} created, ${skipped} already current. Processed files use the _POST suffix beside untouched originals.\n`);
+    updateCatalog(jobPath);
+  }).catch(postError => {
+    render.state = options.automatic ? "success" : "failed"; render.finishedAt = new Date().toISOString(); render.currentTask = null; render.currentCamera = null;
+    render.message = `Render files are safe, but post-process failed: ${postError.message}`;
+    render.postProcess = { ...render.postProcess, state: "failed", error: postError.message, finishedAt: render.finishedAt };
+    appendRenderLog(`Post-process failed without changing originals: ${postError.stack || postError.message}\n`);
+  }).finally(() => { postProcessPromise = null; });
+  return postProcessPromise;
 }
 
 function finalizeCropCalibration(run) {
@@ -231,7 +274,7 @@ function scanImages(folder) {
     const current = stack.pop();
     for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
       const full = path.join(current, entry.name);
-      if (entry.isDirectory()) stack.push(full); else if (/\.(png|jpe?g|webp)$/i.test(entry.name)) found.push(full);
+      if (entry.isDirectory()) stack.push(full); else if (/\.(png|jpe?g|webp)$/i.test(entry.name) && !isProcessedImage(full)) found.push(full);
     }
   }
   return found.sort();
@@ -320,6 +363,8 @@ async function preflight(input) {
   checks.push(fs.existsSync(UNREAL_EDITOR) && fs.existsSync(UNREAL_PROJECT) ? { id: "unreal", level: bridgeReady ? "ok" : "error", label: "Unreal", detail: bridgeDetail } : { id: "unreal", level: "error", label: "Unreal", detail: "Editor or project file is missing." });
   try { fs.accessSync(path.join(ROOT, "local", "renders"), fs.constants.W_OK); checks.push({ id: "output", level: "ok", label: "Output", detail: "Local render folder is writable." }); }
   catch { checks.push({ id: "output", level: "error", label: "Output", detail: "Local render folder is not writable." }); }
+  const post = postProcessAvailability(ROOT);
+  checks.push(post.ok ? { id: "postprocess", level: "ok", label: "Post-process", detail: "libvips and AdobeRGB1998 are ready; originals will be preserved." } : { id: "postprocess", level: "error", label: "Post-process", detail: post.error });
   const expected = inspected.length * cameras.length * layers.length;
   return { ok: !checks.some(check => check.level === "error"), checks, counts: { models: inspected.length, cameras: cameras.length, layers: layers.length, expectedRenders: expected, cropCalibrations }, materials: assets.length };
 }
@@ -411,7 +456,7 @@ async function api(request, response, url) {
     return json(response, 201, { jobPath: result.jobPath, outputFolder: result.outputFolder, modelCount: result.job.tasks.length, cameraCount, lightSource: sheet.source });
   }
   if (request.method === "POST" && url.pathname === "/api/renders") {
-    if (child || activeRun) return error(response, 409, render.state === "running" ? "A render is already running" : "Unreal Editor is still closing");
+    if (child || activeRun || postProcessPromise) return error(response, 409, render.phase === "Post-processing" ? "Post-processing is still running" : render.state === "running" ? "A render is already running" : "Unreal Editor is still closing");
     const input = await body(request), jobPath = path.resolve(String(input.jobPath || "")), jobsRoot = path.join(ROOT, "local", "jobs", "generated");
     if (!within(jobPath, jobsRoot) || !fs.existsSync(jobPath)) return error(response, 400, "Only generated local job files can be launched");
     if (!fs.existsSync(UNREAL_EDITOR) || !fs.existsSync(UNREAL_PROJECT)) return error(response, 503, "Unreal Editor 5.6 or rh_unreal_2.uproject was not found");
@@ -428,6 +473,16 @@ async function api(request, response, url) {
     return json(response, 202, currentRender());
   }
   if (request.method === "GET" && url.pathname === "/api/renders/status") return json(response, 200, currentRender());
+  if (request.method === "POST" && url.pathname === "/api/postprocess") {
+    if (child || activeRun || postProcessPromise) return error(response, 409, "A render or post-process operation is already running");
+    const input = await body(request), jobPath = path.resolve(String(input.jobPath || "")), jobsRoot = path.join(ROOT, "local", "jobs", "generated");
+    if (!within(jobPath, jobsRoot) || !fs.existsSync(jobPath)) return error(response, 400, "Only generated local job files can be post-processed");
+    const job = JSON.parse(fs.readFileSync(jobPath, "utf8")), files = originalFilesForJob(job);
+    if (!files.length) return error(response, 400, "This job has no original PNG files to post-process");
+    render = { state: "running", pid: null, jobPath, startedAt: new Date().toISOString(), finishedAt: null, exitCode: null, rendered: 0, totalRenders: 0, queue: [], phase: null, phaseIndex: 0, phaseCount: 0, substrate: null, autoRestarts: 0, log: "Manual post-process requested from render history.\n" };
+    startPostProcessing(job, jobPath, files, { automatic: false });
+    return json(response, 202, currentRender());
+  }
   if (request.method === "GET" && url.pathname === "/api/history") return json(response, 200, { batches: history(ROOT, currentRender()) });
   if (request.method === "GET" && url.pathname === "/api/jobs/file") {
     const jobsRoot = path.join(ROOT, "local", "jobs", "generated"), file = path.resolve(jobsRoot, url.searchParams.get("path") || "");

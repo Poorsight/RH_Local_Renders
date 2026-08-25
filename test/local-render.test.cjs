@@ -15,6 +15,7 @@ const { buildUnrealLaunch } = require("../lib/unreal.cjs");
 const { history, expectedRenders } = require("../lib/history.cjs");
 const { buildRenderPlan, cameraStateKey, applyCameraHandoff } = require("../lib/render-plan.cjs");
 const { analyzeCalibrationPair, applyCropProfile } = require("../lib/crop.cjs");
+const { availability, isProcessedImage, processImage, processedPathFor, writePngText } = require("../lib/post-process.cjs");
 
 const root = path.join(__dirname, "..");
 const rows = parseCsv(fs.readFileSync(path.join(root, "data", "sectionals-indoor.csv"), "utf8"));
@@ -96,12 +97,53 @@ test("render history discovers saved jobs and their disk renders", () => {
   const job = buildJob(input, { ...model, materialIds: ["UPH", "Stitches", "Feet"] }, rig, output);
   const jobPath = path.join(jobsRoot, "TEST_prod1.job.json"), image = path.join(output, "00000000_F_Product_uph.png");
   try {
-    fs.writeFileSync(jobPath, JSON.stringify(job)); fs.writeFileSync(image, "png");
+    fs.writeFileSync(jobPath, JSON.stringify(job)); fs.writeFileSync(image, "png"); fs.writeFileSync(processedPathFor(image), "post");
     assert.equal(expectedRenders(job.tasks[0]), 1);
     const [saved] = history(temp);
     assert.equal(saved.id, "TEST_prod1"); assert.equal(saved.modelCount, 1); assert.equal(saved.renderCount, 1); assert.equal(saved.expectedRenders, 1); assert.equal(saved.state, "complete");
+    assert.equal(saved.postProcessCount, 1); assert.ok(saved.models[0].renders[0].processed); assert.ok(isProcessedImage(processedPathFor(image)));
     assert.deepEqual(saved.models[0].dimensions, baseInput.dimensions); assert.equal(saved.models[0].renders[0].camera, "F");
     assert.match(saved.jobUrl, /^\/api\/jobs\/file\?path=/); assert.match(saved.models[0].renders[0].url, /^\/api\/renders\/file\?path=/);
+  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+});
+
+test("PNG delivery metadata is inserted without replacing image chunks", () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "rh-png-meta-")), file = path.join(temp, "sample.png");
+  try {
+    const png = new PNG({ width: 2, height: 2 }); png.data.fill(255); fs.writeFileSync(file, PNG.sync.write(png));
+    const before = fs.readFileSync(file); writePngText(file, { jobId: "batch_test", Camera: "F", Description: "passport" });
+    const after = fs.readFileSync(file), textValue = after.toString("latin1");
+    assert.ok(after.subarray(0, 8).equals(before.subarray(0, 8))); assert.match(textValue, /jobId\x00batch_test/); assert.match(textValue, /Camera\x00F/); assert.match(textValue, /Description\x00passport/);
+  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+});
+
+test("post-process creates a delivery PNG beside an untouched original", { skip: !availability(root).ok }, async () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "rh-post-test-")), source = path.join(temp, "00000000_F_Product_FABRIC_A.png");
+  const png = new PNG({ width: 4, height: 4 });
+  for (let index = 0; index < png.data.length; index += 4) { png.data[index] = 180; png.data[index + 1] = 120; png.data[index + 2] = 80; png.data[index + 3] = 255; }
+  fs.writeFileSync(source, PNG.sync.write(png));
+  const original = fs.readFileSync(source), job = buildJob({ ...baseInput, cameras: ["F"] }, { ...model, materialIds: ["UPH", "Stitches", "Feet"] }, rig, temp), task = job.tasks[0];
+  try {
+    const result = await processImage(root, source, job, task, { config: { canvas: { width: 12, height: 8 }, dpi: 300, outputSuffix: "_POST", shadow: { color: "#120C06", alphaBoostPercent: { F: 25 } } } });
+    assert.equal(result.skipped, false); assert.ok(fs.existsSync(result.output)); assert.deepEqual(fs.readFileSync(source), original);
+    const processed = PNG.sync.read(fs.readFileSync(result.output)); assert.equal(processed.width, 12); assert.equal(processed.height, 8);
+    assert.match(fs.readFileSync(result.output).toString("latin1"), /PostProcessVersion\x00RH_LOCAL_1/);
+    const second = await processImage(root, source, job, task, { config: { canvas: { width: 12, height: 8 }, dpi: 300, outputSuffix: "_POST", shadow: { color: "#120C06", alphaBoostPercent: { F: 25 } } } });
+    assert.equal(second.skipped, true); assert.equal(second.reason, "current");
+  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+});
+
+test("Shadow post-process recolors RGB and boosts alpha on the delivery canvas", { skip: !availability(root).ok }, async () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "rh-shadow-post-test-")), source = path.join(temp, "00000000_F_Shadow.png");
+  const png = new PNG({ width: 2, height: 2 });
+  for (let index = 0; index < png.data.length; index += 4) { png.data[index] = 240; png.data[index + 1] = 240; png.data[index + 2] = 240; png.data[index + 3] = 128; }
+  fs.writeFileSync(source, PNG.sync.write(png));
+  const original = fs.readFileSync(source), job = buildJob({ ...baseInput, cameras: ["F"], layers: ["Shadow"] }, { ...model, materialIds: ["UPH", "Stitches", "Feet"] }, rig, temp), task = job.tasks[0];
+  try {
+    const result = await processImage(root, source, job, task, { config: { canvas: { width: 6, height: 4 }, dpi: 300, outputSuffix: "_POST", shadow: { color: "#120C06", alphaBoostPercent: { F: 25 } } } });
+    const processed = PNG.sync.read(fs.readFileSync(result.output)), center = (1 * processed.width + 2) * 4;
+    assert.deepEqual([...processed.data.subarray(center, center + 3)], [18, 12, 6]); assert.ok(processed.data[center + 3] > 128);
+    assert.deepEqual(fs.readFileSync(source), original); assert.equal(processed.width, 6); assert.equal(processed.height, 4);
   } finally { fs.rmSync(temp, { recursive: true, force: true }); }
 });
 
@@ -369,18 +411,20 @@ test("local render service calibrates, saves and applies an optimized crop befor
     const launch = await fetch(`http://127.0.0.1:${port}/api/renders`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jobPath }) });
     assert.equal(launch.status, 202);
     let status;
-    for (let attempt = 0; attempt < 250; attempt++) {
+    for (let attempt = 0; attempt < 600; attempt++) {
       status = await (await fetch(`http://127.0.0.1:${port}/api/renders/status`)).json();
       if (status.state !== "running") break;
       await sleep(50);
     }
     assert.equal(status.state, "success", status.log);
     assert.equal(status.rendered, 4); assert.equal(status.totalRenders, 4);
+    assert.equal(status.postProcess.total, 2, "calibration frames are not delivery outputs"); assert.equal(status.postProcess.state, "success");
     const launches = fs.readFileSync(fakeLog, "utf8").trim().split(/\r?\n/).map(line => JSON.parse(line));
     assert.deepEqual(launches.map(item => item.phase), ["Crop calibration · Fabric", "Crop calibration · Shadow", "Fabric", "Shadow"]);
     const saved = JSON.parse(fs.readFileSync(jobPath, "utf8")), [fabric, shadow] = saved.tasks[0].sequence.cameras[0].LayerResolutions;
     assert.ok(fabric.Resolution.Y < 5000); assert.equal(fabric.Resolution.Y, shadow.Resolution.Y); assert.equal(fabric.SensorSize.Y, shadow.SensorSize.Y);
     assert.equal(saved.tasks[0].sequence.cameras[0]._rhLocalCrop.status, "ready");
+    assert.equal(saved._rhLocal.cameraStates["test_prod1::sectional_indoor_r_f"].focalLength, 140, "the delivery passport can reuse the actual Fabric camera state");
     assert.equal(Object.keys(JSON.parse(fs.readFileSync(cropCache, "utf8")).profiles).length, 1);
     assert.match(status.log, /Saved 1 crop profile; average vertical pixel saving/);
   } finally {

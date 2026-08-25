@@ -50,6 +50,14 @@ The static preview uses the same tracked `data/models.json`: dropping any batch 
 
 There are no bundled model presets. **Render & job history** discovers the JSON jobs and render files already stored under `local/`, including output from a completed plugin run even if a previous browser session missed its final event. A saved job can be selected, opened as a raw `application/json` document for JSONVue or the browser's built-in JSON viewer, shown in Explorer, or launched again. If a new tab is blocked, **View JSON** falls back to the in-page formatted dialog. **Review batch** loads its model list into the native light rig; selecting a model restores that job's dimensions, side, source mode, completion state, and disk render gallery. Each camera shows Fabric, Shadow, and a centered pixel-grid composite of Fabric over the 3:1 Shadow canvas on a neutral checkerboard.
 
+## Automatic delivery post-process
+
+After every successful render plan, the local service automatically prepares the delivery images described by the RH farm handoff. The original Unreal PNG is never opened for writing. A separate file with the `_POST.png` suffix is created beside it through a temporary file and atomic rename, then its mtime is matched to the source. Running the operation again skips current outputs; changing an original causes only its processed counterpart to be regenerated. Saved jobs also expose a **Post-process** action for completing or retrying an older batch without rendering it again.
+
+Both layers are centered without scaling on a transparent `15000×5000` canvas. Fabric is converted from its embedded/source sRGB interpretation to `AdobeRGB1998`. Shadow keeps its alpha, replaces RGB with `#120C06`, self-composites at 25% alpha for `F`, `FH`, and `TQ`, and receives the Adobe RGB profile without an RGB conversion. Both outputs are tagged as 300 DPI and receive a PNG render passport with the job, product, material, camera, source filename, model path, mesh-material map, and available camera data. Settings live in `data/postprocess.json`; the exact delivery profile is tracked at `assets/AdobeRGB1998.icc`.
+
+The pipeline uses the installed libvips executable at `C:\vips\vips-dev-8.18\bin\vips.exe`. Set `RH_VIPS` to another executable when needed. Preflight blocks a new render if libvips or the profile is unavailable, preventing a batch from finishing without its expected post-process capability. History counts only original render frames; processed companions appear as `POST` and are preferred by the gallery and Combined preview.
+
 The legacy inches-as-centimetres FBX profile uses the opposite X handedness during Unreal import. Automatic inspection accounts for this when deriving import yaw; the affected `prod9910052` model therefore uses `+90°`, while normal metre exports keep the established orientation rule.
 
 ## Light reference

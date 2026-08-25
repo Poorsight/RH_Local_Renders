@@ -644,6 +644,9 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(styles, /\.render-queue>span\[data-state=active\]\{box-shadow:var\(--sel-ring\)\}/);
   assert.doesNotMatch(styles, /\.render-queue>div[.{]/);
   assert.doesNotMatch(styles, /\.render-queue span:last-child/);
+  // a long batch scrolls, and the running model is brought into view once per change
+  assert.match(client, /state\.queueFocus !== render\.currentTask/);
+  assert.match(client, /list\.scrollTop = Math\.max\(0, offset -/);
   assert.match(html, /class="output-fieldsets"/);
   assert.match(html, /workspace-col-status">\s*<section class="panel output-panel"/);
   assert.match(styles, /\[data-material-status\]\[data-state=found\]\{background:var\(--accent-soft\)/);

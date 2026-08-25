@@ -1,6 +1,6 @@
 (() => {
   const $ = (id) => document.getElementById(id);
-  const state = { status: null, models: [], metadata: null, materialAssets: [], preflight: null, preflightTimer: null, batch: [], model: null, jobPath: null, poll: null, rig: null, history: [], historyBatch: null, historySelection: new Set(), rigBatch: null, historyModel: null };
+  const state = { status: null, models: [], metadata: null, materialAssets: [], preflight: null, preflightTimer: null, batch: [], model: null, jobPath: null, poll: null, rig: null, history: [], historyBatch: null, historySelection: new Set(), rigBatch: null, historyModel: null, queueFocus: null };
   const canReachLocalService = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
   const LOCAL_MODELS_ROOT = "D:\\GitHub\\RH_Local_Renders\\local\\models";
   const THEME_KEY = "rh-local-renders-theme";
@@ -421,6 +421,18 @@
       const stateLabel = ({ active: "Rendering", complete: "Complete", partial: "Partial", pending: "Upcoming", queued: "Upcoming" })[itemState] || itemState;
       return `<span data-state="${escapeHtml(itemState)}" title="${escapeHtml(item.name)}"><b>${String(index + 1).padStart(2, "0")}</b><span class="render-queue-name">${escapeHtml(item.name)}</span><i>${escapeHtml(stateLabel)}</i><small>${Number(item.rendered || 0)}/${Number(item.expected || 0)}</small></span>`;
     }).join("");
+    // With a long batch the running model is almost always outside the 300px window, so
+    // bring it into view -- but only when it changes, otherwise every poll would yank the
+    // list back while someone is reading another row.
+    const running = $("renderQueue").querySelector('[data-state="active"]');
+    if (running && state.queueFocus !== render.currentTask) {
+      const list = $("renderQueue");
+      // offsetTop counts from the nearest positioned ancestor, not from the list, so the
+      // offset is measured against the list itself
+      const offset = running.getBoundingClientRect().top - list.getBoundingClientRect().top + list.scrollTop;
+      list.scrollTop = Math.max(0, offset - (list.clientHeight - running.offsetHeight) / 2);
+    }
+    state.queueFocus = running ? render.currentTask : null;
     $("retryRender").hidden = render.state !== "failed" || !render.jobPath;
     log.hidden = false; log.textContent = render.log || "";
     if (render.state !== "running" && state.poll) { clearInterval(state.poll); state.poll = null; loadHistory(); }

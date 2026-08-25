@@ -1,6 +1,7 @@
 @echo off
 cd /d "%~dp0"
-if /I "%~1"=="--no-browser" goto start_server
-start "RH Local Renders" http://127.0.0.1:5500/
-:start_server
-node server.cjs
+if /I "%~1"=="--no-browser" (
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0scripts\start-local-service.ps1"
+  exit /b %errorlevel%
+)
+powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0Launch_RH_Local_Renders.ps1"

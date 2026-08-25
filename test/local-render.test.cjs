@@ -510,14 +510,22 @@ test("legacy light-rig project files stay out of the unified project", () => {
 
 test("desktop launcher replaces a stale hidden server and waits before opening the site", () => {
   const launcher = fs.readFileSync(path.join(root, "Launch_RH_Local_Renders.vbs"), "utf8");
+  const powerShellLauncher = fs.readFileSync(path.join(root, "Launch_RH_Local_Renders.ps1"), "utf8");
   const batch = fs.readFileSync(path.join(root, "Start_RH_Local_Renders.bat"), "utf8");
-  assert.match(launcher, /ServerState\(statusUrl\)/);
-  assert.match(launcher, /"""stale"":false/);
-  assert.match(launcher, /Get-NetTCPConnection/);
-  assert.match(launcher, /Stop-Process/);
-  assert.match(launcher, /--no-browser/);
-  assert.match(launcher, /shell\.Run siteUrl, 1, False/);
-  assert.match(batch, /if \/I "%~1"=="--no-browser" goto start_server/);
+  const serviceScript = fs.readFileSync(path.join(root, "scripts", "start-local-service.ps1"), "utf8");
+  assert.match(launcher, /ShellExecute "powershell\.exe"/);
+  assert.match(launcher, /Launch_RH_Local_Renders\.ps1/);
+  assert.match(powerShellLauncher, /Get-RHServerState/);
+  assert.match(powerShellLauncher, /runtime\.stale/);
+  assert.match(powerShellLauncher, /Get-NetTCPConnection/);
+  assert.match(powerShellLauncher, /Stop-Process/);
+  assert.match(powerShellLauncher, /start-local-service\.ps1/);
+  assert.match(powerShellLauncher, /Start-Process \$siteUrl/);
+  assert.match(batch, /start-local-service\.ps1/);
+  assert.match(batch, /Launch_RH_Local_Renders\.ps1/);
+  assert.match(serviceScript, /Start-Process -FilePath \$node\.Source/);
+  assert.match(serviceScript, /-WindowStyle Hidden/);
+  assert.match(serviceScript, /server-error\.log/);
 });
 
 test("server status exposes a runtime token and stale-source signal", () => {

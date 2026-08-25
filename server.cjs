@@ -152,9 +152,11 @@ function startPostProcessing(job, jobPath, files, options = {}) {
   render.message = `Preparing ${files.length} delivery image${files.length === 1 ? "" : "s"}`;
   render.postProcess = { state: "running", completed: 0, total: files.length, startedAt, automatic: Boolean(options.automatic) };
   appendRenderLog(`Starting post-process for ${files.length} original PNG${files.length === 1 ? "" : "s"}: transparent 15000x5000 canvas, AdobeRGB1998, 300 DPI, and Shadow delivery treatment. Originals stay unchanged.\n`);
+  let readyToUpload = null;
   postProcessPromise = processJob(ROOT, job, {
     files,
     cameraStates: options.cameraStates,
+    onDelivery: delivery => { readyToUpload = delivery; },
     onProgress: progress => {
       render.currentTask = progress.task; render.currentCamera = path.basename(progress.file).match(/_(F|FH|TQ)_/)?.[1] || null;
       render.postProcess.completed = progress.completed;
@@ -163,9 +165,9 @@ function startPostProcessing(job, jobPath, files, options = {}) {
   }).then(results => {
     const created = results.filter(result => !result.skipped).length, skipped = results.length - created;
     render.state = "success"; render.finishedAt = new Date().toISOString(); render.currentTask = null; render.currentCamera = null;
-    render.message = `${created} processed image${created === 1 ? "" : "s"} ready${skipped ? ` · ${skipped} already current` : ""}`;
-    render.postProcess = { ...render.postProcess, state: "success", completed: results.length, created, skipped, finishedAt: render.finishedAt };
-    appendRenderLog(`Post-process complete: ${created} created, ${skipped} already current. Processed files use the _POST suffix beside untouched originals.\n`);
+    render.message = `${created} processed image${created === 1 ? "" : "s"} ready${skipped ? ` · ${skipped} already current` : ""} · upload folder ready`;
+    render.postProcess = { ...render.postProcess, state: "success", completed: results.length, created, skipped, readyToUpload, finishedAt: render.finishedAt };
+    appendRenderLog(`Post-process complete: ${created} created, ${skipped} already current. Processed files use the _POST suffix beside untouched originals. Ready to upload: ${readyToUpload?.folder || "not created"} (${readyToUpload?.files || 0} files).\n`);
     updateCatalog(jobPath);
   }).catch(postError => {
     render.state = options.automatic ? "success" : "failed"; render.finishedAt = new Date().toISOString(); render.currentTask = null; render.currentCamera = null;

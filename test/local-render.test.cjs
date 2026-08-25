@@ -15,7 +15,7 @@ const { buildUnrealLaunch } = require("../lib/unreal.cjs");
 const { history, expectedRenders } = require("../lib/history.cjs");
 const { buildRenderPlan, cameraStateKey, applyCameraHandoff } = require("../lib/render-plan.cjs");
 const { analyzeCalibrationPair, applyCropProfile } = require("../lib/crop.cjs");
-const { availability, isProcessedImage, processImage, processedPathFor, writePngText } = require("../lib/post-process.cjs");
+const { READY_FOLDER_NAME, availability, isProcessedImage, processImage, processedPathFor, publishReadyToUpload, writePngText } = require("../lib/post-process.cjs");
 
 const root = path.join(__dirname, "..");
 const rows = parseCsv(fs.readFileSync(path.join(root, "data", "sectionals-indoor.csv"), "utf8"));
@@ -98,12 +98,35 @@ test("render history discovers saved jobs and their disk renders", () => {
   const jobPath = path.join(jobsRoot, "TEST_prod1.job.json"), image = path.join(output, "00000000_F_Product_uph.png");
   try {
     fs.writeFileSync(jobPath, JSON.stringify(job)); fs.writeFileSync(image, "png"); fs.writeFileSync(processedPathFor(image), "post");
+    fs.mkdirSync(path.join(output, READY_FOLDER_NAME, model.name), { recursive: true }); fs.writeFileSync(path.join(output, READY_FOLDER_NAME, model.name, `${model.name}_F.png`), "delivery");
     assert.equal(expectedRenders(job.tasks[0]), 1);
     const [saved] = history(temp);
     assert.equal(saved.id, "TEST_prod1"); assert.equal(saved.modelCount, 1); assert.equal(saved.renderCount, 1); assert.equal(saved.expectedRenders, 1); assert.equal(saved.state, "complete");
     assert.equal(saved.postProcessCount, 1); assert.ok(saved.models[0].renders[0].processed); assert.ok(isProcessedImage(processedPathFor(image)));
+    assert.equal(saved.readyToUpload, null, "a loose delivery image without a manifest is not treated as an upload set");
     assert.deepEqual(saved.models[0].dimensions, baseInput.dimensions); assert.equal(saved.models[0].renders[0].camera, "F");
     assert.match(saved.jobUrl, /^\/api\/jobs\/file\?path=/); assert.match(saved.models[0].renders[0].url, /^\/api\/renders\/file\?path=/);
+  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+});
+
+test("processed renders publish into an isolated ready-to-upload model structure", () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "rh-ready-upload-")), output = path.join(temp, "batch_test"), current = { ...model, materialIds: ["UPH", "Stitches", "Feet"] };
+  const job = buildJob({ ...baseInput, cameras: ["F", "FH", "TQ"], layers: ["Fabric", "Shadow"] }, current, rig, output), task = job.tasks[0];
+  fs.mkdirSync(output, { recursive: true });
+  try {
+    for (const camera of ["F", "FH", "TQ"]) for (const layer of ["Fabric", "Shadow"]) {
+      const source = path.join(output, layer === "Shadow" ? `00000000_${camera}_Shadow.png` : `00000000_${camera}_Product_FABRIC_A.png`);
+      fs.writeFileSync(source, `raw-${camera}-${layer}`); fs.writeFileSync(processedPathFor(source), `post-${camera}-${layer}`);
+    }
+    const delivery = publishReadyToUpload(job, { root, config: { outputSuffix: "_POST" } });
+    assert.equal(delivery.files, 6); assert.equal(delivery.models, 1); assert.equal(delivery.complete, true);
+    const modelFolder = path.join(output, READY_FOLDER_NAME, model.name);
+    assert.deepEqual(fs.readdirSync(modelFolder).sort(), [
+      `${model.name}_F.png`, `${model.name}_FH.png`, `${model.name}_TQ.png`,
+      `${model.name}_F_Shadow.png`, `${model.name}_FH_Shadow.png`, `${model.name}_TQ_Shadow.png`
+    ].sort());
+    const manifest = JSON.parse(fs.readFileSync(path.join(output, READY_FOLDER_NAME, "manifest.json"), "utf8"));
+    assert.equal(manifest.fileCount, 6); assert.equal(manifest.complete, true); assert.ok(manifest.files.every(file => !path.isAbsolute(file.source)));
   } finally { fs.rmSync(temp, { recursive: true, force: true }); }
 });
 
@@ -574,6 +597,7 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(client, /const loadHistory = async/);
   assert.match(client, /data-history-action="rerun"/);
   assert.match(client, /data-history-action="edit"/);
+  assert.match(client, /data-history-action="openReady"/);
   assert.match(client, /const editHistoryJob = async \(batch, options = \{\}\) =>/);
   assert.match(client, /window\.open\(batch\.jobUrl, "_blank"\)/);
   assert.match(client, /rawJsonTab\.opener = null/);
@@ -585,6 +609,9 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(client, /selectHistoryModel/);
   assert.match(client, /state\.rigBatch/);
   assert.match(client, /const card = render =>/);
+  assert.doesNotMatch(client, /render\.processed \|\| render/);
+  assert.doesNotMatch(client, /fabric\.processed \|\| fabric/);
+  assert.match(client, /Combined · RAW/);
   assert.doesNotMatch(client, /batch\.models\.slice\(0, 6\)/);
   assert.match(styles, /\.rig-render-images img\{height:auto;aspect-ratio:auto;object-fit:contain\}/);
   assert.match(styles, /\.history-model-list\{max-height:206px;overflow:auto/);

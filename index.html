@@ -1,11 +1,12 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="graphite">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="dark">
   <title>RH Local Renders</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <script>try{document.documentElement.dataset.theme=localStorage.getItem("rh-local-renders-theme")||"graphite"}catch{}</script>
   <link rel="stylesheet" href="app.css">
 </head>
 <body>
@@ -14,7 +15,16 @@
       <span class="brand-mark" aria-hidden="true">RH</span>
       <div><strong>RH Local Renders</strong><span>Sectional render control</span></div>
     </div>
-    <div id="connection" class="connection" data-state="loading"><span></span>Connecting to local service…</div>
+    <div class="topbar-actions">
+      <div class="theme-switcher" role="group" aria-label="Color theme">
+        <button type="button" data-theme-value="graphite" aria-label="Graphite theme" title="Graphite"><span></span></button>
+        <button type="button" data-theme-value="slate" aria-label="Slate theme" title="Slate"><span></span></button>
+        <button type="button" data-theme-value="navy" aria-label="Navy theme" title="Navy"><span></span></button>
+        <button type="button" data-theme-value="espresso" aria-label="Espresso theme" title="Espresso"><span></span></button>
+        <button type="button" data-theme-value="stone" aria-label="Light Stone theme" title="Light Stone"><span></span></button>
+      </div>
+      <div id="connection" class="connection" data-state="loading"><span></span>Connecting to local service…</div>
+    </div>
   </header>
 
   <main>
@@ -120,6 +130,14 @@
             <label><input type="radio" name="renderProfile" value="low"><span>Low <small>Fast test</small></span></label>
             <label><input type="radio" name="renderProfile" value="high" checked><span>High <small>Production</small></span></label>
           </div>
+        </fieldset>
+        <fieldset>
+          <legend>Frame crop</legend>
+          <div class="choice-row crop-mode" role="radiogroup" aria-label="Frame crop mode">
+            <label><input type="radio" name="cropMode" value="full" checked><span>Full frame <small>Original sensor</small></span></label>
+            <label><input type="radio" name="cropMode" value="optimized"><span>Optimized <small>Safe cached crop</small></span></label>
+          </div>
+          <p class="field-hint">Optimized uses one saved profile per model and camera. Missing profiles automatically run a 500px Fabric + Shadow calibration before final renders.</p>
         </fieldset>
         <fieldset>
           <legend>Layers</legend>
@@ -234,28 +252,33 @@
         </aside>
 
         <div class="rig-stage">
-          <div class="rig-toolbar">
-            <div class="rig-segmented" role="radiogroup" aria-label="Diagram layout">
-              <label><input type="radio" name="rigLayout" value="plan"><span>Plan</span></label>
-              <label><input type="radio" name="rigLayout" value="elevation"><span>Elevation</span></label>
-              <label><input type="radio" name="rigLayout" value="split" checked><span>Split</span></label>
+          <button id="rigDiagramToggle" class="rig-diagram-toggle" type="button" aria-expanded="false" aria-controls="rigDiagramBody">
+            <span><strong>Lighting diagrams</strong><small>Plan + elevation</small></span><i aria-hidden="true">+</i>
+          </button>
+          <div id="rigDiagramBody" class="rig-diagram-body" hidden>
+            <div class="rig-toolbar">
+              <div class="rig-segmented" role="radiogroup" aria-label="Diagram layout">
+                <label><input type="radio" name="rigLayout" value="plan"><span>Plan</span></label>
+                <label><input type="radio" name="rigLayout" value="elevation"><span>Elevation</span></label>
+                <label><input type="radio" name="rigLayout" value="split" checked><span>Split</span></label>
+              </div>
+              <div class="rig-segmented" role="radiogroup" aria-label="Diagram color mode">
+                <label><input type="radio" name="rigColor" value="role" checked><span>Role</span></label>
+                <label><input type="radio" name="rigColor" value="kelvin"><span>Kelvin</span></label>
+              </div>
             </div>
-            <div class="rig-segmented" role="radiogroup" aria-label="Diagram color mode">
-              <label><input type="radio" name="rigColor" value="role" checked><span>Role</span></label>
-              <label><input type="radio" name="rigColor" value="kelvin"><span>Kelvin</span></label>
-            </div>
-          </div>
 
-          <div id="rigLoading" class="rig-loading">Loading Sectionals / Indoor light data…</div>
-          <div id="rigViews" class="rig-views" data-layout="split" hidden>
-            <article class="rig-view rig-plan-view">
-              <div class="rig-view-heading"><strong>Plan</strong><span>X · Y</span></div>
-              <svg id="rigPlan" role="img" aria-label="Top view of sectional and five-light rig" preserveAspectRatio="xMidYMid meet"></svg>
-            </article>
-            <article class="rig-view rig-elevation-view">
-              <div class="rig-view-heading"><strong>Elevation</strong><span>X · Z</span></div>
-              <svg id="rigElevation" role="img" aria-label="Side view of sectional and five-light rig" preserveAspectRatio="xMidYMid meet"></svg>
-            </article>
+            <div id="rigLoading" class="rig-loading">Loading Sectionals / Indoor light data…</div>
+            <div id="rigViews" class="rig-views" data-layout="split" hidden>
+              <article class="rig-view rig-plan-view">
+                <div class="rig-view-heading"><strong>Plan</strong><span>X · Y</span></div>
+                <svg id="rigPlan" role="img" aria-label="Top view of sectional and five-light rig" preserveAspectRatio="xMidYMid meet"></svg>
+              </article>
+              <article class="rig-view rig-elevation-view">
+                <div class="rig-view-heading"><strong>Elevation</strong><span>X · Z</span></div>
+                <svg id="rigElevation" role="img" aria-label="Side view of sectional and five-light rig" preserveAspectRatio="xMidYMid meet"></svg>
+              </article>
+            </div>
           </div>
           <div id="rigLights" class="rig-light-list" aria-label="Light values"></div>
           <div id="rigRenderGallery" class="rig-render-gallery" hidden>

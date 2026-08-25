@@ -6,6 +6,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
 const { spawn } = require("node:child_process");
+const { PNG } = require("pngjs");
 const { parseCsv } = require("../lib/csv.cjs");
 const { buildRig, jobLights, rigScale } = require("../lib/rig.cjs");
 const { buildJob, buildBatchJob, writeJob, CAMERA_YAW, RESOLUTION_PROFILES, groupedMaterials } = require("../lib/jobs.cjs");
@@ -13,6 +14,7 @@ const { ModelStore, sectionalFormFactor } = require("../lib/models.cjs");
 const { buildUnrealLaunch } = require("../lib/unreal.cjs");
 const { history, expectedRenders } = require("../lib/history.cjs");
 const { buildRenderPlan, cameraStateKey, applyCameraHandoff } = require("../lib/render-plan.cjs");
+const { analyzeCalibrationPair, applyCropProfile } = require("../lib/crop.cjs");
 
 const root = path.join(__dirname, "..");
 const rows = parseCsv(fs.readFileSync(path.join(root, "data", "sectionals-indoor.csv"), "utf8"));
@@ -266,6 +268,44 @@ test("a Shadow-only request inserts a low-res Fabric camera prefit before Shadow
   assert.deepEqual(buildRenderPlan(job).map(phase => phase.name), ["Fabric", "Shadow"]);
 });
 
+test("optimized crop unions Fabric and Shadow alpha with a symmetric safety margin", () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "rh-crop-")), fabricFile = path.join(temp, "fabric.png"), shadowFile = path.join(temp, "shadow.png");
+  const image = (width, top, bottom) => {
+    const png = new PNG({ width, height: 500 });
+    for (let y = top; y <= bottom; y += 1) for (let x = Math.floor(width * 0.3); x < Math.ceil(width * 0.7); x += 1) png.data[((y * width + x) << 2) + 3] = 255;
+    return PNG.sync.write(png);
+  };
+  try {
+    fs.writeFileSync(fabricFile, image(500, 150, 300)); fs.writeFileSync(shadowFile, image(1500, 270, 320));
+    const profile = analyzeCalibrationPair(fabricFile, shadowFile, { margin: 0.05 });
+    assert.deepEqual(profile.bounds.union, { top: 125, bottom: 345 });
+    assert.equal(profile.bounds.safe.top + profile.bounds.safe.bottom, 499, "safe crop remains centered on the optical axis");
+    const fabric = applyCropProfile(RESOLUTION_PROFILES.high.Fabric, profile), shadow = applyCropProfile(RESOLUTION_PROFILES.high.Shadow, profile);
+    assert.equal(fabric.Resolution.X, 5000); assert.equal(shadow.Resolution.X, 15000);
+    assert.equal(fabric.Resolution.Y, shadow.Resolution.Y); assert.equal(fabric.SensorSize.Y, shadow.SensorSize.Y);
+    assert.ok(fabric.Resolution.Y < 5000); assert.equal(shadow.SensorSize.X, 108);
+  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+});
+
+test("missing optimized profiles prepend one-time Fabric and Shadow calibration phases", () => {
+  const optimized = buildJob({ ...baseInput, cropMode: "optimized", modelFingerprint: "fingerprint", layers: ["Fabric", "Shadow"] }, { ...model, materialIds: ["UPH", "Stitches", "Feet"] }, rig, "D:\\renders\\crop-pending");
+  const phases = buildRenderPlan(optimized);
+  assert.deepEqual(phases.map(phase => phase.name), ["Crop calibration · Fabric", "Crop calibration · Shadow", "Fabric", "Shadow"]);
+  assert.deepEqual(phases[0].job.tasks[0].sequence.cameras[0].LayerResolutions[0].Resolution, { X: 500, Y: 500 });
+  assert.deepEqual(phases[1].job.tasks[0].sequence.cameras[0].LayerResolutions[0].Resolution, { X: 1500, Y: 500 });
+  assert.equal(phases[2].useCameraHandoff, true); assert.equal(phases[3].useCameraHandoff, true);
+});
+
+test("cached optimized profiles crop both final layers without calibration", () => {
+  const cropProfile = { cropRatio: 0.5, analyzedAt: "cached" };
+  const optimized = buildJob({ ...baseInput, cropMode: "optimized", modelFingerprint: "fingerprint", cropProfiles: { F: cropProfile, FH: cropProfile, TQ: cropProfile }, layers: ["Fabric", "Shadow"] }, { ...model, materialIds: ["UPH", "Stitches", "Feet"] }, rig, "D:\\renders\\crop-ready");
+  assert.deepEqual(buildRenderPlan(optimized).map(phase => phase.name), ["Fabric", "Shadow"]);
+  const [fabric, shadow] = optimized.tasks[0].sequence.cameras[0].LayerResolutions;
+  assert.equal(fabric.Resolution.Y, shadow.Resolution.Y); assert.equal(fabric.SensorSize.Y, shadow.SensorSize.Y);
+  assert.equal(fabric.Resolution.X, 5000); assert.equal(shadow.Resolution.X, 15000);
+  assert.equal(optimized.tasks[0].sequence.cameras[0]._rhLocalCrop.status, "ready");
+});
+
 test("local render service completes Fabric before restarting for Substrate-off Shadow", async () => {
   const suffix = `${process.pid}_${Date.now()}`, port = 56000 + process.pid % 5000;
   const jobsRoot = path.join(root, "local", "jobs", "generated"), output = path.join(root, "local", "renders", `test_phases_${suffix}`);
@@ -306,6 +346,46 @@ test("local render service completes Fabric before restarting for Substrate-off 
   } finally {
     service.kill();
     fs.rmSync(jobPath, { force: true }); fs.rmSync(output, { recursive: true, force: true }); fs.rmSync(fakeLog, { force: true });
+  }
+});
+
+test("local render service calibrates, saves and applies an optimized crop before final layers", async () => {
+  const suffix = `${process.pid}_${Date.now()}`, port = 58000 + process.pid % 3000;
+  const jobsRoot = path.join(root, "local", "jobs", "generated"), output = path.join(root, "local", "renders", `test_crop_${suffix}`);
+  const jobPath = path.join(jobsRoot, `test_crop_${suffix}.job.json`), fakeLog = path.join(os.tmpdir(), `rh-fake-crop-${suffix}.log`), cropCache = path.join(os.tmpdir(), `rh-crop-cache-${suffix}.json`);
+  fs.mkdirSync(jobsRoot, { recursive: true }); fs.mkdirSync(output, { recursive: true });
+  const job = buildJob({ ...baseInput, cameras: ["F"], layers: ["Fabric", "Shadow"], cropMode: "optimized", modelFingerprint: "test-fingerprint" }, { ...model, materialIds: ["UPH", "Stitches", "Feet"] }, rig, output);
+  job.jobId = `test_crop_${suffix}`; job._rhLocal.outputFolder = `${output}${path.sep}`;
+  fs.writeFileSync(jobPath, JSON.stringify(job));
+  const service = spawn(process.execPath, [path.join(root, "server.cjs")], {
+    cwd: root, windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, RH_LOCAL_RENDERS_PORT: String(port), RH_UNREAL_EDITOR: process.execPath, RH_UNREAL_PROJECT: path.join(root, "test", "fake-unreal.cjs"), RH_FAKE_UNREAL_LOG: fakeLog, RH_CROP_CACHE_FILE: cropCache }
+  });
+  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+  try {
+    let online = false;
+    for (let attempt = 0; attempt < 50 && !online; attempt++) { try { online = (await fetch(`http://127.0.0.1:${port}/api/status`)).ok; } catch {} if (!online) await sleep(50); }
+    assert.equal(online, true);
+    const launch = await fetch(`http://127.0.0.1:${port}/api/renders`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jobPath }) });
+    assert.equal(launch.status, 202);
+    let status;
+    for (let attempt = 0; attempt < 250; attempt++) {
+      status = await (await fetch(`http://127.0.0.1:${port}/api/renders/status`)).json();
+      if (status.state !== "running") break;
+      await sleep(50);
+    }
+    assert.equal(status.state, "success", status.log);
+    assert.equal(status.rendered, 4); assert.equal(status.totalRenders, 4);
+    const launches = fs.readFileSync(fakeLog, "utf8").trim().split(/\r?\n/).map(line => JSON.parse(line));
+    assert.deepEqual(launches.map(item => item.phase), ["Crop calibration · Fabric", "Crop calibration · Shadow", "Fabric", "Shadow"]);
+    const saved = JSON.parse(fs.readFileSync(jobPath, "utf8")), [fabric, shadow] = saved.tasks[0].sequence.cameras[0].LayerResolutions;
+    assert.ok(fabric.Resolution.Y < 5000); assert.equal(fabric.Resolution.Y, shadow.Resolution.Y); assert.equal(fabric.SensorSize.Y, shadow.SensorSize.Y);
+    assert.equal(saved.tasks[0].sequence.cameras[0]._rhLocalCrop.status, "ready");
+    assert.equal(Object.keys(JSON.parse(fs.readFileSync(cropCache, "utf8")).profiles).length, 1);
+    assert.match(status.log, /Saved 1 crop profile; average vertical pixel saving/);
+  } finally {
+    service.kill();
+    fs.rmSync(jobPath, { force: true }); fs.rmSync(output, { recursive: true, force: true }); fs.rmSync(fakeLog, { force: true }); fs.rmSync(cropCache, { force: true });
   }
 });
 
@@ -416,7 +496,8 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(client, /const normalizedMaterialId = id =>/);
   assert.match(client, /data-material-ids=/);
   assert.match(client, /render-composite-fabric/);
-  assert.match(client, /Fabric over Shadow · aligned preview/);
+  assert.match(client, /Fabric over Shadow · click to open/);
+  assert.match(client, /const openCombinedPreview = card =>/);
   assert.match(client, /const renderEta = render =>/);
   assert.match(client, /class="render-queue-name"/);
   assert.match(client, /active: "Rendering", complete: "Complete", partial: "Partial", pending: "Upcoming"/);
@@ -428,6 +509,7 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(styles, /\.render-queue-name/);
   assert.match(styles, /background:#c8cdd2/);
   assert.match(styles, /\.render-preview-card>span\{bottom:auto/);
+  assert.match(styles, /\.render-preview-card\.render-combined:hover \.render-preview-media \.render-composite-fabric\{transform:translate\(-50%,-50%\)\}/);
   assert.match(styles, /\.rig-batch-models\{display:grid;grid-template-columns:repeat\(2/);
   assert.match(styles, /render-soft-glow/);
   assert.match(styles, /aspect-ratio:3\/1!important/);
@@ -467,6 +549,9 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(html, /Shadow runs in a fresh Unreal process with Substrate disabled/);
   assert.match(html, /name="renderProfile" value="low"/);
   assert.match(html, /name="renderProfile" value="high" checked/);
+  assert.match(html, /name="cropMode" value="optimized"/);
+  assert.match(html, /id="rigDiagramToggle"/);
+  assert.equal((html.match(/data-theme-value=/g) || []).length, 5);
   assert.match(html, /id="preflight"/);
   assert.doesNotMatch(html, /id="pipelineBar"/);
   assert.doesNotMatch(client, /stickyGenerate/);

@@ -9,6 +9,7 @@ const { SheetStore } = require("./lib/rig.cjs");
 const { ModelStore } = require("./lib/models.cjs");
 const { writeBatchJob } = require("./lib/jobs.cjs");
 const { buildRenderPlan, cameraStateKey, applyCameraHandoff } = require("./lib/render-plan.cjs");
+const { CALIBRATION_FOLDER, modelFingerprint, readCropProfiles, writeCropProfiles, cropProfileFor, analyzeCalibrationPair, applyCropProfileToCamera, calibrationFiles } = require("./lib/crop.cjs");
 const { buildUnrealLaunch } = require("./lib/unreal.cjs");
 const { history, expectedRenders } = require("./lib/history.cjs");
 
@@ -19,7 +20,7 @@ const UNREAL_EDITOR = process.env.RH_UNREAL_EDITOR || "D:\\Unreal_Engine\\UE_5.6
 const UNREAL_PROJECT = process.env.RH_UNREAL_PROJECT || "D:\\GitHub\\rh_unreal_2\\rh_unreal_2.uproject";
 const sheet = new SheetStore(ROOT), models = new ModelStore(ROOT);
 const RUNTIME_FILES = [
-  "server.cjs", "package.json", "lib/csv.cjs", "lib/history.cjs", "lib/jobs.cjs", "lib/models.cjs", "lib/render-plan.cjs",
+  "server.cjs", "package.json", "lib/crop.cjs", "lib/csv.cjs", "lib/history.cjs", "lib/jobs.cjs", "lib/models.cjs", "lib/render-plan.cjs",
   "lib/rig.cjs", "lib/unreal.cjs", "scripts/inspect_fbx.py"
 ];
 const runtimeSourceToken = () => {
@@ -67,27 +68,30 @@ const taskLayerExpected = (task, layerName) => {
   const layer = (task.layers || []).find(item => !item.doNotRender && String(item.name || "").toLowerCase() === layerName.toLowerCase());
   if (!layer) return 0;
   const cameras = task.sequence?.cameras?.length || 0;
-  const variants = layerName === "Fabric" && !layer._rhLocalPrefit
+  const variants = layerName === "Fabric" && !layer._rhLocalPrefit && !layer._rhLocalCropCalibration
     ? (task.materials || []).reduce((product, group) => product * Math.max(group.list?.length || 0, 1), 1)
     : 1;
   return cameras * variants;
 };
 const taskOutputFolder = (task, layerName) => path.resolve(String((task.layers || []).find(layer => String(layer.name || "").toLowerCase() === layerName.toLowerCase())?.output?.folder || ""));
-const runProducedImages = (run, folder, layerName) => scanImages(folder).filter(file => imageLayer(file) === layerName && run.before.get(file) !== `${fs.statSync(file).size}:${fs.statSync(file).mtimeMs}`);
+const runProducedImages = (run, folder, layerName, calibration = false) => scanImages(folder).filter(file => {
+  const isCalibration = file.split(path.sep).includes(CALIBRATION_FOLDER);
+  return isCalibration === calibration && imageLayer(file) === layerName && run.before.get(file) !== `${fs.statSync(file).size}:${fs.statSync(file).mtimeMs}`;
+});
 
-function phaseTaskProgress(run, phaseName) {
-  const phase = run.phases.find(item => item.name === phaseName);
+function phaseTaskProgress(run, phase) {
+  const layerName = phase.layerName || phase.name;
   return (phase?.job?.tasks || []).map(task => {
-    const expected = taskLayerExpected(task, phaseName), folder = taskOutputFolder(task, phaseName);
-    const rendered = folder && fs.existsSync(folder) ? runProducedImages(run, folder, phaseName).length : 0;
-    const cameraReady = phaseName !== "Fabric" || (task.sequence?.cameras || []).every(camera => run.cameraStates.has(cameraStateKey(task.taskId, camera.sequenceName || camera.name)));
+    const expected = taskLayerExpected(task, layerName), folder = taskOutputFolder(task, layerName);
+    const rendered = folder && fs.existsSync(folder) ? runProducedImages(run, folder, layerName, Boolean(phase.isCalibration)).length : 0;
+    const cameraReady = layerName !== "Fabric" || (task.sequence?.cameras || []).every(camera => run.cameraStates.has(cameraStateKey(task.taskId, camera.sequenceName || camera.name)));
     return { name: task.taskId, expected, rendered: Math.min(rendered, expected), complete: expected > 0 && rendered >= expected && cameraReady };
   });
 }
 
 function refreshRunProgress() {
   if (!activeRun) return;
-  const phases = activeRun.phases.map(phase => [phase.name, new Map(phaseTaskProgress(activeRun, phase.name).map(item => [item.name, item]))]);
+  const phases = activeRun.phases.map(phase => [phase.name, new Map(phaseTaskProgress(activeRun, phase).map(item => [item.name, item]))]);
   render.queue = (activeRun.job.tasks || []).map(task => {
     const records = phases.map(([, rows]) => rows.get(task.taskId)).filter(Boolean);
     const expected = records.reduce((sum, item) => sum + item.expected, 0), rendered = records.reduce((sum, item) => sum + item.rendered, 0);
@@ -98,7 +102,7 @@ function refreshRunProgress() {
 }
 
 function remainingPhaseJob(run, phase) {
-  const remaining = new Set(phaseTaskProgress(run, phase.name).filter(item => !item.complete).map(item => item.name));
+  const remaining = new Set(phaseTaskProgress(run, phase).filter(item => !item.complete).map(item => item.name));
   const job = JSON.parse(JSON.stringify(phase.job));
   job.tasks = (job.tasks || []).filter(task => remaining.has(task.taskId));
   return job;
@@ -129,11 +133,43 @@ function finishRun(state, message) {
   activeRun = null; bridge = null;
 }
 
+function finalizeCropCalibration(run) {
+  const records = [], profiles = new Map();
+  for (const task of run.job.tasks || []) {
+    const baseOutput = path.resolve(String((task.layers || []).find(layer => layer.output?.folder)?.output?.folder || ""));
+    const folder = path.join(baseOutput, CALIBRATION_FOLDER);
+    for (const camera of task.sequence?.cameras || []) {
+      if (camera._rhLocalCrop?.status !== "pending") continue;
+      const files = calibrationFiles(folder, camera.name), fingerprint = camera._rhLocalCrop.fingerprint;
+      if (!files.fabric || !files.shadow) throw new Error(`Crop calibration pair is incomplete for ${task.taskId}/${camera.name}`);
+      const profile = { ...analyzeCalibrationPair(files.fabric, files.shadow), fingerprint, camera: camera.name, modelName: task.taskId, modelPath: task.model?.objPath || "" };
+      records.push(profile); profiles.set(`${task.taskId}::${camera.name}`, profile);
+    }
+  }
+  if (!records.length) return;
+  const apply = job => {
+    for (const task of job.tasks || []) task.sequence.cameras = (task.sequence?.cameras || []).map(camera => {
+      const profile = profiles.get(`${task.taskId}::${camera.name}`);
+      return profile ? applyCropProfileToCamera(camera, profile) : camera;
+    });
+  };
+  apply(run.job);
+  for (const phase of run.phases) if (!phase.isCalibration) apply(phase.job);
+  writeCropProfiles(ROOT, records);
+  const ratios = records.map(record => record.cropRatio), saved = Math.round((1 - ratios.reduce((sum, value) => sum + value, 0) / ratios.length) * 100);
+  appendRenderLog(`Saved ${records.length} crop profile${records.length === 1 ? "" : "s"}; average vertical pixel saving ${saved}%. Final Fabric/Shadow phases now use symmetric SensorSize.Y cropping.\n`);
+  fs.writeFileSync(run.jobPath, `${JSON.stringify(run.job, null, 2)}\n`, "utf8");
+}
+
 function advancePhaseOrFinish(message) {
   if (!activeRun) return;
   refreshRunProgress();
-  const phase = activeRun.phases[activeRun.index], remaining = phaseTaskProgress(activeRun, phase.name).filter(item => !item.complete);
+  const phase = activeRun.phases[activeRun.index], remaining = phaseTaskProgress(activeRun, phase).filter(item => !item.complete);
   if (remaining.length) return restartRenderPhase(`${message}; ${remaining.length} incomplete model${remaining.length === 1 ? "" : "s"}`);
+  if (phase.isCalibration && phase.layerName === "Shadow") {
+    try { finalizeCropCalibration(activeRun); }
+    catch (calibrationError) { return finishRun("failed", calibrationError.message); }
+  }
   if (activeRun.index + 1 < activeRun.phases.length) {
     activeRun.index += 1; render.pid = null; render.phase = `Preparing ${activeRun.phases[activeRun.index].name}`; render.phaseIndex = activeRun.index + 1; render.substrate = null; render.currentTask = null;
     appendRenderLog(`${phase.name} is complete. Restarting Unreal for ${activeRun.phases[activeRun.index].name} with Substrate ${activeRun.phases[activeRun.index].substrate ? "ON" : "OFF"}.\n`);
@@ -156,11 +192,11 @@ function startRenderPhase() {
   const phase = activeRun.phases[activeRun.index], apiUrl = `http://${HOST}:${PORT}/api/unreal`;
   let phaseJob = remainingPhaseJob(activeRun, phase);
   if (!phaseJob.tasks.length) return advancePhaseOrFinish(`${phase.name} already complete`);
-  if (phase.name === "Shadow" && activeRun.phases.some((item, index) => index < activeRun.index && item.name === "Fabric")) {
+  if (phase.useCameraHandoff) {
     const handoff = applyCameraHandoff(phaseJob, activeRun.cameraStates);
     if (handoff.missing.length) return finishRun("failed", `Fabric camera handoff missing for ${handoff.missing.join(", ")}`);
     phaseJob = handoff.job;
-    appendRenderLog(`Applied ${handoff.applied.length} Fabric camera state${handoff.applied.length === 1 ? "" : "s"} to Shadow; fit disabled.\n`);
+    appendRenderLog(`Applied ${handoff.applied.length} Fabric camera state${handoff.applied.length === 1 ? "" : "s"} to ${phase.name}; fit disabled.\n`);
   }
   bridge = { job: phaseJob, jobPath: activeRun.jobPath, outputFolder: activeRun.outputFolder, before: imageSnapshot(activeRun.outputFolder), delivered: false, completed: false, success: false, phase, exitHandled: false };
   const phaseBridge = bridge, launch = buildUnrealLaunch(UNREAL_EDITOR, UNREAL_PROJECT, apiUrl, { substrate: phase.substrate });
@@ -255,6 +291,17 @@ async function preflight(input) {
   checks.push(cameras.length ? { id: "cameras", level: "ok", label: "Cameras", detail: cameras.join(" · ") } : { id: "cameras", level: "error", label: "Cameras", detail: "Select at least one camera." });
   const shadowOnly = layers.includes("Shadow") && !layers.includes("Fabric");
   checks.push(layers.length ? { id: "layers", level: "ok", label: "Layers", detail: shadowOnly ? "Shadow · automatic 500×500 Fabric camera prefit" : layers.join(" → ") } : { id: "layers", level: "error", label: "Layers", detail: "Select at least one layer." });
+  let cropCalibrations = 0;
+  if (String(input.cropMode || "full").toLowerCase() === "optimized" && inspected.length && cameras.length) {
+    const cropStore = readCropProfiles(ROOT);
+    for (const model of inspected) {
+      const fingerprint = modelFingerprint(model.path);
+      cropCalibrations += cameras.filter(camera => !cropProfileFor(cropStore, fingerprint, camera)).length;
+    }
+    checks.push(cropCalibrations
+      ? { id: "crop", level: "warning", label: "Optimized crop", detail: `${cropCalibrations} model/camera pair${cropCalibrations === 1 ? "" : "s"} will run one-time 500px Fabric + Shadow calibration before final renders.` }
+      : { id: "crop", level: "ok", label: "Optimized crop", detail: "Every selected model/camera pair has a saved safe crop profile." });
+  } else checks.push({ id: "crop", level: "ok", label: "Frame crop", detail: "Full frame · original resolution and sensor aspect." });
   const assets = unrealMaterials(), assetNames = new Map(assets.map(asset => [asset.name.toLowerCase(), asset]));
   const assigned = Array.isArray(input.materials) ? input.materials : [];
   if (!assigned.length || assigned.some(row => !String(row.material || "").trim())) checks.push({ id: "materials", level: "error", label: "Materials", detail: "Complete every material assignment." });
@@ -274,7 +321,7 @@ async function preflight(input) {
   try { fs.accessSync(path.join(ROOT, "local", "renders"), fs.constants.W_OK); checks.push({ id: "output", level: "ok", label: "Output", detail: "Local render folder is writable." }); }
   catch { checks.push({ id: "output", level: "error", label: "Output", detail: "Local render folder is not writable." }); }
   const expected = inspected.length * cameras.length * layers.length;
-  return { ok: !checks.some(check => check.level === "error"), checks, counts: { models: inspected.length, cameras: cameras.length, layers: layers.length, expectedRenders: expected }, materials: assets.length };
+  return { ok: !checks.some(check => check.level === "error"), checks, counts: { models: inspected.length, cameras: cameras.length, layers: layers.length, expectedRenders: expected, cropCalibrations }, materials: assets.length };
 }
 
 function updateCatalog(jobPath) {
@@ -322,7 +369,7 @@ async function api(request, response, url) {
       if (eventName === "render_finished") refreshRunProgress();
     }
     const matchesJob = bridge && (!data.jobId || data.jobId === bridge.job.jobId || data.jobId === activeRun?.job?.jobId);
-    if (matchesJob && bridge?.phase?.name === "Fabric" && eventName === "sequence_camera_data") {
+    if (matchesJob && bridge?.phase?.layerName === "Fabric" && eventName === "sequence_camera_data") {
       const camera = data.camera || {}, focalLength = Number(camera.FocalLength ?? camera.focalLength);
       const sequenceName = data.sequenceName || camera.sequenceName || camera.name;
       if (data.taskId && sequenceName && camera.cameraLocation && camera.cameraRotation && Number.isFinite(focalLength) && focalLength > 0) {
@@ -351,12 +398,13 @@ async function api(request, response, url) {
   if (request.method === "POST" && url.pathname === "/api/sheet/refresh") return json(response, 200, await sheet.refresh());
   if (request.method === "POST" && url.pathname === "/api/jobs") {
     const input = await body(request), selections = input.models?.length ? input.models : [{ modelPath: input.modelPath, dimensions: input.dimensions, importYaw: input.importYaw }];
-    const entries = [];
+    const entries = [], cropStore = readCropProfiles(ROOT);
     for (const selection of selections) {
       const model = await models.inspect(selection.modelPath);
       const side = input.side === "auto" || !input.side ? model.side : String(input.side).toUpperCase();
       if (!["R", "L", "U"].includes(side)) throw new Error(`Could not determine L, R, or U form factor for ${model.name}`);
-      entries.push({ model, input: { ...input, ...selection, side, dimensions: selection.dimensions || model.dimensions, importYaw: selection.importYaw ?? model.importYaw } });
+      const fingerprint = modelFingerprint(model.path), cropProfiles = Object.fromEntries((input.cameras || []).map(camera => [camera, cropProfileFor(cropStore, fingerprint, camera)]).filter(([, profile]) => profile));
+      entries.push({ model, input: { ...input, ...selection, side, dimensions: selection.dimensions || model.dimensions, importYaw: selection.importYaw ?? model.importYaw, modelFingerprint: fingerprint, cropProfiles } });
     }
     const result = writeBatchJob(ROOT, entries, sheet.rig());
     const cameraCount = result.job.tasks.reduce((total, task) => total + task.sequence.cameras.length, 0);
@@ -373,7 +421,7 @@ async function api(request, response, url) {
     const phases = buildRenderPlan(job);
     activeRun = { job, jobPath, outputFolder, before: input.resume ? new Map() : imageSnapshot(outputFolder), phases, index: 0, cameraStates: new Map(), phaseRestarts: new Map() };
     const queue = (job.tasks || []).map(task => ({ name: task.taskId, state: "queued" }));
-    const totalRenders = (job.tasks || []).reduce((total, task) => total + expectedRenders(task) + (task.layers || []).filter(layer => layer._rhLocalPrefit && !layer.doNotRender).length * (task.sequence?.cameras?.length || 0), 0);
+    const totalRenders = phases.reduce((total, phase) => total + (phase.job.tasks || []).reduce((phaseTotal, task) => phaseTotal + taskLayerExpected(task, phase.layerName || phase.name), 0), 0);
     render = { state: "running", pid: null, jobPath, startedAt: new Date().toISOString(), finishedAt: null, exitCode: null, rendered: 0, totalRenders, currentTask: null, currentCamera: null, message: input.resume ? "Resuming completed files" : "Queued", queue, phase: null, phaseIndex: 0, phaseCount: phases.length, substrate: null, autoRestarts: 0, log: `Queued ${phases.map(phase => phase.name).join(" → ")} render plan${input.resume ? " in resume mode" : ""}.\nLocal BatchRender API: http://${HOST}:${PORT}/api/unreal\n` };
     refreshRunProgress();
     startRenderPhase();

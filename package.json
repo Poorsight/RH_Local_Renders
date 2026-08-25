@@ -8,5 +8,8 @@
     "test": "node --test test/local-render.test.cjs",
     "start": "node server.cjs"
   },
-  "license": "UNLICENSED"
+  "license": "UNLICENSED",
+  "dependencies": {
+    "pngjs": "^7.0.0"
+  }
 }

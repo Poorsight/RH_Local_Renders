@@ -3,6 +3,7 @@
   const state = { status: null, models: [], metadata: null, materialAssets: [], preflight: null, preflightTimer: null, batch: [], model: null, jobPath: null, poll: null, rig: null, history: [], historyBatch: null, historySelection: new Set(), rigBatch: null, historyModel: null };
   const canReachLocalService = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
   const LOCAL_MODELS_ROOT = "D:\\GitHub\\RH_Local_Renders\\local\\models";
+  const THEME_KEY = "rh-local-renders-theme";
   const RIG_REFERENCE = { width: 453, depth: 279, height: 79 };
   const RIG_GEOMETRY = {
     front_fill_lgt: { type: "rect", width: 500, height: 500, radius: 282.094791774 },
@@ -17,6 +18,18 @@
     main_key_lgt: { label: "Main key", role: "key", color: "#d1b477", kelvin: 6500 },
     right_bounce_lgt: { label: "Bounce", role: "bounce", color: "#88a98c", kelvin: 6000 },
     right_rim_lgt: { label: "Right rim", role: "rim", color: "#74a5a2", kelvin: 6500 }
+  };
+  const applyTheme = theme => {
+    const allowed = ["graphite", "slate", "navy", "espresso", "stone"], value = allowed.includes(theme) ? theme : "graphite";
+    document.documentElement.dataset.theme = value;
+    document.querySelectorAll("[data-theme-value]").forEach(button => button.setAttribute("aria-pressed", String(button.dataset.themeValue === value)));
+    try { localStorage.setItem(THEME_KEY, value); } catch {}
+  };
+  const setRigDiagramsExpanded = expanded => {
+    const open = Boolean(expanded), toggle = $("rigDiagramToggle");
+    $("rigDiagramBody").hidden = !open; toggle.setAttribute("aria-expanded", String(open)); toggle.querySelector("i").textContent = open ? "−" : "+";
+    try { localStorage.setItem("rh-local-renders-rig-diagrams", open ? "open" : "closed"); } catch {}
+    if (open) requestAnimationFrame(renderRig);
   };
   const api = async (path, options = {}) => {
     const response = await fetch(path, { headers: { "Content-Type": "application/json" }, ...options });
@@ -60,7 +73,7 @@
     models: state.batch.map(model => ({ modelPath: model.path, dimensions: model.dimensions, importYaw: model.importYaw })),
     category: $("category").value,
     environment: $("environment").value,
-    side: $("sceneSide").value, sourceMode: $("sourceMode").value, renderProfile: selected("renderProfile")[0] || "high",
+    side: $("sceneSide").value, sourceMode: $("sourceMode").value, renderProfile: selected("renderProfile")[0] || "high", cropMode: selected("cropMode")[0] || "full",
     dimensions: { width: +$("width").value, depth: +$("depth").value, height: +$("height").value },
     importYaw: +$("importYaw").value || 0,
     cameras: selected("camera"), layers: selected("layer"), materials: materialRows()
@@ -449,13 +462,21 @@
       if (!fabric || !shadow) return "";
       const fabricWidth = Math.min(100, Math.max(1, (Number(fabric.width) || 1) / (Number(shadow.width) || 1) * 100));
       const issues = [...(fabric.issues || []), ...(shadow.issues || [])];
-      return `<div class="render-preview-card render-combined${issues.length ? " render-warning" : ""}" data-layer="Combined"><div class="render-preview-media" style="--preview-aspect:${Number(shadow.width) || 1}/${Number(shadow.height) || 1};--fabric-width:${fabricWidth}%"><img class="render-composite-shadow" src="${escapeHtml(shadow.url)}" alt="" loading="lazy"><img class="render-composite-fabric" src="${escapeHtml(fabric.url)}" alt="${escapeHtml(model.name)} ${escapeHtml(fabric.camera || "render")} Fabric and Shadow combined" loading="lazy"></div><span>Combined${issues.length ? " · Check" : ""}</span><small>Fabric over Shadow · aligned preview</small></div>`;
+      return `<button type="button" class="render-preview-card render-combined${issues.length ? " render-warning" : ""}" data-layer="Combined" data-fabric-url="${escapeHtml(fabric.url)}" data-shadow-url="${escapeHtml(shadow.url)}" data-fabric-width="${fabricWidth}" data-combined-title="${escapeHtml(`${model.name} · ${fabric.camera || "render"} · Combined`)}"><div class="render-preview-media" style="--preview-aspect:${Number(shadow.width) || 1}/${Number(shadow.height) || 1};--fabric-width:${fabricWidth}%"><img class="render-composite-shadow" src="${escapeHtml(shadow.url)}" alt="" loading="lazy"><img class="render-composite-fabric" src="${escapeHtml(fabric.url)}" alt="${escapeHtml(model.name)} ${escapeHtml(fabric.camera || "render")} Fabric and Shadow combined" loading="lazy"></div><span>Combined${issues.length ? " · Check" : ""}</span><small>Fabric over Shadow · click to open</small></button>`;
     };
     $("rigRenderImages").innerHTML = model.renders.length ? cameras.map(camera => {
       const renders = model.renders.filter(render => (render.camera || "Other") === camera).sort((left, right) => (left.layer === "Shadow" ? 1 : 0) - (right.layer === "Shadow" ? 1 : 0) || left.name.localeCompare(right.name));
       const fabric = renders.find(render => render.layer === "Fabric"), shadow = renders.find(render => render.layer === "Shadow");
       return `<section class="render-camera-group"><div><strong>${escapeHtml(camera)}</strong><span>${fabric && shadow ? "Fabric · Shadow · Combined" : `${renders.length} layer${renders.length === 1 ? "" : "s"}`}</span></div><div>${renders.map(card).join("")}${combinedCard(fabric, shadow)}</div></section>`;
     }).join("") : '<div class="empty-state">This model has no render files on disk yet.</div>';
+  };
+  const openCombinedPreview = card => {
+    const popup = window.open("", "_blank");
+    if (!popup) return toast("Allow pop-ups to open the combined preview", true);
+    popup.opener = null;
+    const title = card.dataset.combinedTitle || "Combined render", fabric = card.dataset.fabricUrl, shadow = card.dataset.shadowUrl, fabricWidth = Number(card.dataset.fabricWidth) || 33.333;
+    popup.document.write(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title><style>html,body{height:100%;margin:0;background:#121418;color:#e8e8e5;font:14px Inter,Segoe UI,sans-serif}body{display:grid;grid-template-rows:auto 1fr}.bar{padding:14px 18px;border-bottom:1px solid #343941}.stage{min-height:0;display:grid;place-items:center;padding:20px}.frame{position:relative;width:min(100%,calc((100vh - 84px)*3));aspect-ratio:3/1;overflow:hidden;background:#1a1e23}.frame img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}.frame .fabric{left:50%;width:${fabricWidth}%;transform:translateX(-50%)}</style></head><body><div class="bar">${escapeHtml(title)}</div><div class="stage"><div class="frame"><img src="${escapeHtml(shadow)}" alt=""><img class="fabric" src="${escapeHtml(fabric)}" alt="${escapeHtml(title)}"></div></div></body></html>`);
+    popup.document.close();
   };
   const selectHistoryModel = model => {
     if (!model) return;
@@ -522,6 +543,8 @@
     const profile = String(job._rhLocal?.renderProfile || metadataRows[0]?.renderProfile || "").toLowerCase() || ((tasks[0]?.sequence?.cameras?.[0]?.LayerResolutions || []).some(layer => Number(layer.Resolution?.Y) <= 500) ? "low" : "high");
     document.querySelectorAll('input[name="renderProfile"]').forEach(input => input.checked = input.value === profile);
     document.querySelector('input[name="renderProfile"]:checked')?.dispatchEvent(new Event("change"));
+    const crop = String(job._rhLocal?.cropMode || metadataRows[0]?.cropMode || "full").toLowerCase();
+    document.querySelectorAll('input[name="cropMode"]').forEach(input => input.checked = input.value === crop);
     const sides = new Set(restored.map(model => model.side).filter(side => ["R", "L", "U"].includes(side)));
     $("sceneSide").value = sides.size === 1 ? [...sides][0] : "auto";
     $("sourceMode").value = restored[0].sourceMode || "B"; $("jobResult").hidden = true;
@@ -643,8 +666,17 @@
     const button = event.target.closest("[data-history-model-index]"); if (!button || !state.rigBatch) return;
     selectHistoryModel(state.rigBatch.models[+button.dataset.historyModelIndex]);
   });
+  $("rigRenderImages").addEventListener("click", event => {
+    const combined = event.target.closest("[data-fabric-url][data-shadow-url]");
+    if (combined) openCombinedPreview(combined);
+  });
   $("closeJobDialog").addEventListener("click", () => $("jobDialog").close());
   $("jobDialog").addEventListener("click", event => { if (event.target === $("jobDialog")) $("jobDialog").close(); });
+  document.querySelectorAll("[data-theme-value]").forEach(button => button.addEventListener("click", () => applyTheme(button.dataset.themeValue)));
+  $("rigDiagramToggle").addEventListener("click", () => setRigDiagramsExpanded($("rigDiagramToggle").getAttribute("aria-expanded") !== "true"));
+  applyTheme(document.documentElement.dataset.theme);
+  let diagramsOpen = false; try { diagramsOpen = localStorage.getItem("rh-local-renders-rig-diagrams") === "open"; } catch {}
+  setRigDiagramsExpanded(diagramsOpen);
   document.querySelectorAll("input,select").forEach(node => node.addEventListener("change", validate));
   init();
 })();

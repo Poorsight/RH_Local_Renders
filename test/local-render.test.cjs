@@ -432,6 +432,7 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(styles, /render-soft-glow/);
   assert.match(styles, /aspect-ratio:3\/1!important/);
   assert.match(styles, /\.rig-light-values\{gap:7px;margin-top:11px;font-size:11px/);
+  assert.match(styles, /strong,b\{font-weight:500!important\}h1,h2,h3\{font-weight:550!important\}/);
   assert.match(styles, /\.selective-options input:checked\+span/);
   assert.match(styles, /\.render-preview-media/);
   assert.match(html, /id="modelBatch"/);

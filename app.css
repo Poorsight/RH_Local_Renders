@@ -142,3 +142,11 @@ label{font-size:12px}.hero-stats span,.job-result>span,.model-name-row div>span{
 .history-card-top strong{font-size:12px}.history-card-meta b,.history-card>small{font-size:10px}.history-state{font-size:9px}.history-detail-heading span,.history-summary span{font-size:9px}.history-detail-heading small{font-size:10px}.history-model-row strong{font-size:10px}.history-model-row small{font-size:9px}.selective-controls>div:first-child span,.selective-controls button,.selective-options label span{font-size:9px}
 .rig-readout span,.rig-readout small,.rig-control-heading>span,.rig-reference-note>span,.rig-control-heading small{font-size:10px}.rig-control-heading small,.rig-readout small,.rig-reference-note small,.rig-view-heading span{color:#959da7}.rig-segmented label span{font-size:10px}.rig-dimension-heading>label{font-size:11px}.rig-dimension-number input{font-size:11px}.rig-reference-note small{font-size:10px}
 .render-camera-group>div:first-child strong{font-size:11px}.render-camera-group>div:first-child span,.render-preview-card>span,.render-preview-card>small{font-size:9px}.rig-render-gallery-heading span{font-size:9px}.rig-render-gallery-heading strong{font-size:12px}
+
+/* Calm weight hierarchy: emphasis comes from size, color and spacing, not bold text. */
+body{font-weight:400}strong,b{font-weight:500!important}h1,h2,h3{font-weight:550!important}
+button,input,select,.choice-row span,.rig-segmented label span{font-weight:400}.primary-button{font-weight:500}
+.brand-mark,.eyebrow,.step,.tag,.status-badge,.rig-control-heading>span,.rig-reference-note>span{font-weight:600}
+.material-id,.material-id b,.rig-dimension-number input,.history-model-row strong,.rig-batch-model strong{font-weight:500}
+.render-queue>span i,.rig-batch-model.active:after,.selective-options label span,.render-preview-card>span,.render-preview-card>small{font-weight:500}
+.rig-svg-sofa-label,.rig-svg-light text{font-weight:500}

@@ -691,7 +691,7 @@ input[type=radio]:checked{animation:accent-breathe 3.6s ease-in-out infinite}
 }
 /* Full width under the three columns, a fixed 100px window that scrolls. */
 .log-panel{margin-top:clamp(16px,1.2vw,20px)}
-.log-panel .render-log{height:100px;max-height:none;margin:0}
+.log-panel .render-log{height:300px;max-height:none;margin:0}
 .render-log:empty:before{content:"No Unreal output yet. The log streams here while a render runs.";color:var(--faint)}
 
 /* History: the saved-job list and the detail pane are both capped to the viewport and

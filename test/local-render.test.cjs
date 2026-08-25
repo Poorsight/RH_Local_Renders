@@ -634,7 +634,7 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(styles, /\.workspace-col-status>\.output-panel\{overflow:visible;flex:1 1 auto/);
   assert.match(styles, /\.workspace-col-status>\.queue-panel\{flex:0 0 auto\}/);
   assert.match(html, /<section class="panel log-panel"[\s\S]*?<pre id="renderLog" class="render-log"><\/pre>/);
-  assert.match(styles, /\.log-panel \.render-log\{height:100px/);
+  assert.match(styles, /\.log-panel \.render-log\{height:300px/);
   assert.match(styles, /\.render-queue\{[^}]*max-height:min\(34vh,300px\);overflow:auto/);
   assert.doesNotMatch(styles, /box-shadow:box-shadow/);
   assert.match(html, /class="output-fieldsets"/);

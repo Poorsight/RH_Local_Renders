@@ -415,8 +415,16 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(client, /const normalizedMaterialId = id =>/);
   assert.match(client, /data-material-ids=/);
   assert.match(client, /render-composite-fabric/);
-  assert.match(client, /Fabric over Shadow · alpha preview/);
+  assert.match(client, /Fabric over Shadow · aligned preview/);
+  assert.match(client, /const renderEta = render =>/);
+  assert.match(client, /class="render-queue-name"/);
   assert.match(styles, /--bronze-strong:/);
+  assert.match(styles, /--success-strong:/);
+  assert.match(styles, /render-orb-pulse/);
+  assert.match(styles, /render-progress-flow/);
+  assert.match(styles, /\.render-queue-name/);
+  assert.match(styles, /background:#c8cdd2/);
+  assert.match(styles, /\.render-preview-card>span\{bottom:auto/);
   assert.match(styles, /\.selective-options input:checked\+span/);
   assert.match(styles, /\.render-preview-media/);
   assert.match(html, /id="modelBatch"/);

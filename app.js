@@ -375,6 +375,22 @@
       toast(resume ? "Resuming incomplete models in Unreal" : `Unreal started (PID ${result.pid})`); updateRender(result); startPolling();
     } catch (error) { toast(error.message, true); }
   };
+  const formatDuration = seconds => {
+    if (!Number.isFinite(seconds) || seconds <= 0) return "less than a minute";
+    const minutes = Math.max(1, Math.round(seconds / 60));
+    if (minutes < 60) return `${minutes} min`;
+    const hours = Math.floor(minutes / 60), rest = minutes % 60;
+    return rest ? `${hours} h ${rest} min` : `${hours} h`;
+  };
+  const renderEta = render => {
+    const rendered = Number(render.rendered || 0), total = Number(render.totalRenders || 0);
+    if (render.state !== "running" || !render.startedAt || total <= rendered) return "";
+    if (!rendered) return "ETA after the first frame";
+    const started = new Date(render.startedAt).getTime();
+    if (!Number.isFinite(started)) return "";
+    const elapsedSeconds = Math.max(1, (Date.now() - started) / 1000);
+    return `ETA ≈ ${formatDuration(elapsedSeconds / rendered * (total - rendered))}`;
+  };
   const updateRender = (render) => {
     state.status ||= {}; state.status.render = render;
     const badge = $("renderBadge"), box = $("renderStatus"), log = $("renderLog"), progress = $("renderProgress");
@@ -388,9 +404,12 @@
     const total = Number(render.totalRenders || 0), rendered = Number(render.rendered || 0), percent = total ? Math.min(100, rendered / total * 100) : render.state === "success" ? 100 : 0;
     progress.hidden = render.state === "idle" && !render.jobPath;
     $("renderProgressLabel").textContent = total ? `${rendered} / ${total} frames` : `${rendered} frames`;
-    $("renderProgressMeta").textContent = `${substrate}${render.message || render.phase || "Waiting"}`;
+    $("renderProgressMeta").textContent = [`${substrate}${render.message || render.phase || "Waiting"}`, renderEta(render)].filter(Boolean).join(" · ");
     $("renderProgressBar").style.width = `${percent}%`;
-    $("renderQueue").innerHTML = (render.queue || []).map((item, index) => `<span data-state="${escapeHtml(item.state || "queued")}"><b>${String(index + 1).padStart(2, "0")}</b>${escapeHtml(item.name)}</span>`).join("");
+    $("renderQueue").innerHTML = (render.queue || []).map((item, index) => {
+      const itemState = render.state === "running" && item.name === render.currentTask ? "active" : item.state || "queued";
+      return `<span data-state="${escapeHtml(itemState)}" title="${escapeHtml(item.name)}"><b>${String(index + 1).padStart(2, "0")}</b><span class="render-queue-name">${escapeHtml(item.name)}</span><small>${Number(item.rendered || 0)}/${Number(item.expected || 0)}</small></span>`;
+    }).join("");
     $("retryRender").hidden = render.state !== "failed" || !render.jobPath;
     log.hidden = !render.log; log.textContent = render.log || "";
     if (render.state !== "running" && state.poll) { clearInterval(state.poll); state.poll = null; loadHistory(); }
@@ -433,9 +452,8 @@
     };
     const combinedCard = (fabric, shadow) => {
       if (!fabric || !shadow) return "";
-      const fabricWidth = Math.min(100, Math.max(1, (Number(fabric.width) || 1) / (Number(shadow.width) || 1) * 100));
       const issues = [...(fabric.issues || []), ...(shadow.issues || [])];
-      return `<div class="render-preview-card render-combined${issues.length ? " render-warning" : ""}" data-layer="Combined"><div class="render-preview-media" style="--preview-aspect:${Number(shadow.width) || 1}/${Number(shadow.height) || 1};--fabric-width:${fabricWidth}%"><img class="render-composite-shadow" src="${escapeHtml(shadow.url)}" alt="" loading="lazy"><img class="render-composite-fabric" src="${escapeHtml(fabric.url)}" alt="${escapeHtml(model.name)} ${escapeHtml(fabric.camera || "render")} Fabric and Shadow combined" loading="lazy"></div><span>Combined${issues.length ? " · Check" : ""}</span><small>Fabric over Shadow · alpha preview</small></div>`;
+      return `<div class="render-preview-card render-combined${issues.length ? " render-warning" : ""}" data-layer="Combined"><div class="render-preview-media" style="--preview-aspect:${Number(shadow.width) || 1}/${Number(shadow.height) || 1}"><img class="render-composite-shadow" src="${escapeHtml(shadow.url)}" alt="" loading="lazy"><img class="render-composite-fabric" src="${escapeHtml(fabric.url)}" alt="${escapeHtml(model.name)} ${escapeHtml(fabric.camera || "render")} Fabric and Shadow combined" loading="lazy"></div><span>Combined${issues.length ? " · Check" : ""}</span><small>Fabric over Shadow · aligned preview</small></div>`;
     };
     $("rigRenderImages").innerHTML = model.renders.length ? cameras.map(camera => {
       const renders = model.renders.filter(render => (render.camera || "Other") === camera).sort((left, right) => (left.layer === "Shadow" ? 1 : 0) - (right.layer === "Shadow" ? 1 : 0) || left.name.localeCompare(right.name));

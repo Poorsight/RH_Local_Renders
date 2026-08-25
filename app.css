@@ -12,7 +12,7 @@
   --text:#232823; --soft:#3f463e; --muted:#6e766c; --faint:#949c92;
   --accent:#2f8f5b; --accent-soft:rgba(47,143,91,.12); --accent-line:rgba(47,143,91,.32); --accent-ink:#1e6d43;
   --amber:#b0812f; --amber-soft:rgba(176,129,47,.12);
-  --danger:#b4483f; --danger-soft:rgba(180,72,63,.10);
+  --danger:#b4483f; --danger-soft:rgba(180,72,63,.10); --danger-line:rgba(180,72,63,.30);
   --ink-btn:#2b312b; --ink-btn-text:#f2f4f0;
   /* soft relief: light from the top-left, shadow to the bottom-right */
   --lift:6px 6px 16px rgba(150,160,148,.40), -6px -6px 16px rgba(255,255,255,.88);
@@ -41,7 +41,7 @@
     --text:#eaece7; --soft:#c4c9c1; --muted:#8a9288; --faint:#6f776e;
     --accent:#5cc98d; --accent-soft:rgba(92,201,141,.13); --accent-line:rgba(92,201,141,.30); --accent-ink:#8fdcaf;
     --amber:#d8b478; --amber-soft:rgba(216,180,120,.12);
-    --danger:#e08a80; --danger-soft:rgba(224,138,128,.11);
+    --danger:#e08a80; --danger-soft:rgba(224,138,128,.11); --danger-line:rgba(224,138,128,.28);
     --ink-btn:#232824; --ink-btn-text:#eef0eb;
     --lift:0 18px 40px rgba(0,0,0,.55); --lift-sm:0 8px 20px rgba(0,0,0,.45); --lift-lg:0 26px 60px rgba(0,0,0,.6);
     --press:inset 0 1px 2px rgba(0,0,0,.55); --press-sm:inset 0 1px 2px rgba(0,0,0,.45);
@@ -62,7 +62,7 @@
   --text:#eaece7; --soft:#c4c9c1; --muted:#8a9288; --faint:#6f776e;
   --accent:#5cc98d; --accent-soft:rgba(92,201,141,.13); --accent-line:rgba(92,201,141,.30); --accent-ink:#8fdcaf;
   --amber:#d8b478; --amber-soft:rgba(216,180,120,.12);
-  --danger:#e08a80; --danger-soft:rgba(224,138,128,.11);
+  --danger:#e08a80; --danger-soft:rgba(224,138,128,.11); --danger-line:rgba(224,138,128,.28);
   --ink-btn:#232824; --ink-btn-text:#eef0eb;
   --lift:0 18px 40px rgba(0,0,0,.55); --lift-sm:0 8px 20px rgba(0,0,0,.45); --lift-lg:0 26px 60px rgba(0,0,0,.6);
   --press:inset 0 1px 2px rgba(0,0,0,.55); --press-sm:inset 0 1px 2px rgba(0,0,0,.45);
@@ -119,7 +119,7 @@ main{width:calc(100% - clamp(18px,2.4vw,44px));max-width:none;margin:0 auto;padd
 .workspace{display:grid;gap:clamp(16px,1.2vw,20px);grid-template-columns:minmax(0,1fr);align-items:start}
 .workspace-col{display:flex;flex-direction:column;gap:clamp(16px,1.2vw,20px);min-width:0}
 @media (min-width:1000px){.workspace{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.workspace-col-status{grid-column:1/-1}}
-@media (min-width:1440px){.workspace{grid-template-columns:minmax(0,.9fr) minmax(0,1fr) minmax(0,1.15fr)}.workspace-col-status{grid-column:auto}}
+@media (min-width:1440px){.workspace{grid-template-columns:minmax(0,.9fr) minmax(0,1fr) minmax(0,1.15fr);align-items:stretch}.workspace-col-status{grid-column:auto}}
 
 /* ── panels ─────────────────────────────────────────────────────── */
 .panel,.history-detail{background:var(--surface);border-radius:var(--radius);box-shadow:var(--lift);padding:var(--pad);display:flex;flex-direction:column;gap:16px;min-width:0}
@@ -150,8 +150,8 @@ main{width:calc(100% - clamp(18px,2.4vw,44px));max-width:none;margin:0 auto;padd
 
 /* ── fields ─────────────────────────────────────────────────────── */
 label{display:flex;flex-direction:column;gap:8px;font-size:12px;font-weight:560;color:var(--muted);min-width:0}
-input:not([type=checkbox]):not([type=radio]):not([type=range]),select,textarea{width:100%;padding:12px 14px;border:0;border-radius:var(--radius-xs);background:var(--inset);box-shadow:var(--press);color:var(--text);font-size:13.5px;font-weight:500;transition:box-shadow .16s}
-input:hover:not([type=checkbox]):not([type=radio]):not([type=range]),select:hover{box-shadow:var(--press),0 0 0 1px var(--line)}
+input:where(:not([type=checkbox]):not([type=radio]):not([type=range])),select,textarea{width:100%;padding:12px 14px;border:0;border-radius:var(--radius-xs);background:var(--inset);box-shadow:var(--press);color:var(--text);font-size:13.5px;font-weight:500;transition:box-shadow .16s}
+input:where(:not([type=checkbox]):not([type=radio]):not([type=range])):hover,select:hover{box-shadow:var(--press),0 0 0 1px var(--line)}
 input:focus,select:focus,textarea:focus{outline:0;box-shadow:var(--press),0 0 0 2px var(--accent-line)}
 select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--faint) 50%),linear-gradient(135deg,var(--faint) 50%,transparent 50%);background-position:calc(100% - 19px) 50%,calc(100% - 14px) 50%;background-size:5px 5px,5px 5px;background-repeat:no-repeat;padding-right:38px}
 option{background:var(--surface);color:var(--text)}
@@ -236,8 +236,11 @@ input[type=range]:active::-webkit-slider-thumb{cursor:grabbing;box-shadow:var(--
 .material-input-wrap{display:flex;align-items:center;gap:9px;flex-wrap:wrap;min-width:0}
 .material-input-wrap input{flex:1 1 180px;min-width:0;background:var(--surface);box-shadow:var(--lift-sm)}
 [data-material-status]{flex:none;padding:5px 11px;border-radius:var(--radius-pill);background:var(--surface);box-shadow:var(--lift-sm);color:var(--faint);font-size:10.5px;font-style:normal;font-weight:600;letter-spacing:.02em;white-space:nowrap}
-[data-material-status].ok{background:var(--accent-soft);box-shadow:none;color:var(--accent-ink)}
-[data-material-status].error{background:var(--danger-soft);box-shadow:none;color:var(--danger)}
+/* app.js sets data-state=empty|found|missing on this <em>, not a class. */
+[data-material-status][data-state=found]{background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent-line);color:var(--accent-ink)}
+[data-material-status][data-state=missing]{background:var(--danger-soft);box-shadow:inset 0 0 0 1px var(--danger-line);color:var(--danger)}
+/* a quiet ring on the field itself, so a missing material is visible without reading the chip */
+.material-input-wrap input[data-asset-state=missing]{box-shadow:var(--lift-sm),inset 0 0 0 1px var(--danger-line)}
 
 /* ── preflight / results ────────────────────────────────────────── */
 .preflight{padding:15px;border-radius:var(--radius-sm);background:var(--surface-2);box-shadow:var(--press-sm);display:flex;flex-direction:column;gap:11px}
@@ -621,3 +624,30 @@ input[type=radio]:checked{animation:accent-breathe 3.6s ease-in-out infinite}
   input[type=checkbox]:checked,
   input[type=radio]:checked{animation:none}
 }
+
+/* Column heights: the middle column owns the row, the outer two match it.
+   Grid sizes the row from the tallest item's min-content height, so the panels that
+   are allowed to fill declare `flex:1;min-height:0` and their scroll areas
+   `flex:1 1 0;min-height:0` -- that makes their min-content contribution zero, and
+   Render setup can no longer push the row taller than Material assignments no matter
+   how many models are in the batch. Only at the three-column breakpoint: stacked,
+   every panel is its natural height. */
+@media (min-width:1440px){
+  .workspace-col{height:100%}
+  .setup-panel,.queue-panel{flex:1 1 auto;min-height:0}
+  /* whichever of the two is on screen fills the leftover space */
+  #modelEmpty,#modelBatch{flex:1 1 0;min-height:0}
+  #modelEmpty{display:grid;place-items:center}
+  #batchList{flex:1 1 0;min-height:0}
+  #renderLog{flex:1 1 0;min-height:0}
+}
+.render-log{max-height:none}
+.render-log:empty:before{content:"No Unreal output yet. The log streams here while a render runs.";color:var(--faint)}
+
+/* History: the saved-job list and the detail pane are both capped to the viewport and
+   scroll inside, so a long archive never stretches the page. */
+.history-workspace{align-items:stretch}
+.history-list,.history-detail{max-height:min(91vh,940px)}
+.history-list{overflow:auto}
+.history-detail{overflow:auto}
+.history-detail .history-model-list{max-height:none}

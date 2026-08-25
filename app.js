@@ -420,7 +420,7 @@
       return `<span data-state="${escapeHtml(itemState)}" title="${escapeHtml(item.name)}"><b>${String(index + 1).padStart(2, "0")}</b><span class="render-queue-name">${escapeHtml(item.name)}</span><i>${escapeHtml(stateLabel)}</i><small>${Number(item.rendered || 0)}/${Number(item.expected || 0)}</small></span>`;
     }).join("");
     $("retryRender").hidden = render.state !== "failed" || !render.jobPath;
-    log.hidden = !render.log; log.textContent = render.log || "";
+    log.hidden = false; log.textContent = render.log || "";
     if (render.state !== "running" && state.poll) { clearInterval(state.poll); state.poll = null; loadHistory(); }
   };
   const startPolling = () => { if (state.poll) clearInterval(state.poll); state.poll = setInterval(async () => { try { updateRender(await api("/api/renders/status")); } catch {} }, 2000); };

@@ -618,6 +618,11 @@ test("main page renders the light rig natively in the shared workspace", () => {
   assert.match(styles, /\.rig-render-images img\{height:auto;aspect-ratio:auto;object-fit:contain\}/);
   assert.match(styles, /\.history-model-list\{max-height:206px;overflow:auto/);
   assert.match(styles, /\.render-preview-media\{background:var\(--preview-bg\)\}/);
+  assert.match(html, /<pre id="renderLog" class="render-log"><\/pre>/);
+  assert.match(client, /log\.hidden = false;/);
+  assert.match(styles, /#modelEmpty,#modelBatch\{flex:1 1 0;min-height:0\}/);
+  assert.match(styles, /\[data-material-status\]\[data-state=found\]\{background:var\(--accent-soft\)/);
+  assert.match(styles, /\[data-material-status\]\[data-state=missing\]\{background:var\(--danger-soft\)/);
   assert.doesNotMatch(styles, /\.render-preview-media\{background-color:[^}]*linear-gradient/);
   assert.match(styles, /\.rig-section,\.history-section[^{]*\{margin-top:clamp\(/);
   assert.match(styles, /\.rig-workspace\{display:grid/);

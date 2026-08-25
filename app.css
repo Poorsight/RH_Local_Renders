@@ -6,25 +6,25 @@
 /* ── tokens ─────────────────────────────────────────────────────── */
 :root{
   color-scheme:light;
-  --bg:#ecefea; --bg-tint:rgba(120,150,124,.10);
-  --surface:#ecefea; --surface-2:#e6eae4; --surface-raised:#f1f3ef; --inset:#e7ebe5;
-  --line:rgba(120,131,118,.20); --line-soft:rgba(120,131,118,.12); --line-strong:rgba(120,131,118,.34);
-  --text:#232823; --soft:#3f463e; --muted:#6e766c; --faint:#949c92;
+  --bg:#ededed; --bg-tint:rgba(140,140,140,.08);
+  --surface:#ededed; --surface-2:#e6e6e6; --surface-raised:#f1f1f1; --inset:#e8e8e8;
+  --line:rgba(124,124,124,.20); --line-soft:rgba(124,124,124,.12); --line-strong:rgba(124,124,124,.34);
+  --text:#252525; --soft:#424242; --muted:#727272; --faint:#969696;
   --accent:#2f8f5b; --accent-soft:rgba(47,143,91,.12); --accent-line:rgba(47,143,91,.32); --accent-ink:#1e6d43;
   --amber:#b0812f; --amber-soft:rgba(176,129,47,.12);
   --danger:#b4483f; --danger-soft:rgba(180,72,63,.10); --danger-line:rgba(180,72,63,.30);
-  --ink-btn:#2b312b; --ink-btn-text:#f2f4f0;
+  --ink-btn:#2e2e2e; --ink-btn-text:#f2f2f2;
   /* soft relief: light from the top-left, shadow to the bottom-right */
-  --lift:6px 6px 16px rgba(150,160,148,.40), -6px -6px 16px rgba(255,255,255,.88);
-  --lift-sm:3px 3px 8px rgba(150,160,148,.34), -3px -3px 8px rgba(255,255,255,.80);
-  --lift-lg:12px 12px 32px rgba(146,157,144,.36), -10px -10px 28px rgba(255,255,255,.85);
-  --press:inset 3px 3px 7px rgba(150,160,148,.42), inset -3px -3px 7px rgba(255,255,255,.86);
-  --press-sm:inset 2px 2px 5px rgba(150,160,148,.36), inset -2px -2px 5px rgba(255,255,255,.80);
+  --lift:6px 6px 16px rgba(154,154,154,.40), -6px -6px 16px rgba(255,255,255,.88);
+  --lift-sm:3px 3px 8px rgba(154,154,154,.34), -3px -3px 8px rgba(255,255,255,.80);
+  --lift-lg:12px 12px 32px rgba(152,152,152,.36), -10px -10px 28px rgba(255,255,255,.85);
+  --press:inset 3px 3px 7px rgba(154,154,154,.42), inset -3px -3px 7px rgba(255,255,255,.86);
+  --press-sm:inset 2px 2px 5px rgba(154,154,154,.36), inset -2px -2px 5px rgba(255,255,255,.80);
   --accent-glow:rgba(47,143,91,.18); --accent-glow-lit:rgba(47,143,91,.30); --accent-edge:rgba(47,143,91,.62);
   --sel-ring:inset 0 0 0 1px var(--accent-edge),0 0 7px -2px var(--accent-glow);
   --bronze:var(--accent); --bronze-strong:var(--accent-ink); --bronze-bg:var(--accent-soft);
   --success:var(--accent); --success-strong:var(--accent-ink);
-  --preview-bg:#e1e5df; --preview-caption:#4a5149; --preview-aspect:1.5;
+  --preview-bg:#e2e2e2; --preview-caption:#4d4d4d; --preview-aspect:1.5;
   --radius:20px; --radius-sm:13px; --radius-xs:9px; --radius-pill:999px;
   --pad:clamp(18px,1.6vw,26px);
   font-family:Inter,"Segoe UI",system-ui,Arial,sans-serif;
@@ -34,15 +34,15 @@
 @media (prefers-color-scheme:dark){
   :root:not([data-theme=light]){
     color-scheme:dark;
-    --preview-bg:#141815; --preview-caption:#b3bab2; --accent-glow:rgba(92,201,141,.22); --accent-glow-lit:rgba(92,201,141,.38); --accent-edge:rgba(92,201,141,.66);
-    --bg:#0b0d0c; --bg-tint:rgba(96,140,110,.09);
-    --surface:#141715; --surface-2:#191d1a; --surface-raised:#1b1f1c; --inset:#0e110f;
-    --line:rgba(255,255,255,.075); --line-soft:rgba(255,255,255,.045); --line-strong:rgba(255,255,255,.14);
-    --text:#eaece7; --soft:#c4c9c1; --muted:#8a9288; --faint:#6f776e;
+    --preview-bg:#2a2a2a; --preview-caption:#b8b8b8; --accent-glow:rgba(92,201,141,.22); --accent-glow-lit:rgba(92,201,141,.38); --accent-edge:rgba(92,201,141,.66);
+    --bg:#242424; --bg-tint:rgba(150,150,150,.07);
+    --surface:#2c2c2c; --surface-2:#323232; --surface-raised:#343434; --inset:#272727;
+    --line:rgba(255,255,255,.09); --line-soft:rgba(255,255,255,.055); --line-strong:rgba(255,255,255,.16);
+    --text:#ebebeb; --soft:#c6c6c6; --muted:#9a9a9a; --faint:#868686;
     --accent:#5cc98d; --accent-soft:rgba(92,201,141,.13); --accent-line:rgba(92,201,141,.30); --accent-ink:#8fdcaf;
     --amber:#d8b478; --amber-soft:rgba(216,180,120,.12);
     --danger:#e08a80; --danger-soft:rgba(224,138,128,.11); --danger-line:rgba(224,138,128,.28);
-    --ink-btn:#232824; --ink-btn-text:#eef0eb;
+    --ink-btn:#3a3a3a; --ink-btn-text:#f0f0f0;
     --lift:0 18px 40px rgba(0,0,0,.55); --lift-sm:0 8px 20px rgba(0,0,0,.45); --lift-lg:0 26px 60px rgba(0,0,0,.6);
     --press:inset 0 1px 2px rgba(0,0,0,.55); --press-sm:inset 0 1px 2px rgba(0,0,0,.45);
   }
@@ -50,20 +50,20 @@
   :root:not([data-theme=light]) .hero,
   :root:not([data-theme=light]) .history-detail,
   :root:not([data-theme=light]) .job-dialog{border:1px solid var(--line)}
-  :root:not([data-theme=light]) .muted-fix{color:#8a9288}
+  :root:not([data-theme=light]) .muted-fix{color:#9a9a9a}
 }
 
 :root[data-theme=dark]{
   color-scheme:dark;
-  --preview-bg:#141815; --preview-caption:#b3bab2; --accent-glow:rgba(92,201,141,.22); --accent-glow-lit:rgba(92,201,141,.38); --accent-edge:rgba(92,201,141,.66);
-  --bg:#0b0d0c; --bg-tint:rgba(96,140,110,.09);
-  --surface:#141715; --surface-2:#191d1a; --surface-raised:#1b1f1c; --inset:#0e110f;
-  --line:rgba(255,255,255,.075); --line-soft:rgba(255,255,255,.045); --line-strong:rgba(255,255,255,.14);
-  --text:#eaece7; --soft:#c4c9c1; --muted:#8a9288; --faint:#6f776e;
+  --preview-bg:#2a2a2a; --preview-caption:#b8b8b8; --accent-glow:rgba(92,201,141,.22); --accent-glow-lit:rgba(92,201,141,.38); --accent-edge:rgba(92,201,141,.66);
+  --bg:#242424; --bg-tint:rgba(150,150,150,.07);
+  --surface:#2c2c2c; --surface-2:#323232; --surface-raised:#343434; --inset:#272727;
+  --line:rgba(255,255,255,.09); --line-soft:rgba(255,255,255,.055); --line-strong:rgba(255,255,255,.16);
+  --text:#ebebeb; --soft:#c6c6c6; --muted:#9a9a9a; --faint:#868686;
   --accent:#5cc98d; --accent-soft:rgba(92,201,141,.13); --accent-line:rgba(92,201,141,.30); --accent-ink:#8fdcaf;
   --amber:#d8b478; --amber-soft:rgba(216,180,120,.12);
   --danger:#e08a80; --danger-soft:rgba(224,138,128,.11); --danger-line:rgba(224,138,128,.28);
-  --ink-btn:#232824; --ink-btn-text:#eef0eb;
+  --ink-btn:#3a3a3a; --ink-btn-text:#f0f0f0;
   --lift:0 18px 40px rgba(0,0,0,.55); --lift-sm:0 8px 20px rgba(0,0,0,.45); --lift-lg:0 26px 60px rgba(0,0,0,.6);
   --press:inset 0 1px 2px rgba(0,0,0,.55); --press-sm:inset 0 1px 2px rgba(0,0,0,.45);
 }
@@ -373,8 +373,23 @@ input[type=range]:active::-webkit-slider-thumb{cursor:grabbing;box-shadow:var(--
 .rig-svg-grid{stroke:var(--line-soft);stroke-width:1;fill:none}
 .rig-svg-axes{stroke:var(--line-strong);stroke-width:1;fill:none}
 .rig-svg-sofa{fill:var(--surface-raised);stroke:var(--line-strong);stroke-width:1.4}
-.rig-svg-sofa-label{fill:var(--faint);font-size:10px;font-weight:650;letter-spacing:.1em}
-.rig-svg-light{stroke-width:1.4}
+/* The diagram viewBox is in centimetres, so every size here is in user units: at the
+   measured 0.46 scale, 22 units is a 10px label and 27 units a 12.5px one. The light
+   markers take their colour from --light on the group, and the labels sit in a halo of
+   the plate colour so they stay legible where they cross the grid. */
+.rig-svg-sofa-label{fill:var(--faint);font-size:22px;font-weight:650;letter-spacing:.1em;paint-order:stroke;stroke:var(--inset);stroke-width:5;stroke-linejoin:round}
+.rig-svg-light line{stroke:var(--light);stroke-width:1.6;opacity:.8;vector-effect:non-scaling-stroke}
+.rig-svg-light circle{fill:var(--light);stroke:var(--inset);stroke-width:3;vector-effect:non-scaling-stroke}
+.rig-svg-light text{fill:var(--text);font-size:27px;font-weight:600;paint-order:stroke;stroke:var(--inset);stroke-width:6;stroke-linejoin:round}
+.rig-view marker path{fill:var(--line-strong);fill:context-stroke}
+/* The two views fit different viewBoxes into the same box, so the plan is drawn at about
+   0.28 scale and the elevation at about 0.48. Each gets its own user-unit sizes so both
+   land near a 12px label, a 9px dot and a 2px halo on screen. */
+.rig-plan-view .rig-svg-light circle{r:16}
+.rig-plan-view .rig-svg-light text{font-size:34px;stroke-width:8}
+.rig-plan-view .rig-svg-sofa-label{font-size:24px;stroke-width:6}
+.rig-elevation-view .rig-svg-light text{font-size:20px;stroke-width:5}
+.rig-elevation-view .rig-svg-sofa-label{font-size:16px;stroke-width:4}
 .rig-light-list{display:grid;gap:9px;grid-template-columns:repeat(auto-fit,minmax(178px,1fr))}
 .rig-light-card{display:flex;flex-direction:column;gap:7px;padding:12px;border-radius:var(--radius-xs);background:var(--surface-2);box-shadow:var(--press-sm);min-width:0}
 .rig-light-card.changed{box-shadow:var(--press-sm),0 0 0 1.5px var(--accent-line)}
@@ -438,7 +453,7 @@ input[type=range]:active::-webkit-slider-thumb{cursor:grabbing;box-shadow:var(--
    at the foot of the page. */
 .job-dialog{width:min(880px,calc(100% - 32px));max-height:82vh;padding:var(--pad);border:0;border-radius:var(--radius);background:var(--surface);box-shadow:var(--lift-lg);color:var(--text)}
 .job-dialog[open]{display:flex;flex-direction:column;gap:14px}
-.job-dialog::backdrop{background:rgba(8,10,9,.58);backdrop-filter:blur(4px)}
+.job-dialog::backdrop{background:rgba(0,0,0,.55);backdrop-filter:blur(4px)}
 .job-dialog-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:13px}
 .job-dialog-heading span{color:var(--faint);font-size:10px;font-weight:750;letter-spacing:.16em}
 .job-dialog-heading strong{display:block;margin-top:4px;font-size:14px;font-weight:600;overflow-wrap:anywhere}

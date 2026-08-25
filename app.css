@@ -412,7 +412,11 @@ input[type=range]:active::-webkit-slider-thumb{cursor:grabbing;box-shadow:var(--
 .stage,.frame{min-width:0}
 
 /* ── dialog + toast ─────────────────────────────────────────────── */
-.job-dialog{width:min(880px,calc(100% - 32px));max-height:82vh;padding:var(--pad);border:0;border-radius:var(--radius);background:var(--surface);box-shadow:var(--lift-lg);color:var(--text);display:flex;flex-direction:column;gap:14px}
+/* `display` belongs on [open] only: an author `display` on the element itself beats the
+   browser's `dialog:not([open]){display:none}` and leaves the closed dialog laid out
+   at the foot of the page. */
+.job-dialog{width:min(880px,calc(100% - 32px));max-height:82vh;padding:var(--pad);border:0;border-radius:var(--radius);background:var(--surface);box-shadow:var(--lift-lg);color:var(--text)}
+.job-dialog[open]{display:flex;flex-direction:column;gap:14px}
 .job-dialog::backdrop{background:rgba(8,10,9,.58);backdrop-filter:blur(4px)}
 .job-dialog-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:13px}
 .job-dialog-heading span{color:var(--faint);font-size:10px;font-weight:750;letter-spacing:.16em}

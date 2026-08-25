@@ -64,7 +64,7 @@ The legacy inches-as-centimetres FBX profile uses the opposite X handedness duri
 
 ## Light reference
 
-The sectional light-rig scaler and schematic are native parts of the dashboard, using the same controls, typography, colours, and responsive layout as the render workflow. X/Y light positions use one shared scale while every source keeps its original Z coordinate, including height-only changes. It reads the tracked `data/sectionals-indoor.csv` directly in the browser, so the reference also works on the static preview without the local service.
+The sectional light-rig scaler and schematic are native parts of the dashboard, using the same controls, typography, colours, and responsive layout as the render workflow. The shared light scale is calculated only from the model's width/depth footprint. Height changes only the sofa silhouette in the elevation diagram and never changes any light position, rotation, intensity, cone, or source dimension. It reads the tracked `data/sectionals-indoor.csv` directly in the browser, so the reference also works on the static preview without the local service.
 
 ## Verification
 
@@ -83,6 +83,8 @@ UnrealEditor.exe rh_unreal_2.uproject `
 ```
 
 Each generated phase job is served once per Unreal attempt. Completion is measured from actual output files for every model, camera, and layer. If Unreal exits before the phase is complete, the service automatically restarts that phase up to three times with only incomplete models; completed model output and Fabric camera handoff data stay in place. Manual **Retry failed** uses resume mode and also skips complete files. A phase advances only when every expected output exists (and Fabric has supplied all camera states); the dashboard then closes that Unreal process. A combined Fabric/Shadow run is successful only when both ordered phases complete. No persistent config edit is made in `rh_unreal_2`.
+
+Calculated Fabric camera transforms and focal lengths are also persisted in ignored `local/cache/camera-fit-profiles.json`. A later job for the same unchanged FBX and view applies that camera state before Unreal starts the view and sets `fit: none`; partial cache hits skip only the matching views. The cache key includes the FBX fingerprint, sequence/form factor, sequence asset, Actor/import yaw, padding, perspective setting, model scale, and the compiled BatchRender plugin fingerprint. Changing any of those inputs automatically causes a fresh Fit, and every newly calculated view is saved immediately so it survives a later Unreal crash.
 
 ## Source and local data
 

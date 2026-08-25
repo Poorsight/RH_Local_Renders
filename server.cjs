@@ -10,6 +10,7 @@ const { ModelStore } = require("./lib/models.cjs");
 const { writeBatchJob } = require("./lib/jobs.cjs");
 const { buildRenderPlan, cameraStateKey, applyCameraHandoff } = require("./lib/render-plan.cjs");
 const { CALIBRATION_FOLDER, modelFingerprint, readCropProfiles, writeCropProfiles, cropProfileFor, analyzeCalibrationPair, applyCropProfileToCamera, calibrationFiles } = require("./lib/crop.cjs");
+const { rendererToken, readCameraFitProfiles, cameraFitStatesForJob, writeCameraFitState } = require("./lib/camera-fit.cjs");
 const { buildUnrealLaunch } = require("./lib/unreal.cjs");
 const { history, expectedRenders } = require("./lib/history.cjs");
 const { availability: postProcessAvailability, isProcessedImage, originalFilesForJob, processJob } = require("./lib/post-process.cjs");
@@ -19,9 +20,10 @@ const HOST = "127.0.0.1";
 const PORT = Number(process.env.RH_LOCAL_RENDERS_PORT || 5500);
 const UNREAL_EDITOR = process.env.RH_UNREAL_EDITOR || "D:\\Unreal_Engine\\UE_5.6\\Engine\\Binaries\\Win64\\UnrealEditor.exe";
 const UNREAL_PROJECT = process.env.RH_UNREAL_PROJECT || "D:\\GitHub\\rh_unreal_2\\rh_unreal_2.uproject";
+const CAMERA_FIT_RENDERER_TOKEN = rendererToken(UNREAL_PROJECT);
 const sheet = new SheetStore(ROOT), models = new ModelStore(ROOT);
 const RUNTIME_FILES = [
-  "server.cjs", "package.json", "data/postprocess.json", "assets/AdobeRGB1998.icc", "lib/crop.cjs", "lib/csv.cjs", "lib/history.cjs", "lib/jobs.cjs", "lib/models.cjs", "lib/post-process.cjs", "lib/render-plan.cjs",
+  "server.cjs", "package.json", "data/postprocess.json", "assets/AdobeRGB1998.icc", "lib/camera-fit.cjs", "lib/crop.cjs", "lib/csv.cjs", "lib/history.cjs", "lib/jobs.cjs", "lib/models.cjs", "lib/post-process.cjs", "lib/render-plan.cjs",
   "lib/rig.cjs", "lib/unreal.cjs", "scripts/inspect_fbx.py"
 ];
 const runtimeSourceToken = () => {
@@ -136,7 +138,7 @@ function finishRun(state, message) {
     return;
   }
   if (run.cameraStates.size) {
-    run.job._rhLocal = { ...(run.job._rhLocal || {}), cameraStates: Object.fromEntries(run.cameraStates) };
+    run.job._rhLocal = { ...(run.job._rhLocal || {}), cameraStates: Object.fromEntries(run.cameraStates), cameraFitRendererToken: CAMERA_FIT_RENDERER_TOKEN };
     fs.writeFileSync(run.jobPath, `${JSON.stringify(run.job, null, 2)}\n`, "utf8");
   }
   updateCatalog(run.jobPath);
@@ -237,11 +239,15 @@ function startRenderPhase() {
   const phase = activeRun.phases[activeRun.index], apiUrl = `http://${HOST}:${PORT}/api/unreal`;
   let phaseJob = remainingPhaseJob(activeRun, phase);
   if (!phaseJob.tasks.length) return advancePhaseOrFinish(`${phase.name} already complete`);
-  if (phase.useCameraHandoff) {
+  const canApplyPersistentFits = phase.layerName === "Fabric" && activeRun.cachedCameraStateKeys.size > 0;
+  if (phase.useCameraHandoff || canApplyPersistentFits) {
     const handoff = applyCameraHandoff(phaseJob, activeRun.cameraStates);
-    if (handoff.missing.length) return finishRun("failed", `Fabric camera handoff missing for ${handoff.missing.join(", ")}`);
+    if (phase.useCameraHandoff && handoff.missing.length) return finishRun("failed", `Fabric camera handoff missing for ${handoff.missing.join(", ")}`);
     phaseJob = handoff.job;
-    appendRenderLog(`Applied ${handoff.applied.length} Fabric camera state${handoff.applied.length === 1 ? "" : "s"} to ${phase.name}; fit disabled.\n`);
+    if (handoff.applied.length) {
+      const source = phase.layerName === "Fabric" && canApplyPersistentFits ? "persistent camera-fit cache" : "Fabric handoff";
+      appendRenderLog(`Applied ${handoff.applied.length} camera state${handoff.applied.length === 1 ? "" : "s"} from ${source} to ${phase.name}; fit disabled for cached views${handoff.missing.length ? `, ${handoff.missing.length} view${handoff.missing.length === 1 ? "" : "s"} will calculate Fit` : ""}.\n`);
+    }
   }
   bridge = { job: phaseJob, jobPath: activeRun.jobPath, outputFolder: activeRun.outputFolder, before: imageSnapshot(activeRun.outputFolder), delivered: false, completed: false, success: false, phase, exitHandled: false };
   const phaseBridge = bridge, launch = buildUnrealLaunch(UNREAL_EDITOR, UNREAL_PROJECT, apiUrl, { substrate: phase.substrate });
@@ -420,11 +426,14 @@ async function api(request, response, url) {
       const camera = data.camera || {}, focalLength = Number(camera.FocalLength ?? camera.focalLength);
       const sequenceName = data.sequenceName || camera.sequenceName || camera.name;
       if (data.taskId && sequenceName && camera.cameraLocation && camera.cameraRotation && Number.isFinite(focalLength) && focalLength > 0) {
-        activeRun.cameraStates.set(cameraStateKey(data.taskId, sequenceName), {
+        const state = {
           cameraLocation: camera.cameraLocation, cameraRotation: camera.cameraRotation, focalLength,
           sensorWidth: Number(camera.SensorWidth ?? camera.sensorWidth), sensorHeight: Number(camera.SensorHeight ?? camera.sensorHeight),
           aperture: Number(camera.CurrentAperture ?? camera.currentAperture), correctPerspective: Boolean(camera.bCorrectPerspective)
-        });
+        };
+        activeRun.cameraStates.set(cameraStateKey(data.taskId, sequenceName), state);
+        const saved = writeCameraFitState(ROOT, activeRun.job, data.taskId, sequenceName, state, { projectPath: UNREAL_PROJECT, rendererToken: CAMERA_FIT_RENDERER_TOKEN });
+        if (saved) appendRenderLog(`Saved persistent camera Fit for ${data.taskId}/${String(sequenceName).split("_").pop()}.\n`);
       }
     }
     if (matchesJob && eventName === "job_completed") {
@@ -436,7 +445,7 @@ async function api(request, response, url) {
   }
   if (request.method === "GET" && url.pathname === "/api/status") return json(response, 200, {
     project: "RH_Local_Renders", models: models.list(), sheet: sheet.status(),
-    unreal: { editor: UNREAL_EDITOR, project: UNREAL_PROJECT, available: fs.existsSync(UNREAL_EDITOR) && fs.existsSync(UNREAL_PROJECT), lastContactAt: lastUnrealContactAt }, render: currentRender(),
+    unreal: { editor: UNREAL_EDITOR, project: UNREAL_PROJECT, available: fs.existsSync(UNREAL_EDITOR) && fs.existsSync(UNREAL_PROJECT), lastContactAt: lastUnrealContactAt, cameraFitCache: { profiles: Object.keys(readCameraFitProfiles(ROOT).profiles).length, rendererToken: CAMERA_FIT_RENDERER_TOKEN } }, render: currentRender(),
     runtime: { startedAt: RUNTIME_STARTED_AT, sourceToken: RUNTIME_SOURCE_TOKEN, stale: RUNTIME_SOURCE_TOKEN !== runtimeSourceToken() }
   });
   if (request.method === "POST" && url.pathname === "/api/models/inspect") return json(response, 200, await models.inspect((await body(request)).modelPath));
@@ -465,11 +474,11 @@ async function api(request, response, url) {
     const job = JSON.parse(fs.readFileSync(jobPath, "utf8"));
     const rendersRoot = path.join(ROOT, "local", "renders"), outputFolder = path.resolve(String(job._rhLocal?.outputFolder || ""));
     if (!within(outputFolder, rendersRoot)) return error(response, 400, "Job output must stay inside RH_Local_Renders/local/renders");
-    const phases = buildRenderPlan(job);
-    activeRun = { job, jobPath, outputFolder, before: input.resume ? new Map() : imageSnapshot(outputFolder), phases, index: 0, cameraStates: new Map(), phaseRestarts: new Map() };
+    const phases = buildRenderPlan(job), cachedFits = cameraFitStatesForJob(ROOT, job, { projectPath: UNREAL_PROJECT, rendererToken: CAMERA_FIT_RENDERER_TOKEN });
+    activeRun = { job, jobPath, outputFolder, before: input.resume ? new Map() : imageSnapshot(outputFolder), phases, index: 0, cameraStates: cachedFits.states, cachedCameraStateKeys: new Set(cachedFits.states.keys()), phaseRestarts: new Map() };
     const queue = (job.tasks || []).map(task => ({ name: task.taskId, state: "queued" }));
     const totalRenders = phases.reduce((total, phase) => total + (phase.job.tasks || []).reduce((phaseTotal, task) => phaseTotal + taskLayerExpected(task, phase.layerName || phase.name), 0), 0);
-    render = { state: "running", pid: null, jobPath, startedAt: new Date().toISOString(), finishedAt: null, exitCode: null, rendered: 0, totalRenders, currentTask: null, currentCamera: null, message: input.resume ? "Resuming completed files" : "Queued", queue, phase: null, phaseIndex: 0, phaseCount: phases.length, substrate: null, autoRestarts: 0, log: `Queued ${phases.map(phase => phase.name).join(" → ")} render plan${input.resume ? " in resume mode" : ""}.\nLocal BatchRender API: http://${HOST}:${PORT}/api/unreal\n` };
+    render = { state: "running", pid: null, jobPath, startedAt: new Date().toISOString(), finishedAt: null, exitCode: null, rendered: 0, totalRenders, currentTask: null, currentCamera: null, message: input.resume ? "Resuming completed files" : "Queued", queue, phase: null, phaseIndex: 0, phaseCount: phases.length, substrate: null, autoRestarts: 0, log: `Queued ${phases.map(phase => phase.name).join(" → ")} render plan${input.resume ? " in resume mode" : ""}.\nPersistent camera-fit cache: ${cachedFits.hits}/${cachedFits.total} views ready.\nLocal BatchRender API: http://${HOST}:${PORT}/api/unreal\n` };
     refreshRunProgress();
     startRenderPhase();
     return json(response, 202, currentRender());

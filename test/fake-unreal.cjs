@@ -16,6 +16,9 @@ const { PNG } = require("pngjs");
   const cameras = (job.tasks || []).flatMap(task => (task.sequence?.cameras || []).map((camera, index) => ({ taskId: task.taskId, camera, index })));
   fs.appendFileSync(process.env.RH_FAKE_UNREAL_LOG, `${JSON.stringify({ phase, substrateArgument, jobId: job.jobId, keyLight, taskIds: (job.tasks || []).map(task => task.taskId), cameras: cameras.map(item => item.camera) })}\n`);
   const crashMarker = process.env.RH_FAKE_UNREAL_CRASH_ONCE;
+  // Lets a test catch the run mid-flight, which is the only way to exercise a forced stop.
+  const stall = Number(process.env.RH_FAKE_UNREAL_STALL || 0);
+  if (stall > 0) await new Promise(resolve => setTimeout(resolve, stall));
   const tasks = crashMarker && !fs.existsSync(crashMarker) ? (job.tasks || []).slice(0, 1) : (job.tasks || []);
   for (const task of tasks) {
     const output = task.layers?.[0]?.output?.folder;

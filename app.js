@@ -230,13 +230,33 @@
     const elapsedSeconds = Math.max(1, (Date.now() - started) / 1000);
     return `ETA ≈ ${formatDuration(elapsedSeconds / rendered * (total - rendered))}`;
   };
+  const armStop = { timer: null };
+  const disarmStop = () => {
+    const button = $("stopRender");
+    button.dataset.confirm = ""; button.textContent = "Stop render";
+    if (armStop.timer) { clearTimeout(armStop.timer); armStop.timer = null; }
+  };
+  // A mis-click here throws away hours of rendering, so the button asks twice.
+  const stopRender = async () => {
+    const button = $("stopRender");
+    if (button.dataset.confirm !== "pending") {
+      button.dataset.confirm = "pending"; button.textContent = "Confirm stop";
+      armStop.timer = setTimeout(disarmStop, 5000);
+      return;
+    }
+    disarmStop();
+    try {
+      updateRender(await api("/api/renders/stop", { method: "POST" }));
+      toast("Render stopped; Unreal is being killed");
+    } catch (error) { toast(error.message, true); }
+  };
   const updateRender = (render) => {
     state.status ||= {}; state.status.render = render;
     const badge = $("renderBadge"), box = $("renderStatus"), log = $("renderLog"), progress = $("renderProgress");
-    badge.dataset.state = render.state; badge.textContent = render.state === "running" && render.phase ? render.phase : ({running:"Rendering",success:"Complete",failed:"Failed",idle:"Idle"})[render.state] || render.state;
+    badge.dataset.state = render.state; badge.textContent = render.state === "running" && render.phase ? render.phase : ({running:"Rendering",success:"Complete",failed:"Failed",stopped:"Stopped",idle:"Idle"})[render.state] || render.state;
     box.dataset.state = render.state;
     const phase = render.phase ? ` · ${render.phase}${render.phaseCount > 1 ? ` (${render.phaseIndex}/${render.phaseCount})` : ""}` : "";
-    const title = render.state === "running" ? (render.phase === "Post-processing" ? "Preparing delivery images" : `Unreal is rendering${phase}`) : render.state === "success" ? (render.postProcess?.state === "failed" ? "Render completed · post-process needs attention" : "Render completed") : render.state === "failed" ? "Render stopped with an error" : "No active render";
+    const title = render.state === "running" ? (render.phase === "Post-processing" ? "Preparing delivery images" : `Unreal is rendering${phase}`) : render.state === "success" ? (render.postProcess?.state === "failed" ? "Render completed · post-process needs attention" : "Render completed") : render.state === "failed" ? "Render stopped with an error" : render.state === "stopped" ? "Render stopped by hand" : "No active render";
     const substrate = render.state === "running" && typeof render.substrate === "boolean" ? `Substrate ${render.substrate ? "ON" : "OFF"} · ` : "";
     const current = [render.currentTask, render.currentCamera].filter(Boolean).join(" · ");
     box.querySelector("strong").textContent = title; box.querySelector("span").textContent = current || (render.jobPath ? `${substrate}${render.jobPath}` : "Generate a job, then launch it in Unreal Engine 5.6.");
@@ -263,7 +283,10 @@
       list.scrollTop = Math.max(0, offset - (list.clientHeight - running.offsetHeight) / 2);
     }
     state.queueFocus = running ? render.currentTask : null;
-    $("retryRender").hidden = render.state !== "failed" || !render.jobPath;
+    $("stopRender").hidden = render.state !== "running";
+    if (render.state !== "running") disarmStop();
+    $("retryRender").hidden = !["failed", "stopped"].includes(render.state) || !render.jobPath;
+    $("retryRender").textContent = render.state === "stopped" ? "Resume stopped job" : "Retry failed job";
     log.hidden = false; log.textContent = render.log || "";
     if (render.state !== "running" && state.poll) { clearInterval(state.poll); state.poll = null; loadHistory(); }
   };
@@ -444,7 +467,7 @@
   [["width", "width"], ["depth", "depth"], ["height", "height"]].forEach(([id, key]) => $(id).addEventListener("input", () => { if (state.model && +$(id).value > 0) { state.model.dimensions[key] = +$(id).value; renderBatch(); validate(); } }));
   $("importYaw").addEventListener("input", () => { if (state.model) { state.model.importYaw = +$("importYaw").value || 0; validate(); } });
   $("generateJob").addEventListener("click", generate); $("launchRender").addEventListener("click", launch); $("refreshSheet").addEventListener("click", refreshSheet);
-  $("retryRender").addEventListener("click", () => launch(true));
+  $("retryRender").addEventListener("click", () => launch(true)); $("stopRender").addEventListener("click", stopRender);
   document.querySelectorAll('input[name="renderProfile"]').forEach(input => input.addEventListener("change", () => {
     const low = input.checked && input.value === "low";
     $("fabricResolutionLabel").textContent = low ? "Path Trace · 500" : "Path Trace · 5K";

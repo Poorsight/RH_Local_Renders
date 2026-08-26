@@ -483,6 +483,32 @@ async function api(request, response, url) {
     startRenderPhase();
     return json(response, 202, currentRender());
   }
+  if (request.method === "POST" && url.pathname === "/api/renders/stop") {
+    if (!activeRun && !child) return error(response, 409, postProcessPromise ? "Post-processing cannot be interrupted; it finishes on its own" : "No render is running");
+    const doomed = child, stoppedDuring = render.phase || "render";
+    // Dropping the run first is what disarms the automatic phase restart: the exit handler
+    // bails out on a missing activeRun instead of resuming the phase for another try.
+    activeRun = null; bridge = null;
+    render.state = "stopped"; render.finishedAt = new Date().toISOString(); render.pid = null;
+    render.message = `Stopped by hand during ${stoppedDuring}`;
+    appendRenderLog(`
+Forced stop during ${stoppedDuring}. Unreal is being killed and the run is abandoned; files already on disk stay, so a resume can skip them.
+`);
+    if (doomed) {
+      doomed.kill();
+      // Unreal shrugs off a polite kill often enough that the tree kill is worth keeping as a fallback.
+      const pid = doomed.pid;
+      setTimeout(() => {
+        try { process.kill(pid, 0); } catch { return; }
+        appendRenderLog(`Unreal ignored the stop; forcing the process tree down.
+`);
+        const forced = spawn("taskkill", ["/PID", String(pid), "/T", "/F"], { stdio: "ignore" });
+        forced.on("error", () => {});
+      }, 4000).unref?.();
+      if (child === doomed) child = null;
+    }
+    return json(response, 200, currentRender());
+  }
   if (request.method === "GET" && url.pathname === "/api/renders/status") return json(response, 200, currentRender());
   if (request.method === "POST" && url.pathname === "/api/postprocess") {
     if (child || activeRun || postProcessPromise) return error(response, 409, "A render or post-process operation is already running");

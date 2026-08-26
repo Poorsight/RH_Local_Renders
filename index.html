@@ -177,7 +177,10 @@
           <div class="render-progress-head"><strong id="renderProgressLabel">0 / 0</strong><span id="renderProgressMeta"></span></div>
           <div class="render-progress-track"><i id="renderProgressBar"></i></div>
           <div id="renderQueue" class="render-queue"></div>
-          <button id="retryRender" class="quiet-button" type="button" hidden>Retry failed job</button>
+          <div class="render-actions">
+            <button id="stopRender" class="quiet-button danger-button" type="button" hidden>Stop render</button>
+            <button id="retryRender" class="quiet-button" type="button" hidden>Retry failed job</button>
+          </div>
         </div>
       </section>
       </div>

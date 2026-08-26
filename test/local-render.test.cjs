@@ -575,6 +575,55 @@ test("local render service automatically resumes after an Unreal crash and skips
   }
 });
 
+test("a forced stop kills Unreal, disarms the automatic resume and leaves the service usable", async () => {
+  const suffix = `stop_${process.pid}_${Date.now()}`, port = 51000 + process.pid % 4000;
+  const jobsRoot = path.join(root, "local", "jobs", "generated"), output = path.join(root, "local", "renders", `test_${suffix}`);
+  const jobPath = path.join(jobsRoot, `test_${suffix}.job.json`), fakeLog = path.join(os.tmpdir(), `rh-fake-${suffix}.log`);
+  fs.mkdirSync(jobsRoot, { recursive: true }); fs.mkdirSync(output, { recursive: true });
+  const job = buildBatchJob([{ model, input: { ...baseInput, layers: ["Fabric"] } }], rig, output, `test_${suffix}`);
+  fs.writeFileSync(jobPath, JSON.stringify(job));
+  const service = spawn(process.execPath, [path.join(root, "server.cjs")], {
+    cwd: root, windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, RH_LOCAL_RENDERS_PORT: String(port), RH_UNREAL_EDITOR: process.execPath, RH_UNREAL_PROJECT: path.join(root, "test", "fake-unreal.cjs"), RH_FAKE_UNREAL_LOG: fakeLog, RH_FAKE_UNREAL_STALL: "9000" }
+  });
+  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const status = async () => (await fetch(`http://127.0.0.1:${port}/api/renders/status`)).json();
+  try {
+    let online = false;
+    for (let attempt = 0; attempt < 50 && !online; attempt++) { try { online = (await fetch(`http://127.0.0.1:${port}/api/status`)).ok; } catch {} if (!online) await sleep(50); }
+    assert.equal(online, true);
+
+    assert.equal((await fetch(`http://127.0.0.1:${port}/api/renders/stop`, { method: "POST" })).status, 409, "nothing to stop while idle");
+
+    assert.equal((await fetch(`http://127.0.0.1:${port}/api/renders`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jobPath }) })).status, 202);
+    // Wait until the fake editor has really claimed the job, so the stop hits a live render.
+    for (let attempt = 0; attempt < 200 && !fs.existsSync(fakeLog); attempt++) await sleep(50);
+    assert.equal(fs.existsSync(fakeLog), true, "Unreal never picked the job up");
+    const running = await status();
+    assert.equal(running.state, "running");
+    assert.ok(running.pid, "a running render must expose the Unreal pid");
+
+    const stopped = await (await fetch(`http://127.0.0.1:${port}/api/renders/stop`, { method: "POST" })).json();
+    assert.equal(stopped.state, "stopped");
+    assert.equal(stopped.pid, null);
+    assert.match(stopped.log, /Forced stop during/);
+
+    // The automatic phase restart must stay disarmed: a stop is a decision, not a crash.
+    await sleep(3000);
+    const after = await status();
+    assert.equal(after.state, "stopped", after.log);
+    assert.ok(!after.autoRestarts, `autoRestarts=${after.autoRestarts}`);
+    assert.equal(fs.readFileSync(fakeLog, "utf8").trim().split(/\r?\n/).length, 1, "Unreal must not be relaunched");
+
+    // And the service must be free again rather than wedged behind a dead run.
+    assert.equal((await fetch(`http://127.0.0.1:${port}/api/renders`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jobPath }) })).status, 202);
+    await fetch(`http://127.0.0.1:${port}/api/renders/stop`, { method: "POST" });
+  } finally {
+    service.kill();
+    fs.rmSync(jobPath, { force: true }); fs.rmSync(output, { recursive: true, force: true }); fs.rmSync(fakeLog, { force: true });
+  }
+});
+
 test("legacy light-rig project files stay out of the unified project", () => {
   for (const legacy of ["handoff", "light-rig-reference.html", "comments.php", "ONBOARDING.md", ".claude"]) {
     assert.equal(fs.existsSync(path.join(root, legacy)), false, legacy);

@@ -11,6 +11,8 @@ const { writeBatchJob } = require("./lib/jobs.cjs");
 const { buildRenderPlan, cameraStateKey, applyCameraHandoff } = require("./lib/render-plan.cjs");
 const { siblingBranch, isInBranch } = require("./lib/output-layout.cjs");
 const { publishPreviews, previewFileFor } = require("./lib/preview.cjs");
+const { checkModel, summarise } = require("./lib/model-check.cjs");
+const { inspectObjParts, normalizeObjParts, writeMaterialLibrary } = require("./lib/obj-parts.cjs");
 const { modelFingerprint, readCropProfiles, writeCropProfiles, cropProfileFor, analyzeCalibrationPair, applyCropProfileToCamera, calibrationFiles } = require("./lib/crop.cjs");
 const { rendererToken, readCameraFitProfiles, cameraFitStatesForJob, writeCameraFitState } = require("./lib/camera-fit.cjs");
 const { buildUnrealLaunch } = require("./lib/unreal.cjs");
@@ -493,6 +495,50 @@ async function api(request, response, url) {
     runtime: { startedAt: RUNTIME_STARTED_AT, sourceToken: RUNTIME_SOURCE_TOKEN, stale: RUNTIME_SOURCE_TOKEN !== runtimeSourceToken() },
     access: { required: Boolean(ACCESS_KEY), authorized: !ACCESS_KEY || timingEqual(presentedKey(request), ACCESS_KEY) }
   });
+  if (request.method === "POST" && url.pathname === "/api/models/repair") {
+    // Some downloads name their parts where an importer never looks. Rewriting the file puts
+    // the names back on objects and materials, in place, keeping the original as .orig.
+    const input = await body(request), modelsRoot = models.modelsRoot;
+    const wanted = Array.isArray(input.models) && input.models.length ? input.models : models.list().filter(model => model.format === "obj").map(model => model.name);
+    const repaired = [];
+    for (const name of wanted) {
+      try {
+        const file = models.resolve(name);
+        if (path.extname(file).toLowerCase() !== ".obj") { repaired.push({ name, skipped: "only OBJ files can be repaired" }); continue; }
+        if (!within(file, modelsRoot)) { repaired.push({ name, skipped: "outside the models folder" }); continue; }
+        const before = await inspectObjParts(file);
+        if (!before.needsNormalising) { repaired.push({ name, skipped: "already readable", parts: before.namedParts }); continue; }
+        const staging = `${file}.repairing`;
+        const result = await normalizeObjParts(file, staging);
+        fs.renameSync(file, `${file}.orig`);
+        fs.renameSync(staging, file);
+        writeMaterialLibrary(file, result.parts);
+        // The file changed, so its fingerprint no longer matches and the next inspect
+        // re-analyses it without anything having to clear a cache.
+        repaired.push({ name, parts: result.parts, droppedGroups: result.droppedGroups, faces: result.faces, keptOriginal: `${path.basename(file)}.orig` });
+      } catch (repairError) { repaired.push({ name, error: repairError.message }); }
+    }
+    return json(response, 200, { repaired: repaired.filter(item => item.parts && !item.skipped).length, models: repaired });
+  }
+  if (request.method === "POST" && url.pathname === "/api/models/check") {
+    // Checks every model on disk, or the ones asked for. Inspecting a model that has never
+    // been analysed runs Blender, so this is a deliberate action rather than a page load.
+    const input = await body(request);
+    const wanted = Array.isArray(input.models) && input.models.length ? input.models : models.list().map(model => model.name);
+    const results = [];
+    for (const name of wanted) {
+      try {
+        const record = await models.inspect(name);
+        const findings = checkModel(record, record);
+        results.push({ name, path: record.path, group: record.group || "", format: record.format || "", findings, ...summarise(findings) });
+      } catch (checkError) {
+        const findings = [{ level: "error", code: "inspect-failed", label: "Could not inspect", detail: checkError.message }];
+        results.push({ name, path: "", group: "", format: "", findings, ...summarise(findings) });
+      }
+    }
+    const failing = results.filter(item => item.errors).length;
+    return json(response, 200, { checked: results.length, failing, warning: results.filter(item => item.warnings).length, models: results });
+  }
   if (request.method === "POST" && url.pathname === "/api/models/inspect") return json(response, 200, await models.inspect((await body(request)).modelPath));
   if (request.method === "GET" && url.pathname === "/api/materials") return json(response, 200, { materials: unrealMaterials() });
   if (request.method === "POST" && url.pathname === "/api/preflight") return json(response, 200, await preflight(await body(request)));

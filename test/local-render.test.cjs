@@ -17,6 +17,7 @@ const { buildRenderPlan, cameraStateKey, applyCameraHandoff } = require("../lib/
 const { analyzeCalibrationPair, applyCropProfile } = require("../lib/crop.cjs");
 const { cameraFitStatesForJob, writeCameraFitStates } = require("../lib/camera-fit.cjs");
 const { inspectObjParts, normalizeObjParts, writeMaterialLibrary } = require("../lib/obj-parts.cjs");
+const { checkModel, summarise, unrealScaleFor } = require("../lib/model-check.cjs");
 const { siblingBranch, batchRootOf } = require("../lib/output-layout.cjs");
 const { publishPreviews, previewFileFor } = require("../lib/preview.cjs");
 const { READY_FOLDER_NAME, availability, isProcessedImage, processImage, processedPathFor, publishReadyToUpload, writePngText } = require("../lib/post-process.cjs");
@@ -826,6 +827,59 @@ test("an OBJ whose parts are only face groups is renamed into meshes an importer
   const library = writeMaterialLibrary(target, result.parts);
   assert.match(fs.readFileSync(library, "utf8"), /newmtl Feet[\s\S]*newmtl UPH/);
   fs.rmSync(temp, { recursive: true, force: true });
+});
+
+test("model checks catch a wrong scale, a missing part and an uncorrected FBX orientation", () => {
+  const sofa = { dimensions: [277.2, 106.4, 85.1], yaw: 0, scale: 0.001, materialIds: ["UPH", "Feet"], meshObjects: 2, analysis: { detectedBack: "+Y", unit: "millimetres" } };
+  const sectional = { dimensions: { width: 355.5, depth: 274.6, height: 86.9 }, yaw: 90, scale: 1, materialIds: ["UPH", "Stitches", "Feet"], meshObjects: 3, analysis: { detectedBack: "-X", unit: "metres" } };
+  const find = (findings, code) => findings.find(item => item.code === code);
+
+  // Models arrive at whatever scale their exporter used, so the factor is measured per model
+  // and passed through: a tracked inch model carries 2.54 and renders correctly with it.
+  assert.equal(unrealScaleFor(sofa), 0.001);
+  assert.equal(unrealScaleFor(sectional), 1);
+  assert.equal(unrealScaleFor({ scale: 2.54 }), 2.54, "what the farm sends for an inch export");
+  assert.equal(unrealScaleFor({ scale: 0 }), null);
+
+  const sofaFindings = checkModel({ name: "BELLA_TWO_SEAT_SOFA", group: "sofas", format: "obj" }, sofa);
+  assert.equal(find(sofaFindings, "scale").level, "ok");
+  assert.match(find(sofaFindings, "scale").detail, /millimetres measured/);
+  assert.equal(find(sofaFindings, "parts").level, "ok", "a sofa needs upholstery and feet, not stitches");
+  assert.equal(find(sofaFindings, "size").level, "ok");
+
+  const sectionalFindings = checkModel({ name: "X_L_SECTIONAL", group: "", format: "fbx" }, sectional);
+  assert.equal(summarise(sectionalFindings).errors, 0);
+  assert.equal(find(sectionalFindings, "orientation").level, "ok");
+  assert.match(find(sectionalFindings, "orientation").detail, /matching import yaw \+90/);
+
+  // A sectional missing its stitches has nowhere to put that material.
+  const noStitches = checkModel({ name: "X_L_SECTIONAL", group: "sectionals", format: "fbx" },
+    { ...sectional, materialIds: ["UPH", "Feet"] });
+  assert.equal(find(noStitches, "missing-parts").level, "error");
+  assert.equal(find(noStitches, "missing-parts").repairable, false, "an FBX cannot be repaired by renaming groups");
+
+  // The same gap in an OBJ is usually just names in the wrong place.
+  const objGap = checkModel({ name: "SOFA", group: "sofas", format: "obj" }, { ...sofa, materialIds: [] });
+  assert.equal(find(objGap, "missing-parts").repairable, true);
+
+  // Units guessed wrong show up as a size no piece of furniture has.
+  const tooSmall = checkModel({ name: "SOFA", group: "sofas", format: "obj" }, { ...sofa, dimensions: [2.77, 1.06, 0.85] });
+  assert.equal(find(tooSmall, "implausible-size").level, "error");
+
+  // A measured axis implies the correction it needs, so a mismatch is an error and a match
+  // is fine — a model that simply needs no turn must not be flagged for not turning.
+  const wrongWay = checkModel({ name: "X_L_SECTIONAL", group: "sectionals", format: "fbx" }, { ...sectional, yaw: 0 });
+  assert.equal(find(wrongWay, "orientation").level, "error");
+  assert.match(find(wrongWay, "orientation").detail, /needs import yaw \+90/);
+  const straight = checkModel({ name: "SOFA", group: "sofas", format: "obj" }, sofa);
+  assert.equal(find(straight, "orientation").level, "ok", "a backrest already at +Y needs no yaw");
+  const untracked = checkModel({ name: "X", group: "", format: "fbx" }, { ...sectional, analysis: null });
+  assert.equal(find(untracked, "orientation").level, "info", "tracked metadata carries no measured axis to compare");
+
+  // Trailing digits are an export artefact, not a different part.
+  const suffixed = checkModel({ name: "X_L_SECTIONAL", group: "sectionals", format: "fbx" },
+    { ...sectional, materialIds: ["UPH1", "Stitches1", "Feet1"] });
+  assert.equal(summarise(suffixed).errors, 0, "UPH1 is UPH");
 });
 
 test("legacy light-rig project files stay out of the unified project", () => {

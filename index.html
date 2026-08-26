@@ -142,7 +142,7 @@
       <section class="panel output-panel" aria-labelledby="outputTitle">
         <div class="panel-heading"><div><span class="step">03</span><h2 id="outputTitle">Views &amp; output</h2></div></div>
         <div class="field-grid two">
-          <label>Sectional side
+          <label data-for-type="Sectionals">Sectional side
             <select id="sceneSide">
               <option value="auto">Auto from model</option>
               <option value="R">Right arm (R)</option>
@@ -183,15 +183,19 @@
             <label><input type="checkbox" name="layer" value="Fabric" checked><span>Fabric <small id="fabricResolutionLabel">Path Trace · 5K</small></span></label>
             <label data-for-type="Sectionals,Sofas"><input type="checkbox" name="layer" value="Shadow"><span>Shadow <small id="shadowResolutionLabel">Lumen · 15K×5K</small></span></label>
           </div>
-          <div class="frame-size">
-            <div class="frame-size-heading"><span>FRAME SIZE</span><button id="resetFrameSize" class="quiet-button" type="button">Reset to profile</button></div>
+          <div class="frame-size-row">
+            <button id="frameSizeToggle" class="quiet-button" type="button" popovertarget="frameSizePanel">Frame size…</button>
+            <small id="frameSizeSummary"></small>
+          </div>
+          <div id="frameSizePanel" class="frame-size" popover>
+            <div class="frame-size-heading"><div><strong>Frame size</strong><span>What a render starts from</span></div><button id="resetFrameSize" class="quiet-button" type="button">Reset to profile</button></div>
             <div class="frame-size-grid">
               <label>Fabric px<input id="fabricResX" type="number" min="1" step="1"><i>×</i><input id="fabricResY" type="number" min="1" step="1"></label>
               <label>Fabric sensor mm<input id="fabricSensorX" type="number" min="1" step="0.1"><i>×</i><input id="fabricSensorY" type="number" min="1" step="0.1"></label>
-              <label data-for-type="Sectionals,Sofas">Shadow px<input id="shadowResX" type="number" min="1" step="1"><i>×</i><input id="shadowResY" type="number" min="1" step="1"></label>
-              <label data-for-type="Sectionals,Sofas">Shadow sensor mm<input id="shadowSensorX" type="number" min="1" step="0.1"><i>×</i><input id="shadowSensorY" type="number" min="1" step="0.1"></label>
+              <label>Shadow px<input id="shadowResX" type="number" min="1" step="1"><i>×</i><input id="shadowResY" type="number" min="1" step="1"></label>
+              <label>Shadow sensor mm<input id="shadowSensorX" type="number" min="1" step="0.1"><i>×</i><input id="shadowSensorY" type="number" min="1" step="0.1"></label>
             </div>
-            <p class="field-hint">The frame a render starts from, written straight into the job. Keep the pixel and sensor ratios equal or the image stretches; the optimized crop trims height from here.</p>
+            <p class="field-hint">Written straight into the job, per camera. Keep the pixel and sensor ratios equal or the image stretches; a bigger sensor is a lens change, not a crop. The optimized crop trims height from here.</p>
           </div>
           <p class="field-hint layer-order-hint">Fabric runs with Substrate enabled. Shadow runs in a fresh Unreal process with Substrate disabled; when both are selected, Fabric always completes first.</p>
         </fieldset>

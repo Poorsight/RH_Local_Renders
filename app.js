@@ -206,6 +206,9 @@
       const input = label.querySelector("input");
       if (input && !fits && input.checked) input.checked = false;
       if (input && fits && input.name === "camera" && !input.checked) input.checked = true;
+      // A hidden side would still be sent, so it goes back to being read from the model.
+      const select = label.querySelector("select");
+      if (select && !fits && select.id === "sceneSide") select.value = "auto";
     }
     validate(false);
   };
@@ -226,6 +229,39 @@
       $(fields.res[0]).value = profile[layer].res[0]; $(fields.res[1]).value = profile[layer].res[1];
       $(fields.sensor[0]).value = profile[layer].sensor[0]; $(fields.sensor[1]).value = profile[layer].sensor[1];
     }
+    describeFrameSize();
+  };
+  // Behind a button, a changed frame is easy to forget, so the trigger says when it differs
+  // from the profile and what it was changed to.
+  const describeFrameSize = () => {
+    const profile = FRAME_PROFILES[currentProfile()] || FRAME_PROFILES.high;
+    const custom = [];
+    for (const [layer, fields] of Object.entries(FRAME_FIELDS)) {
+      const res = [Number($(fields.res[0]).value), Number($(fields.res[1]).value)];
+      const sensor = [Number($(fields.sensor[0]).value), Number($(fields.sensor[1]).value)];
+      if (res.join() !== profile[layer].res.join() || sensor.join() !== profile[layer].sensor.join()) {
+        custom.push(`${layer} ${res[0]}×${res[1]} · ${sensor[0]}×${sensor[1]} mm`);
+      }
+    }
+    const summary = $("frameSizeSummary"), toggle = $("frameSizeToggle");
+    summary.textContent = custom.length ? custom.join("   ") : `${currentProfile() === "low" ? "500" : "5000"} px at a 36 mm sensor, from the profile`;
+    summary.dataset.state = custom.length ? "custom" : "profile";
+    toggle.dataset.state = custom.length ? "custom" : "profile";
+    // The layer buttons carry the frame in their sublabel, so they have to follow the fields
+    // rather than only the profile they were switched from.
+    const short = px => {
+      if (!Number.isFinite(px) || px <= 0) return "—";
+      if (px < 1000) return String(px);
+      const thousands = px / 1000;
+      return Number.isInteger(thousands * 10) ? `${Number(thousands.toFixed(1))}K` : String(px);
+    };
+    const size = layer => {
+      const fields = FRAME_FIELDS[layer];
+      const x = Number($(fields.res[0]).value), y = Number($(fields.res[1]).value);
+      return x === y ? short(x) : `${short(x)}×${short(y)}`;
+    };
+    $("fabricResolutionLabel").textContent = `Path Trace · ${size("Fabric")}`;
+    $("shadowResolutionLabel").textContent = `Lumen · ${size("Shadow")}`;
   };
   const frameOverrides = () => {
     const out = {};
@@ -697,16 +733,23 @@
   $("generateJob").addEventListener("click", generate); $("launchRender").addEventListener("click", launch); $("refreshSheet").addEventListener("click", refreshSheet);
   $("retryRender").addEventListener("click", () => launch(true)); $("stopRender").addEventListener("click", stopRender);
   document.querySelectorAll('input[name="renderProfile"]').forEach(input => input.addEventListener("change", () => {
-    const low = input.checked && input.value === "low";
-    $("fabricResolutionLabel").textContent = low ? "Path Trace · 500" : "Path Trace · 5K";
-    $("shadowResolutionLabel").textContent = low ? "Lumen · 1.5K×500" : "Lumen · 15K×5K";
     fillFrameSize();
     state.jobPath = null; $("jobResult").hidden = true; validate();
   }));
   $("resetFrameSize").addEventListener("click", () => { fillFrameSize(); state.jobPath = null; $("jobResult").hidden = true; validate(); toast("Frame size back to the profile"); });
   for (const ids of Object.values(FRAME_FIELDS)) for (const id of [...ids.res, ...ids.sensor]) {
-    $(id).addEventListener("input", () => { state.jobPath = null; $("jobResult").hidden = true; validate(false); });
+    $(id).addEventListener("input", () => { describeFrameSize(); state.jobPath = null; $("jobResult").hidden = true; validate(false); });
   }
+  // Positioned once it is open, never before: a closed popover is display:none, so measuring
+  // it then gives zero and the panel lands wherever the fallback guessed.
+  $("frameSizePanel").addEventListener("toggle", event => {
+    if (event.newState !== "open") return;
+    const pop = $("frameSizePanel"), box = $("frameSizeToggle").getBoundingClientRect();
+    const { width, height } = pop.getBoundingClientRect();
+    const clamp = (value, max) => Math.max(12, Math.min(Math.max(12, max - 12), value));
+    pop.style.left = `${clamp(box.left, window.innerWidth - width)}px`;
+    pop.style.top = `${clamp(box.bottom + height + 12 > window.innerHeight ? box.top - height - 8 : box.bottom + 8, window.innerHeight - height)}px`;
+  });
   $("copyJobPath").addEventListener("click", async () => { await navigator.clipboard.writeText(state.jobPath || ""); toast("Job path copied"); });
   $("refreshHistory").addEventListener("click", loadHistory);
   $("historySearch").addEventListener("input", renderHistoryList); $("historyFilter").addEventListener("change", renderHistoryList);

@@ -232,7 +232,8 @@ legend{padding:0;color:var(--faint);font-size:10.5px;font-weight:750;letter-spac
 .choice-row label{flex:1 1 auto;min-width:76px;flex-direction:row;align-items:center;gap:0;cursor:pointer}
 .choice-row input{position:absolute;opacity:0;width:0;height:0}
 .choice-row label>span{flex:1;display:flex;flex-direction:column;gap:3px;align-items:center;justify-content:center;text-align:center;padding:11px 14px;border-radius:var(--radius-xs);background:var(--surface-2);box-shadow:var(--press-sm);color:var(--muted);font-size:13px;font-weight:560;transition:color .16s,box-shadow .16s,background .16s}
-.choice-row label>span small{font-size:10.5px;font-weight:500;color:var(--faint);letter-spacing:.01em}
+.choice-row{--sub-size:10.5px}
+.choice-row label>span small{font-size:var(--sub-size);font-weight:500;color:var(--faint);letter-spacing:.01em}
 .choice-row label:hover>span{color:var(--text)}
 /* No size change when a pill switches on: the ring and the colour carry the state, so
    there is no inserted tick and no heavier weight to reflow the label. */
@@ -679,7 +680,8 @@ input[type=radio]:checked{animation:accent-breathe 3.6s ease-in-out infinite}
   .output-panel .choice-row label{min-width:0}
   .output-panel .choice-row.layers label,.output-panel .choice-row.render-profile label,.output-panel .choice-row.crop-mode label{min-width:0}
   .output-panel .choice-row label>span{padding:7px 9px;font-size:12px;gap:2px}
-  .output-panel .choice-row label>span small{font-size:9.5px}
+  .output-panel .choice-row{--sub-size:9.5px}
+  .output-panel .choice-row label>span small{font-size:var(--sub-size)}
   .output-panel .field-hint{font-size:10px;line-height:1.4}
   .output-panel .field-grid{gap:10px}
   .output-panel label{gap:6px;font-size:11px}
@@ -954,9 +956,6 @@ input[readonly]:hover,input[readonly]:focus{box-shadow:none}
    Eight numbers that used to live in code, behind a button so they do not
    crowd the panel. A closed popover keeps display:none — an author-level
    display beats the UA rule and leaves an invisible pane eating clicks. */
-.frame-size-row{display:flex;align-items:center;gap:10px;margin-top:11px;flex-wrap:wrap}
-.frame-size-row>small{font-size:11px;color:var(--faint)}
-.frame-size-row>small[data-state=custom]{color:var(--accent-ink)}
 #frameSizeToggle[data-state=custom]{color:var(--accent-ink);box-shadow:var(--sel-gleam)}
 .frame-size{position:fixed;margin:0;inset:auto;z-index:75;width:min(460px,calc(100vw - 28px));display:none;flex-direction:column;padding:16px;border:0;border-radius:var(--radius-sm);background:var(--surface-raised);box-shadow:var(--lift-lg);color:var(--text);opacity:0;transform:translateY(-8px) scale(.985);transition:opacity .17s ease,transform .22s cubic-bezier(.2,.8,.2,1),overlay .22s allow-discrete,display .22s allow-discrete}
 .frame-size:popover-open{display:flex;opacity:1;transform:none}
@@ -972,7 +971,6 @@ input[readonly]:hover,input[readonly]:focus{box-shadow:none}
 .frame-size-grid label>i{flex:none;font-style:normal;color:var(--faint);font-size:11px}
 .frame-size .field-hint{margin-top:11px}
 
-.frame-size-row>.secondary-button{padding:8px 15px;font-size:12.5px}
 
 /* ── anchoring ──────────────────────────────────────────────────────
    A popover lives in the top layer, so it does not scroll with the thing
@@ -993,3 +991,62 @@ input[readonly]:hover,input[readonly]:focus{box-shadow:none}
 }
 #frameSizePanel{position-area:block-end span-inline-end}
 .settings-panel,.confirm-pop{position-area:block-end span-inline-start}
+
+/* ── Views & output, laid out on one rhythm ──────────────────────────────────
+   Four fieldsets of unequal shape used to sit in a 2x2 grid: three, then two,
+   then two pills wide, so the same control language came out in four different
+   widths. A three-line hint lived inside one column and decided that column's
+   height, which pulled the two halves of the block out of line, and Frame size
+   sat inside Layers where it had nothing to do with a layer.
+
+   Now the one-of-a-kind controls take full-width bands, the three two-way
+   switches pair off so every switch is exactly the same size, and the notes go
+   last where a long sentence cannot skew anything. */
+.output-fieldsets>.full-row{grid-column:1/-1}
+.output-field{display:flex;flex-direction:column;gap:11px}
+.output-field>span{color:var(--faint);font-size:10.5px;font-weight:750;letter-spacing:.16em}
+
+/* Every switch in the block splits its row evenly. Left to size themselves by their
+   own text, the Layers pair came out 128px and 135px -- close enough to look like a
+   mistake rather than a choice. The segmented rows already did this; the pick-many
+   rows now do it too. */
+.choice-row.cameras label,.choice-row.layers label{flex:1 1 0}
+.choice-row.cameras label{min-width:0}
+/* A camera is named in one word while every other switch here carries a sublabel, so
+   the pills came out 30px against 44px and read as a different kind of control. They
+   reserve the missing line instead of hardcoding a height, which keeps them level with
+   their row-mates through any later change of padding or type size. */
+.choice-row.cameras label>span:after{content:"";display:block;font-size:var(--sub-size);height:1lh}
+
+/* A legend is followed by a switch row at a set distance, and the Frame size trigger
+   is a switch row of one -- without this it sat 8px above the Frame crop buttons it
+   shares a line with. */
+legend+.frame-size-trigger{margin-top:8px}
+
+/* Frame size opens a panel rather than switching a value, so it is a single
+   button the width of its column -- the same face as a switch, deliberately not
+   pretending to be one of them. */
+.frame-size-trigger{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;width:100%;
+  padding:11px 14px;border-radius:var(--radius-xs);background:var(--inset);box-shadow:var(--press);color:var(--muted);
+  font-family:inherit;font-size:13px;font-weight:560;cursor:pointer;
+  transition:color .16s,box-shadow .18s,background .18s,transform .14s}
+.frame-size-trigger small{font-size:10.5px;font-weight:500;color:var(--faint);letter-spacing:.01em}
+.frame-size-trigger:hover{box-shadow:var(--press-sm);color:var(--text)}
+.frame-size-trigger:active{box-shadow:var(--press);transform:none}
+.frame-size-trigger:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* Changed frames are easy to forget behind a button, so a custom frame lights the
+   trigger the way a chosen switch lights. */
+.frame-size-trigger[data-state=custom]{background:var(--surface-raised);box-shadow:var(--sel-gleam);color:var(--accent-ink);transform:translateY(-1px)}
+.frame-size-trigger[data-state=custom]:hover{box-shadow:var(--sel-gleam),0 0 22px -8px var(--accent-glow-lit);transform:translateY(-2px)}
+.frame-size-trigger[data-state=custom] small{color:var(--accent-ink);opacity:.85}
+
+/* Annotation, not controls: set below a rule so they read that way. */
+.output-notes{display:flex;flex-direction:column;gap:6px;padding-top:12px;border-top:1px solid var(--line)}
+
+@media (min-width:1440px){
+  .output-panel .output-field{gap:6px}
+  .output-panel .output-field>span{font-size:9.5px;letter-spacing:.14em}
+  .output-panel .frame-size-trigger{padding:7px 9px;font-size:12px;gap:2px}
+  .output-panel .frame-size-trigger small{font-size:9.5px}
+  .output-panel .output-notes{padding-top:10px;gap:5px}
+}

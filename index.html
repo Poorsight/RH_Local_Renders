@@ -141,8 +141,8 @@
       <div class="workspace-col workspace-col-status">
       <section class="panel output-panel" aria-labelledby="outputTitle">
         <div class="panel-heading"><div><span class="step">03</span><h2 id="outputTitle">Views &amp; output</h2></div></div>
-        <div class="field-grid two">
-          <label data-for-type="Sectionals">Sectional side
+        <div class="output-fieldsets">
+          <label class="output-field full-row" data-for-type="Sectionals"><span>Sectional side</span>
             <select id="sceneSide">
               <option value="auto">Auto from model</option>
               <option value="R">Right arm (R)</option>
@@ -150,55 +150,55 @@
               <option value="U">U sectional</option>
             </select>
           </label>
-        </div>
-        <div class="output-fieldsets">
-        <fieldset>
-          <legend>Cameras</legend>
-          <div class="choice-row">
-            <label data-for-type="Sectionals,Sofas"><input type="checkbox" name="camera" value="F" checked><span>F</span></label>
-            <label data-for-type="Sectionals"><input type="checkbox" name="camera" value="FH" checked><span>FH</span></label>
-            <label data-for-type="Sofas"><input type="checkbox" name="camera" value="P" checked><span>P</span></label>
-            <label data-for-type="Sectionals,Sofas"><input type="checkbox" name="camera" value="TQ" checked><span>TQ</span></label>
-            <label data-for-type="Sofas"><input type="checkbox" name="camera" value="TQB" checked><span>TQB</span></label>
-          </div>
-        </fieldset>
-        <fieldset>
-          <legend>Render resolution</legend>
-          <div class="choice-row render-profile segmented" role="radiogroup" aria-label="Render resolution">
-            <label><input type="radio" name="renderProfile" value="low"><span>Low <small>Fast test</small></span></label>
-            <label><input type="radio" name="renderProfile" value="high" checked><span>High <small>Production</small></span></label>
-          </div>
-        </fieldset>
-        <fieldset>
-          <legend>Frame crop</legend>
-          <div class="choice-row crop-mode segmented" role="radiogroup" aria-label="Frame crop mode">
-            <label><input type="radio" name="cropMode" value="full" checked><span>Full frame <small>Original sensor</small></span></label>
-            <label><input type="radio" name="cropMode" value="optimized"><span>Optimized <small>Safe cached crop</small></span></label>
-          </div>
-          <p class="field-hint">Full frame never calibrates. Optimized reuses a saved safe crop, or automatically renders one 500px Fabric + Shadow calibration for each missing model/camera profile before the final frames.</p>
-        </fieldset>
-        <fieldset>
-          <legend>Layers</legend>
-          <div class="choice-row layers">
-            <label><input type="checkbox" name="layer" value="Fabric" checked><span>Fabric <small id="fabricResolutionLabel">Path Trace · 5K</small></span></label>
-            <label data-for-type="Sectionals,Sofas"><input type="checkbox" name="layer" value="Shadow"><span>Shadow <small id="shadowResolutionLabel">Lumen · 15K×5K</small></span></label>
-          </div>
-          <div class="frame-size-row">
-            <button id="frameSizeToggle" class="secondary-button" type="button" popovertarget="frameSizePanel">Frame size…</button>
-            <small id="frameSizeSummary"></small>
-          </div>
-          <div id="frameSizePanel" class="frame-size" popover>
-            <div class="frame-size-heading"><div><strong>Frame size</strong><span>What a render starts from</span></div><button id="resetFrameSize" class="quiet-button" type="button">Reset to profile</button></div>
-            <div class="frame-size-grid">
-              <label>Fabric px<input id="fabricResX" type="number" min="1" step="1"><i>×</i><input id="fabricResY" type="number" min="1" step="1"></label>
-              <label>Fabric sensor mm<input id="fabricSensorX" type="number" min="1" step="0.1"><i>×</i><input id="fabricSensorY" type="number" min="1" step="0.1"></label>
-              <label>Shadow px<input id="shadowResX" type="number" min="1" step="1"><i>×</i><input id="shadowResY" type="number" min="1" step="1"></label>
-              <label>Shadow sensor mm<input id="shadowSensorX" type="number" min="1" step="0.1"><i>×</i><input id="shadowSensorY" type="number" min="1" step="0.1"></label>
+          <fieldset class="full-row">
+            <legend>Cameras</legend>
+            <div class="choice-row cameras">
+              <label data-for-type="Sectionals,Sofas"><input type="checkbox" name="camera" value="F" checked><span>F</span></label>
+              <label data-for-type="Sectionals"><input type="checkbox" name="camera" value="FH" checked><span>FH</span></label>
+              <label data-for-type="Sofas"><input type="checkbox" name="camera" value="P" checked><span>P</span></label>
+              <label data-for-type="Sectionals,Sofas"><input type="checkbox" name="camera" value="TQ" checked><span>TQ</span></label>
+              <label data-for-type="Sofas"><input type="checkbox" name="camera" value="TQB" checked><span>TQB</span></label>
             </div>
-            <p class="field-hint">Written straight into the job, per camera. Keep the pixel and sensor ratios equal or the image stretches; a bigger sensor is a lens change, not a crop. The optimized crop trims height from here.</p>
+          </fieldset>
+          <fieldset>
+            <legend>Render resolution</legend>
+            <div class="choice-row render-profile segmented" role="radiogroup" aria-label="Render resolution">
+              <label><input type="radio" name="renderProfile" value="low"><span>Low <small>Fast test</small></span></label>
+              <label><input type="radio" name="renderProfile" value="high" checked><span>High <small>Production</small></span></label>
+            </div>
+          </fieldset>
+          <fieldset>
+            <legend>Layers</legend>
+            <div class="choice-row layers">
+              <label><input type="checkbox" name="layer" value="Fabric" checked><span>Fabric <small id="fabricResolutionLabel">Path Trace · 5K</small></span></label>
+              <label data-for-type="Sectionals,Sofas"><input type="checkbox" name="layer" value="Shadow"><span>Shadow <small id="shadowResolutionLabel">Lumen · 15K×5K</small></span></label>
+            </div>
+          </fieldset>
+          <fieldset>
+            <legend>Frame crop</legend>
+            <div class="choice-row crop-mode segmented" role="radiogroup" aria-label="Frame crop mode">
+              <label><input type="radio" name="cropMode" value="full" checked><span>Full frame <small>Original sensor</small></span></label>
+              <label><input type="radio" name="cropMode" value="optimized"><span>Optimized <small>Safe cached crop</small></span></label>
+            </div>
+          </fieldset>
+          <fieldset class="frame-size-field">
+            <legend>Frame size</legend>
+            <button id="frameSizeToggle" class="frame-size-trigger" type="button" popovertarget="frameSizePanel"><span id="frameSizeSummary">5000 px · 36 mm</span><small id="frameSizeState">From the profile</small></button>
+            <div id="frameSizePanel" class="frame-size" popover>
+              <div class="frame-size-heading"><div><strong>Frame size</strong><span>What a render starts from</span></div><button id="resetFrameSize" class="quiet-button" type="button">Reset to profile</button></div>
+              <div class="frame-size-grid">
+                <label>Fabric px<input id="fabricResX" type="number" min="1" step="1"><i>×</i><input id="fabricResY" type="number" min="1" step="1"></label>
+                <label>Fabric sensor mm<input id="fabricSensorX" type="number" min="1" step="0.1"><i>×</i><input id="fabricSensorY" type="number" min="1" step="0.1"></label>
+                <label>Shadow px<input id="shadowResX" type="number" min="1" step="1"><i>×</i><input id="shadowResY" type="number" min="1" step="1"></label>
+                <label>Shadow sensor mm<input id="shadowSensorX" type="number" min="1" step="0.1"><i>×</i><input id="shadowSensorY" type="number" min="1" step="0.1"></label>
+              </div>
+              <p class="field-hint">Written straight into the job, per camera. Keep the pixel and sensor ratios equal or the image stretches; a bigger sensor is a lens change, not a crop. The optimized crop trims height from here.</p>
+            </div>
+          </fieldset>
+          <div class="output-notes full-row">
+            <p class="field-hint">Full frame never calibrates. Optimized reuses a saved safe crop, or automatically renders one 500px Fabric + Shadow calibration for each missing model/camera profile before the final frames.</p>
+            <p class="field-hint layer-order-hint">Fabric runs with Substrate enabled. Shadow runs in a fresh Unreal process with Substrate disabled; when both are selected, Fabric always completes first.</p>
           </div>
-          <p class="field-hint layer-order-hint">Fabric runs with Substrate enabled. Shadow runs in a fresh Unreal process with Substrate disabled; when both are selected, Fabric always completes first.</p>
-        </fieldset>
         </div>
         <div id="preflight" class="preflight" data-state="idle" aria-live="polite">
           <div class="preflight-heading"><strong>Preflight</strong><span id="preflightState">Waiting for setup</span></div>

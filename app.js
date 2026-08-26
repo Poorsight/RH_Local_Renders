@@ -243,10 +243,16 @@
         custom.push(`${layer} ${res[0]}×${res[1]} · ${sensor[0]}×${sensor[1]} mm`);
       }
     }
-    const summary = $("frameSizeSummary"), toggle = $("frameSizeToggle");
-    summary.textContent = custom.length ? custom.join("   ") : `${currentProfile() === "low" ? "500" : "5000"} px at a 36 mm sensor, from the profile`;
-    summary.dataset.state = custom.length ? "custom" : "profile";
-    toggle.dataset.state = custom.length ? "custom" : "profile";
+    const summary = $("frameSizeSummary"), state = $("frameSizeState"), toggle = $("frameSizeToggle");
+    // The trigger reads as two lines: the Fabric frame a render starts from, and whether that
+    // came from the profile or was typed. The per-layer numbers are already on the layer
+    // buttons and inside the panel, and crowding them in here is what made the old one-line
+    // summary unreadable beside the button.
+    summary.textContent = `${$("fabricResX").value} px · ${$("fabricSensorX").value} mm`;
+    state.textContent = custom.length
+      ? `Changed on ${custom.map(item => item.split(" ")[0]).join(", ")}`
+      : "From the profile";
+    summary.dataset.state = state.dataset.state = toggle.dataset.state = custom.length ? "custom" : "profile";
     // The layer buttons carry the frame in their sublabel, so they have to follow the fields
     // rather than only the profile they were switched from.
     const short = px => {

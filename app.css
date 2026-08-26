@@ -6,11 +6,11 @@
 /* ── tokens ─────────────────────────────────────────────────────── */
 :root{
   color-scheme:light;
-  --bg:#e1e1e1; --bg-tint:rgba(140,140,140,.08);
-  --surface:#e1e1e1; --surface-2:#dadada; --surface-raised:#e5e5e5; --inset:#dcdcdc;
+  --bg:#dadada; --bg-tint:rgba(140,140,140,.08);
+  --surface:#dadada; --surface-2:#d3d3d3; --surface-raised:#dedede; --inset:#d5d5d5;
   --line:rgba(124,124,124,.20); --line-soft:rgba(124,124,124,.12); --line-strong:rgba(124,124,124,.34);
   --text:#252525; --soft:#424242; --muted:#727272; --faint:#969696;
-  --accent:#427e5e; --accent-soft:rgba(66,126,94,.13); --accent-line:rgba(66,126,94,.30); --accent-ink:#2c5f47;
+  --accent:#256b4d; --accent-soft:rgba(37,107,77,.11); --accent-line:rgba(37,107,77,.30); --accent-ink:#17513a;
   --amber:#b0812f; --amber-soft:rgba(176,129,47,.12);
   --danger:#b4483f; --danger-soft:rgba(180,72,63,.10); --danger-line:rgba(180,72,63,.30);
   --ink-btn:#2e2e2e; --ink-btn-text:#f2f2f2;
@@ -20,15 +20,15 @@
   --lift-lg:12px 12px 32px rgba(152,152,152,.36), -10px -10px 28px rgba(255,255,255,.85);
   --press:inset 3px 3px 8px rgba(154,154,154,.46), inset -3px -3px 8px rgba(255,255,255,.88);
   --press-sm:inset 2px 2px 6px rgba(154,154,154,.40), inset -2px -2px 6px rgba(255,255,255,.84);
-  --accent-glow:rgba(66,126,94,.14); --accent-glow-lit:rgba(66,126,94,.22); --accent-edge:rgba(66,126,94,.50);
+  --accent-glow:rgba(37,107,77,.13); --accent-glow-lit:rgba(37,107,77,.21); --accent-edge:rgba(37,107,77,.52);
   --sel-ring:inset 0 0 0 1px var(--accent-edge),0 0 7px -2px var(--accent-glow);
   --bevel:inset 0 1px 0 rgba(255,255,255,.95), inset 0 0 0 1px rgba(124,124,124,.22), inset 0 -1px 0 rgba(124,124,124,.14);
-  --accent-gleam:rgba(66,126,94,.68);
+  --accent-gleam:rgba(37,107,77,.70);
   --sel-gleam:inset 0 1.5px 0 var(--accent-gleam), inset 0 0 0 1px var(--accent-line), inset 0 -1px 0 rgba(124,124,124,.12), 0 0 15px -4px var(--accent-glow-lit), 0 5px 14px rgba(154,154,154,.32);
   --sel-gleam-lit:inset 0 2px 0 var(--accent), inset 0 0 0 1px var(--accent-edge), inset 0 -1px 0 rgba(124,124,124,.12), 0 0 24px -5px var(--accent-glow-lit), 0 7px 18px rgba(154,154,154,.34);
   --bronze:var(--accent); --bronze-strong:var(--accent-ink); --bronze-bg:var(--accent-soft);
   --success:var(--accent); --success-strong:var(--accent-ink);
-  --preview-bg:#e2e2e2; --preview-caption:#4d4d4d; --preview-aspect:1.5;
+  --preview-bg:#cfcfcf; --preview-caption:#4d4d4d; --preview-aspect:1.5;
   --radius:20px; --radius-sm:13px; --radius-xs:9px; --radius-pill:999px;
   --pad:clamp(18px,1.6vw,26px);
   font-family:Inter,"Segoe UI",system-ui,Arial,sans-serif;
@@ -755,7 +755,7 @@ input[type=radio]:checked{animation:accent-breathe 3.6s ease-in-out infinite}
 .segmented:has(>label:nth-of-type(4)>input:checked):before,.theme-switcher:has(>button:nth-of-type(4)[aria-pressed=true]):before{transform:translateX(calc(300% + 3*var(--seg-gap)))}
 .segmented:has(input:checked):before,.theme-switcher:has([aria-pressed=true]):before{opacity:1}
 /* the option itself keeps the colour change and the tick; the ring is the thumb's job */
-.segmented input:checked+span,.theme-switcher button[aria-pressed=true]{box-shadow:none;animation:none}
+
 /* the inputs in these rows are visually hidden, so nothing should breathe on them */
 .choice-row input:checked{animation:none}
 .segmented label>span{position:relative;z-index:1}
@@ -907,3 +907,7 @@ select:hover:not(:disabled),.theme-switcher button:not([aria-pressed=true]):hove
 .render-preview-card:active .render-preview-media{transform:scale(1.02)}
 /* The delete control belongs to the frame, so it must not ride the zoom. */
 .card-shell:has(.render-preview-card)>.card-delete{transform:none}
+
+/* A raised option carries an outer glow, and the legend sat exactly on the row's top edge,
+   so the glow washed over the caption. Give it room. */
+legend+.choice-row,legend+.selective-options{margin-top:8px}

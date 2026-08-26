@@ -249,9 +249,11 @@
     // buttons and inside the panel, and crowding them in here is what made the old one-line
     // summary unreadable beside the button.
     summary.textContent = `${$("fabricResX").value} px · ${$("fabricSensorX").value} mm`;
-    state.textContent = custom.length
-      ? `Changed on ${custom.map(item => item.split(" ")[0]).join(", ")}`
-      : "From the profile";
+    // The state sits beside the arrow on one line, so naming both layers would push the
+    // value out of the control.
+    state.textContent = !custom.length ? "From the profile"
+      : custom.length > 1 ? "Changed on both"
+      : `Changed on ${custom[0].split(" ")[0]}`;
     summary.dataset.state = state.dataset.state = toggle.dataset.state = custom.length ? "custom" : "profile";
     // The layer buttons carry the frame in their sublabel, so they have to follow the fields
     // rather than only the profile they were switched from.

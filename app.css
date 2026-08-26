@@ -204,10 +204,10 @@ main{width:calc(100% - clamp(18px,2.4vw,44px));max-width:none;margin:0 auto;padd
 
 /* ── fields ─────────────────────────────────────────────────────── */
 label{display:flex;flex-direction:column;gap:8px;font-size:12px;font-weight:560;color:var(--muted);min-width:0}
-input:where(:not([type=checkbox]):not([type=radio]):not([type=range])),select,textarea{width:100%;padding:12px 14px;border:0;border-radius:var(--radius-xs);background:var(--inset);box-shadow:var(--press);color:var(--text);font-size:13.5px;font-weight:500;transition:box-shadow .16s}
-input:where(:not([type=checkbox]):not([type=radio]):not([type=range])):hover,select:hover{box-shadow:var(--press),0 0 0 1px var(--line)}
+input:where(:not([type=checkbox]):not([type=radio]):not([type=range])),select,textarea,.frame-size-trigger{width:100%;padding:12px 14px;border:0;border-radius:var(--radius-xs);background:var(--inset);box-shadow:var(--press);color:var(--text);font-size:13.5px;font-weight:500;transition:box-shadow .16s}
+input:where(:not([type=checkbox]):not([type=radio]):not([type=range])):hover,select:hover,.frame-size-trigger:hover{box-shadow:var(--press),0 0 0 1px var(--line)}
 input:focus,select:focus,textarea:focus{outline:0;box-shadow:var(--press)}
-input:focus-visible,select:focus-visible,textarea:focus-visible{outline:0;box-shadow:var(--press),0 0 0 2px var(--accent-line)}
+input:focus-visible,select:focus-visible,textarea:focus-visible,.frame-size-trigger:focus-visible{outline:0;box-shadow:var(--press),0 0 0 2px var(--accent-line)}
 /* Only browsers without the customisable select need a drawn chevron and the room to
    put it in -- with base-select the engine supplies ::picker-icon, and keeping this
    would show two arrows. */
@@ -231,8 +231,8 @@ legend{padding:0;color:var(--faint);font-size:10.5px;font-weight:750;letter-spac
 .choice-row{display:flex;gap:9px;flex-wrap:wrap}
 .choice-row label{flex:1 1 auto;min-width:76px;flex-direction:row;align-items:center;gap:0;cursor:pointer}
 .choice-row input{position:absolute;opacity:0;width:0;height:0}
-.choice-row label>span{flex:1;display:flex;flex-direction:column;gap:3px;align-items:center;justify-content:center;text-align:center;padding:11px 14px;border-radius:var(--radius-xs);background:var(--surface-2);box-shadow:var(--press-sm);color:var(--muted);font-size:13px;font-weight:560;transition:color .16s,box-shadow .16s,background .16s}
-.choice-row{--sub-size:10.5px}
+.choice-row label>span{flex:1;display:flex;flex-direction:column;gap:var(--opt-gap);align-items:center;justify-content:center;text-align:center;padding:11px 14px;border-radius:var(--radius-xs);background:var(--surface-2);box-shadow:var(--press-sm);color:var(--muted);font-size:13px;font-weight:560;transition:color .16s,box-shadow .16s,background .16s}
+.choice-row{--sub-size:10.5px;--opt-gap:3px}
 .choice-row label>span small{font-size:var(--sub-size);font-weight:500;color:var(--faint);letter-spacing:.01em}
 .choice-row label:hover>span{color:var(--text)}
 /* No size change when a pill switches on: the ring and the colour carry the state, so
@@ -679,12 +679,12 @@ input[type=radio]:checked{animation:accent-breathe 3.6s ease-in-out infinite}
   .output-panel .segmented{--seg-gap:6px}
   .output-panel .choice-row label{min-width:0}
   .output-panel .choice-row.layers label,.output-panel .choice-row.render-profile label,.output-panel .choice-row.crop-mode label{min-width:0}
-  .output-panel .choice-row label>span{padding:7px 9px;font-size:12px;gap:2px}
-  .output-panel .choice-row{--sub-size:9.5px}
+  .output-panel .choice-row label>span{padding:7px 9px;font-size:12px;gap:var(--opt-gap)}
+  .output-panel .choice-row{--sub-size:9.5px;--opt-gap:2px}
   .output-panel .choice-row label>span small{font-size:var(--sub-size)}
   .output-panel .field-hint{font-size:10px;line-height:1.4}
   .output-panel label{gap:6px;font-size:11px}
-  .output-panel select{padding:9px 12px;font-size:12.5px}
+  .output-panel select,.output-panel .frame-size-trigger{padding:9px 12px;font-size:12.5px}
   .output-panel .preflight{padding:12px;gap:9px}
   .output-panel .preflight-heading{font-size:11.5px}
   .output-panel .preflight-checks{grid-template-columns:repeat(auto-fit,minmax(176px,1fr));gap:7px;overflow:auto;padding:2px}
@@ -707,8 +707,8 @@ input[type=radio]:checked{animation:accent-breathe 3.6s ease-in-out infinite}
    dropdown language. */
 @supports (appearance:base-select){
   select,::picker(select){appearance:base-select}
-  select{display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left;cursor:pointer;transition:box-shadow .16s,color .16s}
-  select:hover{color:var(--accent-ink)}
+  select,.frame-size-trigger{display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left;cursor:pointer;transition:box-shadow .16s,color .16s}
+  select:hover,.frame-size-trigger:hover{color:var(--accent-ink)}
   select:open{box-shadow:var(--press),inset 0 0 0 1px var(--accent-edge)}
   select::picker-icon{color:var(--faint);transition:transform .24s cubic-bezier(.2,.8,.2,1),color .16s}
   select:open::picker-icon{transform:rotate(180deg);color:var(--accent)}
@@ -1015,7 +1015,8 @@ input[readonly]:hover,input[readonly]:focus{box-shadow:none}
    the pills came out 30px against 44px and read as a different kind of control. They
    reserve the missing line instead of hardcoding a height, which keeps them level with
    their row-mates through any later change of padding or type size. */
-.choice-row.cameras label>span:after{content:"";display:block;font-size:var(--sub-size);height:1lh}
+.choice-row.cameras label>span:before,.choice-row.cameras label>span:after{
+  content:"";display:block;flex:none;font-size:var(--sub-size);height:calc((1lh - var(--opt-gap))/2)}
 
 /* A legend is followed by a switch row at a set distance, and the Frame size trigger
    is a switch row of one -- without this it sat 8px above the Frame crop buttons it
@@ -1025,19 +1026,21 @@ legend+.frame-size-trigger{margin-top:8px}
 /* Frame size opens a panel rather than switching a value, so it is a single
    button the width of its column -- the same face as a switch, deliberately not
    pretending to be one of them. */
-.frame-size-trigger{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;width:100%;
-  padding:11px 14px;border-radius:var(--radius-xs);background:var(--inset);box-shadow:var(--press);color:var(--muted);
-  font-family:inherit;font-size:13px;font-weight:560;cursor:pointer;
-  transition:color .16s,box-shadow .18s,background .18s,transform .14s}
-.frame-size-trigger small{font-size:10.5px;font-weight:500;color:var(--faint);letter-spacing:.01em}
-.frame-size-trigger:hover{box-shadow:var(--press-sm);color:var(--text)}
-.frame-size-trigger:active{box-shadow:var(--press);transform:none}
-.frame-size-trigger:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-/* Changed frames are easy to forget behind a button, so a custom frame lights the
-   trigger the way a chosen switch lights. */
-.frame-size-trigger[data-state=custom]{background:var(--surface-raised);box-shadow:var(--sel-gleam);color:var(--accent-ink);transform:translateY(-1px)}
-.frame-size-trigger[data-state=custom]:hover{box-shadow:var(--sel-gleam),0 0 22px -8px var(--accent-glow-lit);transform:translateY(-2px)}
-.frame-size-trigger[data-state=custom] small{color:var(--accent-ink);opacity:.85}
+.frame-size-trigger{font-family:inherit}
+/* The value takes the room a select's value takes; the state and the arrow sit at the
+   end where a picker icon sits. */
+.frame-size-trigger>span{margin-right:auto}
+.frame-size-trigger small{flex:0 1 auto;min-width:0;overflow:hidden;color:var(--faint);font-size:11px;font-weight:500;text-overflow:ellipsis;white-space:nowrap}
+/* A button gets no ::picker-icon, so the arrow is drawn to match the engine's: faint,
+   and on opening it turns over and takes the accent. */
+.frame-size-trigger:after{content:"";flex:none;width:0;height:0;border:4px solid transparent;border-top:5px solid currentColor;
+  color:var(--faint);transition:transform .24s cubic-bezier(.2,.8,.2,1),color .16s;transform-origin:50% 30%}
+.frame-size-trigger:has(+.frame-size:popover-open){box-shadow:var(--press),inset 0 0 0 1px var(--accent-edge)}
+.frame-size-trigger:has(+.frame-size:popover-open):after{transform:rotate(180deg);color:var(--accent)}
+/* A typed frame is easy to forget behind a control that shows the profile's numbers by
+   default, so it reads the way an opened picker reads rather than as a pressed button. */
+.frame-size-trigger[data-state=custom]{box-shadow:var(--press),inset 0 0 0 1px var(--accent-edge)}
+.frame-size-trigger[data-state=custom] small{color:var(--accent-ink)}
 
 /* Annotation, not controls: set below a rule so they read that way. */
 .output-notes{display:flex;flex-direction:column;gap:6px;padding-top:12px;border-top:1px solid var(--line)}
@@ -1045,7 +1048,6 @@ legend+.frame-size-trigger{margin-top:8px}
 @media (min-width:1440px){
   .output-panel .output-field{gap:6px}
   .output-panel .output-field>span{font-size:9.5px;letter-spacing:.14em}
-  .output-panel .frame-size-trigger{padding:7px 9px;font-size:12px;gap:2px}
-  .output-panel .frame-size-trigger small{font-size:9.5px}
+  .output-panel .frame-size-trigger small{font-size:10px}
   .output-panel .output-notes{padding-top:10px;gap:5px}
 }

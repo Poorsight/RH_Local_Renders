@@ -727,9 +727,15 @@ input[type=radio]:checked{animation:accent-breathe 3.6s ease-in-out infinite}
 
 /* Our suggestion listbox: same surface as a raised card, and the full path always
    wraps instead of being cut -- reading the whole asset path is the point of it. */
-.suggest-pop{position:fixed;margin:0;inset:auto;z-index:60;display:flex;flex-direction:column;gap:3px;padding:7px;border:0;border-radius:var(--radius-sm);background:var(--surface-raised);box-shadow:var(--lift-lg);overflow:auto;opacity:0;transform:translateY(-7px) scale(.985);transition:opacity .17s ease,transform .22s cubic-bezier(.2,.8,.2,1),overlay .22s allow-discrete,display .22s allow-discrete}
+.suggest-pop{position:fixed;margin:0;inset:auto;z-index:60;display:none;flex-direction:column;gap:3px;padding:7px;border:0;border-radius:var(--radius-sm);background:var(--surface-raised);box-shadow:var(--lift-lg);overflow:auto;opacity:0;transform:translateY(-7px) scale(.985);transition:opacity .17s ease,transform .22s cubic-bezier(.2,.8,.2,1),overlay .22s allow-discrete,display .22s allow-discrete}
 .suggest-pop[data-flip=up]{transform:translateY(7px) scale(.985)}
-.suggest-pop:popover-open{opacity:1;transform:none}
+.suggest-pop:popover-open{display:flex;opacity:1;transform:none}
+/* A popover fades out over .22s, and until that finishes display is still the open
+   value -- by design, or there would be nothing to fade. That leaves a fifth of a
+   second where a dismissed panel can still take the click meant for what is behind
+   it, so nothing closed is clickable, whatever it is still drawing. */
+[popover]:not(:popover-open){pointer-events:none}
+
 @starting-style{
   .suggest-pop:popover-open{opacity:0;transform:translateY(-7px) scale(.985)}
   .suggest-pop[data-flip=up]:popover-open{opacity:0;transform:translateY(7px) scale(.985)}

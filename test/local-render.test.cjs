@@ -1131,6 +1131,38 @@ test("crossing the product types is refused where it matters and honest where it
   assert.equal(crossed.model.offsetUniformScale, 0.1, "the model keeps the scale it was measured at");
 });
 
+test("no closed popover is left standing in the layout", () => {
+  // Twice now a popover has swallowed clicks meant for what was behind it. The UA hides
+  // a closed one with [popover]:not(:popover-open){display:none}, and any author-level
+  // display at all beats that -- so a dismissed panel stayed laid out at opacity 0, an
+  // invisible fixed box of cursor:pointer rows over the controls beneath it. Measured on
+  // the real page before the fix: 423x321, sixteen children, pointer cursor.
+  const styles = fs.readFileSync(path.join(root, "app.css"), "utf8");
+  const rule = selector => {
+    const at = styles.indexOf(`\n${selector}{`);
+    return at < 0 ? null : styles.slice(at + selector.length + 2, styles.indexOf("}", at));
+  };
+  // Every popover on the page announces itself by having a :popover-open rule.
+  const popovers = [...new Set([...styles.matchAll(/(^|[\s,])(\.[a-z0-9-]+|#[A-Za-z0-9_-]+):popover-open/gm)]
+    .map(match => match[2]))];
+  assert.ok(popovers.length >= 4, `expected the page's popovers, found ${popovers.join(", ")}`);
+
+  for (const selector of popovers) {
+    const base = rule(selector);
+    assert.ok(base, `${selector} has a :popover-open rule but no base rule`);
+    const display = /(?:^|;)display:([^;]+)/.exec(base);
+    assert.ok(display, `${selector} sets no display, so the UA's display:none stands -- fine, but say so here`);
+    assert.equal(display[1].trim(), "none",
+      `${selector} declares display:${display[1].trim()} in its base rule, which overrides the UA rule that hides a closed popover`);
+    assert.match(rule(`${selector}:popover-open`) || "", /display:/,
+      `${selector} is hidden when closed but never turned back on when open`);
+  }
+
+  // And while one fades out its display is still the open value, by design, so the fade
+  // must not be clickable either.
+  assert.match(styles, /\[popover\]:not\(:popover-open\)\{pointer-events:none\}/);
+});
+
 test("legacy light-rig project files stay out of the unified project", () => {
   for (const legacy of ["handoff", "light-rig-reference.html", "comments.php", "ONBOARDING.md", ".claude"]) {
     assert.equal(fs.existsSync(path.join(root, legacy)), false, legacy);
@@ -1289,7 +1321,7 @@ test("main page renders the workspace, previews and dropdowns", () => {
   assert.match(styles, /@supports \(appearance:base-select\)/);
   assert.match(styles, /select:open::picker\(select\)\{opacity:1;transform:none\}/);
   assert.match(styles, /@supports not \(appearance:base-select\)/);
-  assert.match(styles, /\.suggest-pop:popover-open\{opacity:1;transform:none\}/);
+  assert.match(styles, /\.suggest-pop:popover-open\{display:flex;opacity:1;transform:none\}/);
   assert.match(client, /input\[list\]/);
   assert.match(client, /showPopover\(\)/);
   // one ring slides between the options of a single-choice group

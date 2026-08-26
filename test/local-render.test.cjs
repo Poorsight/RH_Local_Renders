@@ -31,10 +31,13 @@ test("CSV parser preserves quoted comma-separated scene prefixes", () => {
   const parsed = parseCsv('a,b\n1,"R, U"\n'); assert.deepEqual(parsed, [{ a: "1", b: "R, U" }]);
 });
 
-test("fallback sheet carries one sun per Sectionals / Indoor scene and camera", () => {
+test("fallback sheet pairs a sun with a shadow spot for every Sectionals / Indoor scene and camera", () => {
   for (const scene of ["Sectional_Indoor_R", "Sectional_Indoor_L", "Sectional_Indoor_U"]) for (const camera of ["F", "FH", "TQ"]) {
-    assert.deepEqual(Object.keys(rig[scene][camera]), ["key_lgt"], `${scene}/${camera}`);
-    assert.equal(rig[scene][camera].key_lgt.sublevel, "KeyLight", `${scene}/${camera}`);
+    assert.deepEqual(Object.keys(rig[scene][camera]).sort(), ["key_lgt", "shadow_key_lgt"], `${scene}/${camera}`);
+    // The sun sits in Background and the shadow spot in KeyLight: that split is what lets the
+    // Shadow layer drop the sun simply by not loading its sublevel.
+    assert.equal(rig[scene][camera].key_lgt.sublevel, "Background", `${scene}/${camera}`);
+    assert.equal(rig[scene][camera].shadow_key_lgt.sublevel, "KeyLight", `${scene}/${camera}`);
   }
 });
 
@@ -51,15 +54,17 @@ test("sectional actor yaw uses only F/FH/TQ rules from ActorRotations", () => {
 test("job lights come straight from the sheet and no longer answer to the model", () => {
   const source = rig.Sectional_Indoor_R.F.key_lgt;
   const lights = jobLights(rig, "Sectional_Indoor_R", "F");
-  assert.equal(lights.length, 1);
-  const [sun] = lights;
-  assert.equal(sun.name, "key_lgt");
-  assert.equal(sun.LevelName, "Sectional_Indoor_KeyLight");
+  assert.deepEqual(lights.map(light => light.name), ["key_lgt", "shadow_key_lgt"]);
+  const [sun, spot] = lights;
+  assert.equal(sun.LevelName, "Sectional_Indoor_Background");
   assert.deepEqual(sun.Location, { X: source.position[0], Y: source.position[1], Z: source.position[2] });
   assert.deepEqual(sun.rotation, { Pitch: -25.913912, Yaw: -13.933297, Roll: 4.209608 });
   assert.equal(sun.intensity, 2.5);
   assert.equal(sun.InnerConeAngle, -1); assert.equal(sun.OuterConeAngle, -1);
   assert.ok(!("RectSourceWidth" in sun) && !("SourceRadius" in sun), "source geometry is no longer overridden");
+  // While Fabric renders, the shadow spot ships at intensity 0 so it cannot touch the product.
+  assert.equal(spot.LevelName, "Sectional_Indoor_KeyLight");
+  assert.equal(spot.intensity, 0);
 
   // The rig is a sun: a model ten times the size must produce identical lights.
   const tiny = buildJob({ ...baseInput, dimensions: { width: 100, depth: 80, height: 40 } }, model, rig, "D:\renders\tiny");
@@ -77,24 +82,41 @@ test("each camera keeps its own sun rotation and intensity", () => {
       TQ: [2.3, { Pitch: -45, Yaw: 0, Roll: -5.483881 }]
     },
     Sectional_Indoor_L: {
-      F: [2.5, { Pitch: -23.265797, Yaw: -8.445295, Roll: -4.469738 }],
+      // F matches the R side: the sheet once held the FH rotation here, which lit LEFT_ARM fronts wrong.
+      F: [2.5, { Pitch: -25.913912, Yaw: -13.933297, Roll: 4.209608 }],
       FH: [2.3, { Pitch: -23.265797, Yaw: -8.445295, Roll: -4.469738 }],
       TQ: [2.3, { Pitch: -45, Yaw: 12, Roll: 0 }]
     }
   };
   expected.Sectional_Indoor_U = expected.Sectional_Indoor_L;
   for (const [scene, cameras] of Object.entries(expected)) for (const [camera, [intensity, rotation]] of Object.entries(cameras)) {
-    const [sun] = jobLights(rig, scene, camera);
+    const sun = jobLights(rig, scene, camera).find(light => light.name === "key_lgt");
     assert.equal(sun.intensity, intensity, `${scene}/${camera} intensity`);
     assert.deepEqual(sun.rotation, rotation, `${scene}/${camera} rotation`);
     assert.deepEqual(sun.Location, { X: 0, Y: 0, Z: 161.417541 }, `${scene}/${camera} location`);
   }
 });
 
-test("Shadow repeats the sheet while its shadow columns are empty, and still honours them when filled", () => {
+test("the Shadow layer fires the spot at 100 with 45/60 cones and leaves the sun behind", () => {
   for (const scene of ["Sectional_Indoor_R", "Sectional_Indoor_L", "Sectional_Indoor_U"]) for (const camera of ["F", "FH", "TQ"]) {
-    assert.deepEqual(jobLights(rig, scene, camera, "Shadow"), jobLights(rig, scene, camera), `${scene}/${camera}`);
+    const fabric = jobLights(rig, scene, camera), shadow = jobLights(rig, scene, camera, "Shadow");
+    const pick = (list, name) => list.find(light => light.name === name);
+    const dark = pick(fabric, "shadow_key_lgt"), lit = pick(shadow, "shadow_key_lgt");
+    assert.equal(dark.intensity, 0, `${scene}/${camera} spot must stay dark for Fabric`);
+    assert.equal(lit.intensity, 100, `${scene}/${camera} spot intensity`);
+    assert.equal(lit.InnerConeAngle, 45, `${scene}/${camera} inner cone`);
+    assert.equal(lit.OuterConeAngle, 60, `${scene}/${camera} outer cone`);
+    assert.deepEqual(lit.Location, dark.Location, `${scene}/${camera}: firing the spot must not move it`);
+    assert.deepEqual(lit.rotation, dark.rotation, `${scene}/${camera}: firing the spot must not turn it`);
+    // The sun is handed over untouched; the Shadow layer simply never loads the sublevel it lives in.
+    assert.deepEqual(pick(shadow, "key_lgt"), pick(fabric, "key_lgt"), `${scene}/${camera} sun`);
+    assert.equal(pick(shadow, "key_lgt").LevelName, "Sectional_Indoor_Background", `${scene}/${camera} sun level`);
   }
+
+  const shadowLayer = buildJob({ ...baseInput, layers: ["Shadow"] }, model, rig, "D:\renders\shadow")
+    .tasks[0].layers.find(layer => layer.name === "Shadow");
+  assert.ok(!shadowLayer.SubLevels.includes("Sectional_Indoor_Background"),
+            "the Shadow layer must not load the sublevel that holds the sun");
 
   const header = "active,airtable_categories,environment,sequence_prefix,obj,light_name,light_sublevel_suffix,camera,default_location,default_rotation,shadow_location,shadow_rotation,default_intensity,default_InnerConeAngle,default_OuterConeAngle,shadow_intensity,shadow_InnerConeAngle,shadow_OuterConeAngle,default_x,default_y,default_z,default_pitch,default_yaw,default_roll,shadow_x,shadow_y,shadow_z,shadow_pitch,shadow_yaw,shadow_roll";
   const row = "TRUE,Sectionals,Indoor,Sectional_Indoor_R,,key_lgt,KeyLight,F,,,,,2.5,,,9,45,60,0,0,160,-20,0,0,,,,,,";
@@ -600,6 +622,17 @@ test("Unreal launch points the stock BatchRender plugin at the local API", () =>
   assert.ok(!launch.args.some(argument => argument.startsWith("-BatchRenderJob=")));
   const shadow = buildUnrealLaunch("D:\\UE\\UnrealEditor.exe", "D:\\RH\\rh.uproject", apiUrl, { substrate: false });
   assert.ok(shadow.args.includes("-ini:Engine:[/Script/Engine.RendererSettings]:r.Substrate=False"));
+});
+
+test("every element app.js reaches for by id exists in the markup", () => {
+  // Deleting a control and forgetting its reader throws at runtime, which surfaces as a
+  // useless "Cannot read properties of null" in the preflight panel.
+  const clientSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const markup = fs.readFileSync(path.join(root, "index.html"), "utf8");
+  const ids = new Set([...clientSource.matchAll(/\$\("([A-Za-z0-9_]+)"\)/g)].map(match => match[1]));
+  const present = new Set([...markup.matchAll(/id="([A-Za-z0-9_]+)"/g)].map(match => match[1]));
+  const missing = [...ids].filter(id => !present.has(id)).sort();
+  assert.deepEqual(missing, [], `app.js reads ids that the page does not have: ${missing.join(", ")}`);
 });
 
 test("main page renders the workspace, previews and dropdowns", () => {

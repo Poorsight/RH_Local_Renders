@@ -164,14 +164,25 @@ def material_sort_key(identifier):
     return rank, identifier.casefold()
 
 
-def inspect(source):
-    if not os.path.isfile(source) or not source.lower().endswith(".fbx"):
-        raise RuntimeError(f"FBX not found: {source}")
-    bpy.ops.wm.read_factory_settings(use_empty=True)
+def import_model(source):
+    """Sofas ship as OBJ where sectionals ship as FBX, so the importer follows the file."""
+    if source.lower().endswith(".obj"):
+        try:
+            bpy.ops.wm.obj_import(filepath=source)
+        except Exception:
+            bpy.ops.import_scene.obj(filepath=source)
+        return
     try:
         bpy.ops.wm.fbx_import(filepath=source, use_anim=False, validate_meshes=False)
     except Exception:
         bpy.ops.import_scene.fbx(filepath=source, use_anim=False)
+
+
+def inspect(source):
+    if not os.path.isfile(source) or not source.lower().endswith((".fbx", ".obj")):
+        raise RuntimeError(f"No FBX or OBJ at: {source}")
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    import_model(source)
 
     chunks, ids, mesh_count = [], [], 0
     bounds_low, bounds_high = None, None

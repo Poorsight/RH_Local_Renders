@@ -16,6 +16,7 @@ const { history, expectedRenders } = require("../lib/history.cjs");
 const { buildRenderPlan, cameraStateKey, applyCameraHandoff } = require("../lib/render-plan.cjs");
 const { analyzeCalibrationPair, applyCropProfile } = require("../lib/crop.cjs");
 const { cameraFitStatesForJob, writeCameraFitStates } = require("../lib/camera-fit.cjs");
+const { inspectObjParts, normalizeObjParts, writeMaterialLibrary } = require("../lib/obj-parts.cjs");
 const { siblingBranch, batchRootOf } = require("../lib/output-layout.cjs");
 const { publishPreviews, previewFileFor } = require("../lib/preview.cjs");
 const { READY_FOLDER_NAME, availability, isProcessedImage, processImage, processedPathFor, publishReadyToUpload, writePngText } = require("../lib/post-process.cjs");
@@ -782,6 +783,49 @@ test("without the key the service still shows everything and refuses only the ac
     // The plugin channel cannot present a key, so it is trusted over the loopback interface.
     assert.notEqual((await fetch(at("/api/unreal"))).status, 401);
   } finally { service.kill(); }
+});
+
+test("an OBJ whose parts are only face groups is renamed into meshes an importer can see", async () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "rh-obj-"));
+  const source = path.join(temp, "sofa.obj"), target = path.join(temp, "sofa.normalised.obj");
+  // The shape the sofa library ships: named face groups, one catch-all material, and a
+  // "default" group that interrupts a part half way through.
+  fs.writeFileSync(source, [
+    "# comment", "mtllib sofa.mtl", "g default",
+    "v 0 0 0", "v 1 0 0", "v 0 1 0", "v 1 1 0",
+    "s off", "g Feet", "usemtl initialShadingGroup", "f 1/1/1 2/2/2 3/3/3",
+    "g default", "f 2/2/2 3/3/3 4/4/4",
+    "s 1", "g UPH", "usemtl initialShadingGroup", "f 1/1/1 2/2/2 4/4/4", ""
+  ].join("\n"), "utf8");
+
+  const before = await inspectObjParts(source);
+  assert.deepEqual(before.namedParts, ["Feet", "UPH"]);
+  assert.equal(Object.keys(before.objects).length, 0, "nothing an importer keys a mesh off");
+  assert.equal(Object.keys(before.materials).length, 1, "one material across both parts");
+  assert.equal(before.needsNormalising, true);
+
+  const result = await normalizeObjParts(source, target);
+  assert.deepEqual(result.parts, ["Feet", "UPH"]);
+  assert.equal(result.droppedGroups, 2, "both default groups carry no identity");
+  assert.equal(result.faces, 3, "every face survives");
+
+  const after = await inspectObjParts(target);
+  assert.deepEqual(Object.keys(after.objects).sort(), ["Feet", "UPH"]);
+  assert.deepEqual(Object.keys(after.materials).sort(), ["Feet", "UPH"], "each part gets its own material boundary");
+  assert.equal(after.needsNormalising, false);
+
+  const text = fs.readFileSync(target, "utf8");
+  assert.match(text, /o Feet\ng Feet\nusemtl Feet/, "object, group and material name the same part");
+  assert.doesNotMatch(text, /initialShadingGroup/, "the catch-all material would merge the parts back");
+  assert.doesNotMatch(text, /^g default$/m, "placeholder groups are gone");
+  // Geometry and the lines that carry it must pass through untouched.
+  assert.equal((text.match(/^f /gm) || []).length, 3);
+  assert.equal((text.match(/^v /gm) || []).length, 4);
+  assert.match(text, /^s off$/m);
+
+  const library = writeMaterialLibrary(target, result.parts);
+  assert.match(fs.readFileSync(library, "utf8"), /newmtl Feet[\s\S]*newmtl UPH/);
+  fs.rmSync(temp, { recursive: true, force: true });
 });
 
 test("legacy light-rig project files stay out of the unified project", () => {

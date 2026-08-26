@@ -683,7 +683,6 @@ input[type=radio]:checked{animation:accent-breathe 3.6s ease-in-out infinite}
   .output-panel .choice-row{--sub-size:9.5px}
   .output-panel .choice-row label>span small{font-size:var(--sub-size)}
   .output-panel .field-hint{font-size:10px;line-height:1.4}
-  .output-panel .field-grid{gap:10px}
   .output-panel label{gap:6px;font-size:11px}
   .output-panel select{padding:9px 12px;font-size:12.5px}
   .output-panel .preflight{padding:12px;gap:9px}
@@ -691,7 +690,7 @@ input[type=radio]:checked{animation:accent-breathe 3.6s ease-in-out infinite}
   .output-panel .preflight-checks{grid-template-columns:repeat(auto-fit,minmax(176px,1fr));gap:7px;overflow:auto;padding:2px}
   /* the panel height is fixed, so the checks absorb the difference: the heading,
      the fieldsets and the buttons keep their size and the cards scroll. */
-  .output-panel>.panel-heading,.output-panel>.field-grid,.output-panel>.output-fieldsets,.output-panel>.actions,.output-panel>.job-result{flex:none}
+  .output-panel>.panel-heading,.output-panel>.output-fieldsets,.output-panel>.actions,.output-panel>.job-result{flex:none}
   .output-panel>.preflight{flex:1 1 auto}
   .output-panel>.preflight>.preflight-checks{flex:1 1 0;min-height:132px}
   .output-panel .preflight-checks>span{padding:8px 10px}

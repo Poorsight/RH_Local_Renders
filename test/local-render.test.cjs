@@ -9,7 +9,7 @@ const { spawn } = require("node:child_process");
 const { PNG } = require("pngjs");
 const { parseCsv } = require("../lib/csv.cjs");
 const { buildRig, jobLights } = require("../lib/rig.cjs");
-const { withResolutionOverrides, buildJob, buildBatchJob, writeJob, CAMERA_YAW, RESOLUTION_PROFILES, groupedMaterials } = require("../lib/jobs.cjs");
+const { PRODUCT_TYPES, withResolutionOverrides, buildJob, buildBatchJob, writeJob, CAMERA_YAW, RESOLUTION_PROFILES, groupedMaterials } = require("../lib/jobs.cjs");
 const { ModelStore, sectionalFormFactor } = require("../lib/models.cjs");
 const { buildUnrealLaunch } = require("../lib/unreal.cjs");
 const { history, expectedRenders } = require("../lib/history.cjs");
@@ -17,6 +17,8 @@ const { buildRenderPlan, cameraStateKey, applyCameraHandoff } = require("../lib/
 const { analyzeCalibrationPair, applyCropProfile } = require("../lib/crop.cjs");
 const { cameraFitStatesForJob, writeCameraFitStates } = require("../lib/camera-fit.cjs");
 const { inspectObjParts, normalizeObjParts, writeMaterialLibrary } = require("../lib/obj-parts.cjs");
+const { applyCropProfileToCamera } = require("../lib/crop.cjs");
+const { sublevelPrefix } = require("../lib/rig.cjs");
 const net = require("node:net");
 // Ports were derived from the process id across overlapping ranges, so two servers in one
 // run could pick the same one. Ask the system for a free port instead.
@@ -1010,6 +1012,123 @@ test("the drop target reacts to the attribute the script actually sets", () => {
   assert.match(styles, /\.model-drop-target\[data-dragging\] \.model-drop-overlay\{opacity:1/);
   assert.doesNotMatch(styles, /\.model-drop-target\.dragover/, "the class it used to look for");
   assert.match(styles, /\.model-drop-target\[data-dragging\]>input\{box-shadow:var\(--sel-gleam\)\}/);
+});
+
+test("every product, side, camera, layer, profile and crop combination builds a coherent job", () => {
+  const MODELS = {
+    sectionals: { name: "X_L_SECTIONAL", path: "D:\\m\\sectionals\\x.fbx", group: "sectionals", offsetUniformScale: 1, materialIds: ["UPH", "Stitches", "Feet"] },
+    sofas: { name: "BELLA_SOFA", path: "D:\\m\\sofas\\b.obj", group: "sofas", offsetUniformScale: 0.1, materialIds: ["UPH", "Feet"] }
+  };
+  const MATERIALS = {
+    sectionals: [{ meshes: ["UPH", "Stitches"], material: "FAB" }, { meshes: ["Feet"], material: "WOOD" }],
+    sofas: [{ meshes: ["UPH"], material: "FAB" }, { meshes: ["Feet"], material: "WOOD" }]
+  };
+  const YAW = {
+    sectionals: { R: { F: 0, FH: 0, TQ: -36 }, L: { F: 0, FH: 0, TQ: 36 }, U: { F: 0, FH: 0, TQ: 36 } },
+    sofas: { R: { F: 0, P: 90, TQ: 30, TQB: 150 } }
+  };
+  const subsets = list => list.reduce((acc, item) => acc.concat(acc.map(set => [...set, item])), [[]]).filter(set => set.length);
+  const problems = [];
+  let built = 0;
+
+  for (const type of ["sectionals", "sofas"]) {
+    const descriptor = PRODUCT_TYPES[type];
+    for (const side of type === "sectionals" ? ["R", "L", "U"] : ["R"]) {
+      for (const cameras of subsets(descriptor.cameras)) for (const layers of subsets(["Fabric", "Shadow"])) {
+        for (const profile of ["low", "high"]) for (const crop of ["full", "optimized"]) {
+          const input = { productType: type, side, cameras, layers, renderProfile: profile, cropMode: crop,
+            dimensions: { width: 300, depth: 120, height: 85 }, importYaw: 0, materials: MATERIALS[type], modelFingerprint: "fp" };
+          const task = buildJob(input, MODELS[type], rig, "D:\\out").tasks[0];
+          built++;
+          const scene = descriptor.scene(side), prefix = sublevelPrefix(scene);
+          const note = message => problems.push(`${type}/${side} ${cameras}/${layers} ${profile}/${crop}: ${message}`);
+
+          for (const layer of task.layers) {
+            const expected = layer.name === "Fabric" ? [`${prefix}_Background`, `${prefix}_KeyLight`] : [`${prefix}_Shadow`, `${prefix}_KeyLight`];
+            if (layer.SubLevels.join() !== expected.join()) note(`${layer.name} sublevels ${layer.SubLevels}`);
+          }
+          for (const camera of task.sequence.cameras) {
+            if (camera.Actor.Rotation.Yaw !== YAW[type][side][camera.name]) note(`${camera.name} yaw ${camera.Actor.Rotation.Yaw}`);
+            if (camera.Actor.Rotation.Roll !== descriptor.actorRoll) note(`${camera.name} roll ${camera.Actor.Rotation.Roll}`);
+            if (camera.sequenceName !== `${scene}_${camera.name}`) note(`${camera.name} sequence ${camera.sequenceName}`);
+            if (!camera.lights?.length) note(`${camera.name} has no lights`);
+            for (const light of camera.lights) if (!light.LevelName.startsWith(`${prefix}_`)) note(`${camera.name} light ${light.name} in ${light.LevelName}`);
+            if ((camera.SceneActors || []).map(a => a.name).join() !== descriptor.sceneActors().map(a => a.name).join()) note(`${camera.name} scene actors`);
+            for (const frame of camera.LayerResolutions) {
+              const pixels = frame.Resolution.X / frame.Resolution.Y, sensor = frame.SensorSize.X / frame.SensorSize.Y;
+              if (Math.abs(pixels - sensor) > 0.001) note(`${camera.name}/${frame.Name} aspect ${pixels.toFixed(3)} vs ${sensor.toFixed(3)}`);
+            }
+          }
+
+          const plan = buildRenderPlan({ jobId: "j", tasks: [task], _rhLocal: { outputFolder: "D:\\out\\" } });
+          const names = plan.map(phase => phase.name);
+          if ((crop === "optimized") !== names.some(name => name.startsWith("Crop calibration"))) note(`phases ${names}`);
+          const fabricAt = names.indexOf("Fabric"), shadowAt = names.indexOf("Shadow");
+          if (fabricAt >= 0 && shadowAt >= 0 && fabricAt > shadowAt) note(`Shadow before Fabric: ${names}`);
+          for (const phase of plan) for (const phaseTask of phase.job.tasks) for (const layer of phaseTask.layers) {
+            if (!layer.SubLevels.every(level => level.startsWith(`${prefix}_`))) note(`${phase.name}/${layer.name} in ${layer.SubLevels}`);
+          }
+        }
+      }
+    }
+  }
+  assert.equal(built, 432, "the matrix size is part of what is being asserted");
+  assert.deepEqual(problems.slice(0, 5), [], `${problems.length} incoherent jobs`);
+});
+
+test("a Fabric-only optimized job measures its crop in its own scene", () => {
+  // The crop is measured from both layers even when one was asked for, so the Shadow probe of
+  // a Fabric-only job has no layer to copy its scene from. It used to fall back to a
+  // sectional's, measuring a sofa under the wrong lights and applying that to every render.
+  const sofa = { name: "BELLA_SOFA", path: "D:\\m\\sofas\\b.obj", group: "sofas", offsetUniformScale: 0.1, materialIds: ["UPH", "Feet"] };
+  const task = buildJob({ productType: "sofas", cameras: ["F"], layers: ["Fabric"], cropMode: "optimized", modelFingerprint: "fp",
+    dimensions: { width: 277, depth: 106, height: 85 },
+    materials: [{ meshes: ["UPH"], material: "FAB" }, { meshes: ["Feet"], material: "WOOD" }] }, sofa, rig, "D:\\out").tasks[0];
+  const plan = buildRenderPlan({ jobId: "j", tasks: [task], _rhLocal: { outputFolder: "D:\\out\\" } });
+  const shadowProbe = plan.find(phase => phase.name === "Crop calibration · Shadow");
+  assert.ok(shadowProbe, "a Fabric-only job still probes the shadow");
+  assert.deepEqual(shadowProbe.job.tasks[0].layers[0].SubLevels, ["Sofa_Indoor_Shadow", "Sofa_Indoor_KeyLight"]);
+  assert.ok(plan.every(phase => phase.job.tasks.every(item => item.layers.every(layer =>
+    layer.SubLevels.every(level => level.startsWith("Sofa_Indoor_"))))), "no phase strays into another product's scene");
+});
+
+test("a crop keeps a frame's proportions, whatever they were, and stays within reach", () => {
+  // A base whose pixels and sensor disagree is a lens mistake the crop must not silently
+  // change: it scales both by the same effective ratio and leaves the skew as found.
+  const skewed = withResolutionOverrides(RESOLUTION_PROFILES.high, { Fabric: { Resolution: { X: 5000, Y: 2000 }, SensorSize: { X: 36, Y: 36 } } });
+  assert.deepEqual(skewed.Fabric.Resolution, { X: 5000, Y: 2000 });
+  assert.deepEqual(skewed.Fabric.SensorSize, { X: 36, Y: 36 }, "a skewed base is passed through, not corrected");
+
+  const outcomes = [1, 0.5, 0.42, 0.2, 0.05, 3].map(cropRatio => {
+    const frame = applyCropProfileToCamera({ LayerResolutions: [JSON.parse(JSON.stringify(skewed.Fabric))] }, { cropRatio }).LayerResolutions[0];
+    return { cropRatio, height: frame.Resolution.Y, sensorY: frame.SensorSize.Y };
+  });
+  for (const item of outcomes) {
+    assert.equal(item.sensorY, Number((36 * (item.height / 2000)).toFixed(6)), `ratio ${item.cropRatio}: sensor follows pixels`);
+    assert.ok(Number.isInteger(item.height) && item.height > 0, `ratio ${item.cropRatio} height ${item.height}`);
+    assert.ok(item.height <= 2000, `ratio ${item.cropRatio} cannot grow the frame`);
+  }
+  // Out-of-range ratios are clamped rather than trusted: 3 cannot enlarge, 0.05 cannot vanish.
+  assert.equal(outcomes.find(item => item.cropRatio === 3).height, 2000);
+  assert.equal(outcomes.find(item => item.cropRatio === 0.05).height, outcomes.find(item => item.cropRatio === 0.2).height);
+});
+
+test("crossing the product types is refused where it matters and honest where it is not", () => {
+  const sofa = { name: "BELLA_SOFA", path: "D:\\m\\sofas\\b.obj", group: "sofas", offsetUniformScale: 0.1, materialIds: ["UPH", "Feet"] };
+  const sectional = { name: "X_L_SECTIONAL", path: "D:\\m\\sectionals\\x.fbx", group: "sectionals", offsetUniformScale: 1, materialIds: ["UPH", "Stitches", "Feet"] };
+  const base = { dimensions: { width: 300, depth: 120, height: 85 }, layers: ["Fabric"], renderProfile: "low", cropMode: "full" };
+  const mats = [{ meshes: ["UPH"], material: "FAB" }, { meshes: ["Feet"], material: "WOOD" }];
+
+  // A camera the type is never shot from is refused outright.
+  assert.throws(() => buildJob({ ...base, productType: "sofas", cameras: ["FH"], materials: mats }, sofa, rig, "D:\\out"), /F, P, TQ, TQB/);
+  assert.throws(() => buildJob({ ...base, productType: "sectionals", side: "R", cameras: ["TQB"], materials: mats }, sectional, rig, "D:\\out"), /F, FH, TQ/);
+
+  // The type drives the job, so a crossed model builds — with the chosen type's scene and the
+  // model's own scale. Preflight is what stops it, by comparing the two.
+  const crossed = buildJob({ ...base, productType: "sectionals", side: "R", cameras: ["F"], materials: mats }, sofa, rig, "D:\\out").tasks[0];
+  assert.deepEqual(crossed.layers[0].SubLevels, ["Sectional_Indoor_Background", "Sectional_Indoor_KeyLight"]);
+  assert.equal(crossed.sequence.cameras[0].Actor.Rotation.Roll, -90, "the type decides the axis correction");
+  assert.equal(crossed.model.offsetUniformScale, 0.1, "the model keeps the scale it was measured at");
 });
 
 test("legacy light-rig project files stay out of the unified project", () => {

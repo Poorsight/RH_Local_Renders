@@ -190,6 +190,21 @@
     } catch (error) { toast(error.message, true); }
     finally { button.disabled = false; button.textContent = "Repair OBJ parts"; }
   };
+  // Sofas are shot from four angles and only ever render Fabric; sectionals from three, with
+  // a Shadow pass. Options that belong to the other type are taken off the page rather than
+  // left to be ticked into a job that would reject them.
+  const applyProductType = () => {
+    const type = $("category").value || "Sectionals";
+    for (const label of document.querySelectorAll("[data-for-type]")) {
+      const allowed = label.dataset.forType.split(",").map(value => value.trim());
+      const fits = allowed.includes(type);
+      label.hidden = !fits;
+      const input = label.querySelector("input");
+      if (input && !fits && input.checked) input.checked = false;
+      if (input && fits && input.name === "camera" && !input.checked) input.checked = true;
+    }
+    validate(false);
+  };
   const renderBatch = () => {
     if (state.modelCheck) { state.modelCheck = null; renderModelCheck(null); }
     $("modelBatch").hidden = !state.batch.length; $("batchCount").textContent = `${state.batch.length} model${state.batch.length === 1 ? "" : "s"}`;
@@ -549,6 +564,7 @@
     finally { $("refreshSheet").disabled = false; }
   };
   const init = async () => {
+    applyProductType();
     try { await loadModelMetadata(); } catch (error) { console.warn(`Model metadata unavailable: ${error.message}`); }
     try { await loadMaterialAssets(); } catch (error) { console.warn(`Unreal materials unavailable: ${error.message}`); }
     if (!canReachLocalService) { setConnection(false); $("sheetState").textContent = "STATIC"; $("unrealState").textContent = "OFFLINE"; return; }
@@ -605,6 +621,7 @@
     try { await run(); } catch (error) { toast(error.message, true); }
   });
   $("deleteConfirm").addEventListener("toggle", event => { if (event.newState === "closed") closeDelete(); });
+  $("category").addEventListener("change", applyProductType);
   $("checkModels").addEventListener("click", checkModels);
   $("repairModels").addEventListener("click", repairModels);
   $("settingsToggle").addEventListener("click", () => {

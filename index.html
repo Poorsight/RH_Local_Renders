@@ -80,7 +80,7 @@
           <label>Model type
             <select id="category">
               <option value="Sectionals">Sectionals</option>
-              <option disabled>Sofas — later</option>
+              <option value="Sofas">Sofas</option>
               <option disabled>Chairs — later</option>
             </select>
           </label>
@@ -155,9 +155,11 @@
         <fieldset>
           <legend>Cameras</legend>
           <div class="choice-row">
-            <label><input type="checkbox" name="camera" value="F" checked><span>F</span></label>
-            <label><input type="checkbox" name="camera" value="FH" checked><span>FH</span></label>
-            <label><input type="checkbox" name="camera" value="TQ" checked><span>TQ</span></label>
+            <label data-for-type="Sectionals,Sofas"><input type="checkbox" name="camera" value="F" checked><span>F</span></label>
+            <label data-for-type="Sectionals"><input type="checkbox" name="camera" value="FH" checked><span>FH</span></label>
+            <label data-for-type="Sofas"><input type="checkbox" name="camera" value="P" checked><span>P</span></label>
+            <label data-for-type="Sectionals,Sofas"><input type="checkbox" name="camera" value="TQ" checked><span>TQ</span></label>
+            <label data-for-type="Sofas"><input type="checkbox" name="camera" value="TQB" checked><span>TQB</span></label>
           </div>
         </fieldset>
         <fieldset>
@@ -179,7 +181,7 @@
           <legend>Layers</legend>
           <div class="choice-row layers">
             <label><input type="checkbox" name="layer" value="Fabric" checked><span>Fabric <small id="fabricResolutionLabel">Path Trace · 5K</small></span></label>
-            <label><input type="checkbox" name="layer" value="Shadow"><span>Shadow <small id="shadowResolutionLabel">Lumen · 15K×5K</small></span></label>
+            <label data-for-type="Sectionals"><input type="checkbox" name="layer" value="Shadow"><span>Shadow <small id="shadowResolutionLabel">Lumen · 15K×5K</small></span></label>
           </div>
           <p class="field-hint layer-order-hint">Fabric runs with Substrate enabled. Shadow runs in a fresh Unreal process with Substrate disabled; when both are selected, Fabric always completes first.</p>
         </fieldset>

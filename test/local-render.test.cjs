@@ -17,6 +17,15 @@ const { buildRenderPlan, cameraStateKey, applyCameraHandoff } = require("../lib/
 const { analyzeCalibrationPair, applyCropProfile } = require("../lib/crop.cjs");
 const { cameraFitStatesForJob, writeCameraFitStates } = require("../lib/camera-fit.cjs");
 const { inspectObjParts, normalizeObjParts, writeMaterialLibrary } = require("../lib/obj-parts.cjs");
+const net = require("node:net");
+// Ports were derived from the process id across overlapping ranges, so two servers in one
+// run could pick the same one. Ask the system for a free port instead.
+const freePort = () => new Promise((resolve, reject) => {
+  const probe = net.createServer();
+  probe.unref();
+  probe.on("error", reject);
+  probe.listen(0, "127.0.0.1", () => { const { port } = probe.address(); probe.close(() => resolve(port)); });
+});
 const { checkModel, summarise, unrealScaleFor } = require("../lib/model-check.cjs");
 const { siblingBranch, batchRootOf } = require("../lib/output-layout.cjs");
 const { publishPreviews, previewFileFor } = require("../lib/preview.cjs");
@@ -580,7 +589,7 @@ test("local render service calibrates, saves and applies an optimized crop befor
 });
 
 test("local render service automatically resumes after an Unreal crash and skips completed models", async () => {
-  const suffix = `${process.pid}_${Date.now()}`, port = 57000 + process.pid % 4000;
+  const suffix = `${process.pid}_${Date.now()}`, port = await freePort();
   const jobsRoot = path.join(root, "local", "jobs", "generated"), output = path.join(root, "local", "renders", `test_resume_${suffix}`);
   const jobPath = path.join(jobsRoot, `test_resume_${suffix}.job.json`), fakeLog = path.join(os.tmpdir(), `rh-fake-resume-${suffix}.log`), crashMarker = path.join(os.tmpdir(), `rh-fake-resume-${suffix}.crashed`);
   fs.mkdirSync(jobsRoot, { recursive: true }); fs.mkdirSync(output, { recursive: true });
@@ -621,7 +630,7 @@ test("local render service automatically resumes after an Unreal crash and skips
 });
 
 test("a forced stop kills Unreal, disarms the automatic resume and leaves the service usable", async () => {
-  const suffix = `stop_${process.pid}_${Date.now()}`, port = 51000 + process.pid % 4000;
+  const suffix = `stop_${process.pid}_${Date.now()}`, port = await freePort();
   const jobsRoot = path.join(root, "local", "jobs", "generated"), output = path.join(root, "local", "renders", `test_${suffix}`);
   const jobPath = path.join(jobsRoot, `test_${suffix}.job.json`), fakeLog = path.join(os.tmpdir(), `rh-fake-${suffix}.log`);
   fs.mkdirSync(jobsRoot, { recursive: true }); fs.mkdirSync(output, { recursive: true });
@@ -670,7 +679,7 @@ test("a forced stop kills Unreal, disarms the automatic resume and leaves the se
 });
 
 test("deleting from the web drops the renders, their proxies and only the asked-for job", async () => {
-  const suffix = `del_${process.pid}_${Date.now()}`, port = 46000 + process.pid % 4000;
+  const suffix = `del_${process.pid}_${Date.now()}`, port = await freePort();
   const jobsRoot = path.join(root, "local", "jobs", "generated"), batch = path.join(root, "local", "renders", `test_${suffix}`);
   const jobPath = path.join(jobsRoot, `test_${suffix}.job.json`);
   fs.mkdirSync(jobsRoot, { recursive: true });
@@ -722,7 +731,7 @@ test("deleting from the web drops the renders, their proxies and only the asked-
 });
 
 test("the service stays same-origin until an origin is allowed, then answers a remote page", async () => {
-  const port = 44000 + process.pid % 4000, remote = "https://preview.3dsource.com";
+  const port = await freePort(), remote = "https://preview.3dsource.com";
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   const start = env => spawn(process.execPath, [path.join(root, "server.cjs")], { cwd: root, windowsHide: true, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, RH_LOCAL_RENDERS_PORT: String(port), ...env } });
   const waitFor = async () => { for (let attempt = 0; attempt < 60; attempt++) { try { if ((await fetch(`http://127.0.0.1:${port}/api/status`)).ok) return true; } catch {} await sleep(50); } return false; };
@@ -748,7 +757,7 @@ test("the service stays same-origin until an origin is allowed, then answers a r
 });
 
 test("without the key the service still shows everything and refuses only the actions", async () => {
-  const port = 42000 + process.pid % 4000, key = "test-access-key-2eb1";
+  const port = await freePort(), key = "test-access-key-2eb1";
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   const service = spawn(process.execPath, [path.join(root, "server.cjs")], {
     cwd: root, windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
@@ -891,6 +900,46 @@ test("model checks catch a wrong scale, a missing part and an uncorrected FBX or
   const suffixed = checkModel({ name: "X_L_SECTIONAL", group: "sectionals", format: "fbx" },
     { ...sectional, materialIds: ["UPH1", "Stitches1", "Feet1"] });
   assert.equal(summarise(suffixed).errors, 0, "UPH1 is UPH");
+});
+
+test("a sofa job matches the farm's shape: four angles, one layer, its own scene", () => {
+  const sofa = { name: "BELLA_TWO_SEAT_SOFA_CLASSIC_9", path: "D:\models\sofas\BELLA.obj", group: "sofas", offsetUniformScale: 0.001, materialIds: ["UPH", "Feet"] };
+  const input = {
+    productType: "sofas", cameras: ["F", "P", "TQ", "TQB"], layers: ["Fabric"],
+    dimensions: { width: 277.2, depth: 106.4, height: 85.1 }, importYaw: 0,
+    materials: [{ meshes: ["UPH"], material: "BELGIAN_LINEN_BASKET_WEAVE_SAND_V1" }, { meshes: ["Feet"], material: "UPH_WOOD_BROWN_OAK" }]
+  };
+  const task = buildJob(input, sofa, rig, "D:\out").tasks[0];
+
+  assert.deepEqual(task.sequence.cameras.map(camera => camera.name), ["F", "P", "TQ", "TQB"], "one angle more than a sectional, and different ones");
+  assert.deepEqual(task.layers.map(layer => layer.name), ["Fabric"], "a sofa has no Shadow pass");
+  assert.deepEqual(task.layers[0].SubLevels, ["Sofa_Indoor_Background", "Sofa_Indoor_KeyLight"]);
+
+  // A camera angle is the model actor being turned, and an OBJ needs no axis correction
+  // where an FBX carries roll -90.
+  const yaws = Object.fromEntries(task.sequence.cameras.map(camera => [camera.name, camera.Actor.Rotation.Yaw]));
+  assert.deepEqual(yaws, { F: 0, P: 90, TQ: 30, TQB: 150 });
+  assert.ok(task.sequence.cameras.every(camera => camera.Actor.Rotation.Roll === 0), "an OBJ exports its axes straight");
+
+  for (const camera of task.sequence.cameras) {
+    assert.equal(camera.sequenceName, `Sofa_Indoor_${camera.name}`);
+    assert.deepEqual(camera.SceneActors.map(actor => actor.name), ["light_blocker"], "the blocker keeps the key light off the backdrop");
+    assert.equal(camera.SceneActors[0].Visibility, false);
+    assert.deepEqual(camera.lights.map(light => light.name),
+      ["front_fill_lgt", "left_rim_lgt", "main_key_lgt", "right_bounce_lgt", "right_rim_lgt"], `${camera.name} lights`);
+    assert.ok(camera.lights.every(light => light.LevelName.startsWith("Sofa_Indoor_")), `${camera.name} lights live in the sofa scene`);
+  }
+  // The intensities the farm renders with, straight from the sheet.
+  const byName = Object.fromEntries(task.sequence.cameras.find(camera => camera.name === "TQB").lights.map(light => [light.name, light.intensity]));
+  assert.deepEqual(byName, { front_fill_lgt: 6, left_rim_lgt: 80, main_key_lgt: 15, right_bounce_lgt: 1.5, right_rim_lgt: 1 });
+
+  // Asking for a pass a sofa does not have is refused rather than silently dropped into a job.
+  assert.throws(() => buildJob({ ...input, layers: ["Shadow"] }, sofa, rig, "D:\out"), /at least one render layer/);
+  assert.throws(() => buildJob({ ...input, cameras: ["FH"] }, sofa, rig, "D:\out"), /F, P, TQ, TQB/);
+  // And a sectional keeps its own shape.
+  const sectionalTask = buildJob({ ...baseInput, side: "R", importYaw: -90 }, model, rig, "D:\out").tasks[0];
+  assert.deepEqual(sectionalTask.layers[0].SubLevels, ["Sectional_Indoor_Background", "Sectional_Indoor_KeyLight"]);
+  assert.ok(sectionalTask.sequence.cameras.every(camera => camera.Actor.Rotation.Roll === -90), "an FBX still carries its correction");
 });
 
 test("legacy light-rig project files stay out of the unified project", () => {

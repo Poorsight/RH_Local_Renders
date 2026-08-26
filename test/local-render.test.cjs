@@ -745,7 +745,7 @@ test("the service stays same-origin until an origin is allowed, then answers a r
   } finally { service.kill(); }
 });
 
-test("an access key gates commands, leaves the status ping open and signs media instead", async () => {
+test("without the key the service still shows everything and refuses only the actions", async () => {
   const port = 42000 + process.pid % 4000, key = "test-access-key-2eb1";
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   const service = spawn(process.execPath, [path.join(root, "server.cjs")], {
@@ -753,33 +753,34 @@ test("an access key gates commands, leaves the status ping open and signs media 
     env: { ...process.env, RH_LOCAL_RENDERS_PORT: String(port), RH_ACCESS_KEY: key }
   });
   const at = path => `http://127.0.0.1:${port}${path}`;
-  const withKey = value => ({ Authorization: `Bearer ${value}` });
+  const signed = { Authorization: `Bearer ${key}` };
+  const json = { "Content-Type": "application/json" };
   try {
     let online = false;
     for (let attempt = 0; attempt < 60 && !online; attempt++) { try { online = (await fetch(at("/api/status"))).ok; } catch {} if (!online) await sleep(50); }
-    assert.equal(online, true, "the status ping stays open so a page can discover the gate");
+    assert.equal(online, true);
+
+    // Looking is open: a viewer with the address sees the queue, the history and the files.
+    for (const path of ["/api/status", "/api/history", "/api/catalog", "/api/materials", "/api/renders/status"]) {
+      assert.equal((await fetch(at(path))).status, 200, `${path} must stay readable`);
+    }
+    assert.notEqual((await fetch(at("/api/renders/file?path=nothing.png"))).status, 401, "renders are readable without a key");
+    assert.notEqual((await fetch(at("/api/preflight"), { method: "POST", headers: json, body: "{}" })).status, 401, "preflight only validates, so it stays open");
 
     const anonymous = await (await fetch(at("/api/status"))).json();
-    assert.equal(anonymous.access.required, true);
-    assert.equal(anonymous.access.authorized, false);
-    assert.equal(anonymous.access.mediaToken, null, "an unauthorized caller gets no media token");
+    assert.deepEqual(anonymous.access, { required: true, authorized: false });
+    assert.deepEqual((await (await fetch(at("/api/status"), { headers: signed })).json()).access, { required: true, authorized: true });
 
-    assert.equal((await fetch(at("/api/history"))).status, 401, "reads need the key too");
-    assert.equal((await fetch(at("/api/renders/status"), { headers: withKey("wrong-key-entirely") })).status, 401);
-    assert.equal((await fetch(at("/api/renders"), { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })).status, 401, "launching without the key is refused");
+    // Acting is not: everything that starts work, writes a file or reaches the network.
+    for (const path of ["/api/renders", "/api/renders/stop", "/api/renders/delete", "/api/jobs", "/api/postprocess", "/api/sheet/refresh", "/api/models/inspect", "/api/local/open"]) {
+      assert.equal((await fetch(at(path), { method: "POST", headers: json, body: "{}" })).status, 401, `${path} must need the key`);
+    }
+    assert.equal((await fetch(at("/api/renders"), { method: "POST", headers: { ...json, Authorization: "Bearer wrong-key-entirely" }, body: "{}" })).status, 401);
+    // With the key the same call gets through to the endpoint's own validation, not a 401.
+    assert.notEqual((await fetch(at("/api/renders"), { method: "POST", headers: { ...json, ...signed }, body: "{}" })).status, 401);
 
-    const signed = await (await fetch(at("/api/status"), { headers: withKey(key) })).json();
-    assert.equal(signed.access.authorized, true);
-    assert.match(signed.access.mediaToken || "", /^\d+\.[0-9a-f]{32}$/);
-    assert.equal((await fetch(at("/api/history"), { headers: withKey(key) })).status, 200);
-
-    // An <img src> cannot send a header, so a file GET rides on the token; a forged one must not pass.
-    const media = encodeURIComponent(signed.access.mediaToken);
-    assert.notEqual((await fetch(at(`/api/renders/file?path=nothing.png&t=${media}`))).status, 401, "a valid token is accepted for media");
-    assert.equal((await fetch(at("/api/renders/file?path=nothing.png&t=9999999999999.deadbeefdeadbeefdeadbeefdeadbeef"))).status, 401, "a forged token is refused");
-    assert.equal((await fetch(at("/api/renders/file?path=nothing.png"))).status, 401, "media without a token is refused");
-    // The plugin channel cannot present a key, so it is trusted only over the loopback interface.
-    assert.notEqual((await fetch(at("/api/unreal"))).status, 401, "Unreal talks to the service without a key from this machine");
+    // The plugin channel cannot present a key, so it is trusted over the loopback interface.
+    assert.notEqual((await fetch(at("/api/unreal"))).status, 401);
   } finally { service.kill(); }
 });
 

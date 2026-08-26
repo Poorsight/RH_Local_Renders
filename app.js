@@ -10,8 +10,21 @@
     document.querySelectorAll("[data-theme-value]").forEach(button => button.setAttribute("aria-pressed", String(button.dataset.themeValue === value)));
     try { localStorage.setItem(THEME_KEY, value); } catch {}
   };
+  const API_BASE = (() => {
+    const clean = value => String(value || "").trim().replace(/\/+$/, "");
+    try {
+      const asked = clean(new URLSearchParams(location.search).get("api"));
+      if (asked) { localStorage.setItem("rhApiBase", asked); return asked; }
+      const remembered = clean(localStorage.getItem("rhApiBase"));
+      if (remembered) return remembered;
+    } catch {}
+    return clean(window.RH_API_BASE);
+  })();
+  // Relative while the page and the service share an origin, absolute once the page is
+  // served from somewhere else. Everything the server hands back is origin-relative.
+  const apiUrl = path => API_BASE && String(path || "").startsWith("/") ? `${API_BASE}${path}` : path;
   const api = async (path, options = {}) => {
-    const response = await fetch(path, { headers: { "Content-Type": "application/json" }, ...options });
+    const response = await fetch(apiUrl(path), { headers: { "Content-Type": "application/json" }, ...options });
     const body = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(body.error || `Request failed (${response.status})`);
     return body;
@@ -22,6 +35,7 @@
   };
   const setConnection = (online) => {
     const node = $("connection"); node.dataset.state = online ? "online" : "offline";
+    if (API_BASE) node.title = `Service: ${API_BASE}`;
     node.lastChild.textContent = online ? "Local service online" : "Open with npm start for render controls";
   };
   const selected = (name) => [...document.querySelectorAll(`input[name=${name}]:checked`)].map(node => node.value);
@@ -417,7 +431,15 @@
   const openLocal = (action, path) => api("/api/local/open", { method: "POST", body: JSON.stringify({ action, path }) });
   const loadHistory = async () => {
     try {
-      const selectedId = state.historyBatch?.id, { batches } = await api("/api/history"); state.history = batches;
+      const selectedId = state.historyBatch?.id, { batches } = await api("/api/history");
+      for (const batch of batches) {
+        batch.jobUrl = apiUrl(batch.jobUrl);
+        for (const item of batch.models || []) for (const render of item.renders || []) {
+          render.url = apiUrl(render.url);
+          if (render.processed?.url) render.processed.url = apiUrl(render.processed.url);
+        }
+      }
+      state.history = batches;
       const selectedBatch = batches.find(batch => batch.id === selectedId) || batches[0] || null, changedBatch = state.historyBatch?.id !== selectedBatch?.id;
       state.historyBatch = selectedBatch;
       if (changedBatch || !state.historySelection.size) state.historySelection = new Set((selectedBatch?.models || []).map(model => model.name));

@@ -45,7 +45,20 @@ let child = null, bridge = null, activeRun = null, lastUnrealContactAt = null;
 let postProcessPromise = null;
 let unrealMaterialCache = null;
 
-const json = (response, status, body) => { response.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" }); response.end(JSON.stringify(body)); };
+const ALLOWED_ORIGINS = String(process.env.RH_ALLOWED_ORIGINS || "").split(",").map(value => value.trim().replace(/\/+$/, "")).filter(Boolean);
+const corsHeaders = origin => {
+  if (!origin || !ALLOWED_ORIGINS.length) return {};
+  const asked = String(origin).replace(/\/+$/, "");
+  if (!ALLOWED_ORIGINS.includes(asked) && !ALLOWED_ORIGINS.includes("*")) return {};
+  return {
+    "Access-Control-Allow-Origin": ALLOWED_ORIGINS.includes("*") ? asked : asked,
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Max-Age": "600",
+    Vary: "Origin"
+  };
+};
+const json = (response, status, body) => { response.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", ...corsHeaders(response.req?.headers?.origin) }); response.end(JSON.stringify(body)); };
 const error = (response, status, message) => json(response, status, { error: message });
 const body = request => new Promise((resolve, reject) => {
   let raw = ""; request.on("data", chunk => { raw += chunk; if (raw.length > 1_000_000) request.destroy(new Error("Request body too large")); });
@@ -53,7 +66,7 @@ const body = request => new Promise((resolve, reject) => {
 });
 const within = (file, root) => { const relative = path.relative(path.resolve(root), path.resolve(file)); return relative && !relative.startsWith("..") && !path.isAbsolute(relative); };
 const contentType = file => ({ ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".json": "application/json; charset=utf-8", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".svg": "image/svg+xml" })[path.extname(file).toLowerCase()] || "application/octet-stream";
-const sendFile = (response, file) => { if (!fs.existsSync(file) || !fs.statSync(file).isFile()) return error(response, 404, "File not found"); response.writeHead(200, { "Content-Type": contentType(file) }); fs.createReadStream(file).pipe(response); };
+const sendFile = (response, file) => { if (!fs.existsSync(file) || !fs.statSync(file).isFile()) return error(response, 404, "File not found"); response.writeHead(200, { "Content-Type": contentType(file), ...corsHeaders(response.req?.headers?.origin) }); fs.createReadStream(file).pipe(response); };
 const currentRender = () => ({ ...render, log: render.log.slice(-12000) });
 const appendRenderLog = chunk => { render.log = `${render.log}${chunk}`.slice(-50000); };
 
@@ -582,6 +595,7 @@ Forced stop during ${stoppedDuring}. Unreal is being killed and the run is aband
 const server = http.createServer(async (request, response) => {
   try {
     const url = new URL(request.url, `http://${HOST}:${PORT}`);
+    if (request.method === "OPTIONS") { response.writeHead(204, corsHeaders(request.headers.origin)); return response.end(); }
     if (url.pathname.startsWith("/api/")) return await api(request, response, url);
     const publicPath = url.pathname === "/" ? "index.html" : decodeURIComponent(url.pathname.slice(1));
     const file = path.resolve(ROOT, publicPath);

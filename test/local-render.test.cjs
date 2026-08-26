@@ -719,6 +719,32 @@ test("deleting from the web drops the renders, their proxies and only the asked-
   }
 });
 
+test("the service stays same-origin until an origin is allowed, then answers a remote page", async () => {
+  const port = 44000 + process.pid % 4000, remote = "https://preview.3dsource.com";
+  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const start = env => spawn(process.execPath, [path.join(root, "server.cjs")], { cwd: root, windowsHide: true, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, RH_LOCAL_RENDERS_PORT: String(port), ...env } });
+  const waitFor = async () => { for (let attempt = 0; attempt < 60; attempt++) { try { if ((await fetch(`http://127.0.0.1:${port}/api/status`)).ok) return true; } catch {} await sleep(50); } return false; };
+  let service = start({});
+  try {
+    assert.equal(await waitFor(), true);
+    const closed = await fetch(`http://127.0.0.1:${port}/api/status`, { headers: { Origin: remote } });
+    assert.equal(closed.headers.get("access-control-allow-origin"), null, "a service with no allowlist stays local-only");
+  } finally { service.kill(); await sleep(300); }
+
+  service = start({ RH_ALLOWED_ORIGINS: `${remote}, http://localhost:4173` });
+  try {
+    assert.equal(await waitFor(), true);
+    const opened = await fetch(`http://127.0.0.1:${port}/api/status`, { headers: { Origin: remote } });
+    assert.equal(opened.headers.get("access-control-allow-origin"), remote);
+    assert.equal(opened.headers.get("vary"), "Origin");
+    const preflight = await fetch(`http://127.0.0.1:${port}/api/renders/status`, { method: "OPTIONS", headers: { Origin: remote, "Access-Control-Request-Method": "POST" } });
+    assert.equal(preflight.status, 204);
+    assert.match(preflight.headers.get("access-control-allow-methods") || "", /POST/);
+    const stranger = await fetch(`http://127.0.0.1:${port}/api/status`, { headers: { Origin: "https://somewhere.else" } });
+    assert.equal(stranger.headers.get("access-control-allow-origin"), null, "an origin outside the allowlist gets nothing");
+  } finally { service.kill(); }
+});
+
 test("legacy light-rig project files stay out of the unified project", () => {
   for (const legacy of ["handoff", "light-rig-reference.html", "comments.php", "ONBOARDING.md", ".claude"]) {
     assert.equal(fs.existsSync(path.join(root, legacy)), false, legacy);

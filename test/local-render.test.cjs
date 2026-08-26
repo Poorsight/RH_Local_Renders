@@ -985,6 +985,22 @@ test("the frame a render starts from can be set from the page and lands in the j
   assert.deepEqual(withResolutionOverrides(RESOLUTION_PROFILES.low, null), RESOLUTION_PROFILES.low);
 });
 
+test("the Unreal material list holds materials from RH folders and nothing else", () => {
+  const source = fs.readFileSync(path.join(root, "server.cjs"), "utf8");
+  // Only folders named RH are walked, wherever they sit: the fabrics are under Content/RH
+  // while the legs and plastics are under Content/3D_Source/Materials/RH.
+  assert.match(source, /entry\.name\.toUpperCase\(\) === "RH"/);
+  assert.match(source, /rhFolders\(path\.join\(projectRoot, folder\)\)/);
+  assert.match(source, /isMaterialAsset\(full\)/);
+
+  // Class names are matched whole, so MaterialFunction is not a Material.
+  assert.match(source, /\u0000\$\{className\}\u0000/);
+  // A master material references its textures, so Texture2D must not exclude it.
+  assert.doesNotMatch(source, /NOT_A_MATERIAL = \[[^\]]*Texture2D/);
+  assert.match(source, /NOT_A_MATERIAL = \["StaticMesh"/);
+  assert.match(source, /MATERIAL_CLASSES = \["MaterialInstanceConstant", "Material"\]/);
+});
+
 test("legacy light-rig project files stay out of the unified project", () => {
   for (const legacy of ["handoff", "light-rig-reference.html", "comments.php", "ONBOARDING.md", ".claude"]) {
     assert.equal(fs.existsSync(path.join(root, legacy)), false, legacy);

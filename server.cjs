@@ -326,16 +326,52 @@ function scanImages(folder) {
   return found.sort();
 }
 
+// A uasset names the classes it holds, so a material can be told from everything else that
+// shares the extension. Class names are matched whole: MaterialFunction is not a Material,
+// and a static mesh mentions Material only because it points at one.
+const MATERIAL_CLASSES = ["MaterialInstanceConstant", "Material"];
+// Texture2D is deliberately absent: a master material references its textures, and excluding
+// on it threw away M_RH_MASTER_V3/V5/V6. A texture asset carries no material class of its own,
+// so it is left out by not matching rather than by being pushed out.
+const NOT_A_MATERIAL = ["StaticMesh", "SkeletalMesh", "World", "LevelSequence", "SoundWave", "AnimSequence"];
+const holdsClass = (buffer, className) => buffer.includes(` ${className} `, 0, "latin1");
+
+function isMaterialAsset(file) {
+  let head;
+  try { head = fs.readFileSync(file); } catch { return false; }
+  const window = head.subarray(0, 400_000);
+  if (NOT_A_MATERIAL.some(className => holdsClass(window, className))) return false;
+  return MATERIAL_CLASSES.some(className => holdsClass(window, className));
+}
+
+// Every folder named RH, wherever it sits: the fabrics live under Content/RH while the legs
+// and plastics live under Content/3D_Source/Materials/RH, and both are in use.
+function rhFolders(root) {
+  const found = [], stack = [root].filter(fs.existsSync);
+  while (stack.length) {
+    const current = stack.pop();
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const full = path.join(current, entry.name);
+      if (entry.name.toUpperCase() === "RH") found.push(full); else stack.push(full);
+    }
+  }
+  return found;
+}
+
 function unrealMaterials() {
   if (unrealMaterialCache) return unrealMaterialCache;
-  const roots = [path.join(path.dirname(UNREAL_PROJECT), "Content"), path.join(path.dirname(UNREAL_PROJECT), "Plugins")];
-  const records = [], stack = roots.filter(fs.existsSync);
+  const projectRoot = path.dirname(UNREAL_PROJECT);
+  const stack = ["Content", "Plugins"].flatMap(folder => rhFolders(path.join(projectRoot, folder)));
+  const records = [];
   while (stack.length) {
     const current = stack.pop();
     for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
       const full = path.join(current, entry.name);
       if (entry.isDirectory()) stack.push(full);
-      else if (entry.isFile() && entry.name.toLowerCase().endsWith(".uasset")) records.push({ name: path.basename(entry.name, ".uasset"), path: full });
+      else if (entry.isFile() && entry.name.toLowerCase().endsWith(".uasset") && isMaterialAsset(full)) {
+        records.push({ name: path.basename(entry.name, ".uasset"), path: full });
+      }
     }
   }
   unrealMaterialCache = records.sort((left, right) => left.name.localeCompare(right.name));

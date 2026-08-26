@@ -912,8 +912,14 @@ test("a sofa job matches the farm's shape: four angles, one layer, its own scene
   const task = buildJob(input, sofa, rig, "D:\out").tasks[0];
 
   assert.deepEqual(task.sequence.cameras.map(camera => camera.name), ["F", "P", "TQ", "TQB"], "one angle more than a sectional, and different ones");
-  assert.deepEqual(task.layers.map(layer => layer.name), ["Fabric"], "a sofa has no Shadow pass");
+  assert.deepEqual(task.layers.map(layer => layer.name), ["Fabric"], "only what was asked for");
   assert.deepEqual(task.layers[0].SubLevels, ["Sofa_Indoor_Background", "Sofa_Indoor_KeyLight"]);
+  // The scene carries a Shadow sublevel with its post-process volume, so the pass is available
+  // and lands in the sofa's own levels rather than a sectional's.
+  const withShadow = buildJob({ ...input, layers: ["Fabric", "Shadow"] }, sofa, rig, "D:\out").tasks[0];
+  assert.deepEqual(withShadow.layers.map(layer => layer.name), ["Fabric", "Shadow"]);
+  assert.deepEqual(withShadow.layers[1].SubLevels, ["Sofa_Indoor_Shadow", "Sofa_Indoor_KeyLight"]);
+  assert.deepEqual(withShadow.layers[1].postProcesses, ["PostProcess_shadow"]);
 
   // A camera angle is the model actor being turned, and an OBJ needs no axis correction
   // where an FBX carries roll -90.
@@ -933,8 +939,7 @@ test("a sofa job matches the farm's shape: four angles, one layer, its own scene
   const byName = Object.fromEntries(task.sequence.cameras.find(camera => camera.name === "TQB").lights.map(light => [light.name, light.intensity]));
   assert.deepEqual(byName, { front_fill_lgt: 6, left_rim_lgt: 80, main_key_lgt: 15, right_bounce_lgt: 1.5, right_rim_lgt: 1 });
 
-  // Asking for a pass a sofa does not have is refused rather than silently dropped into a job.
-  assert.throws(() => buildJob({ ...input, layers: ["Shadow"] }, sofa, rig, "D:\out"), /at least one render layer/);
+  // An angle a sofa is never shot from is refused rather than silently dropped into a job.
   assert.throws(() => buildJob({ ...input, cameras: ["FH"] }, sofa, rig, "D:\out"), /F, P, TQ, TQB/);
   // And a sectional keeps its own shape.
   const sectionalTask = buildJob({ ...baseInput, side: "R", importYaw: -90 }, model, rig, "D:\out").tasks[0];

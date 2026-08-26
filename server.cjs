@@ -7,7 +7,7 @@ const crypto = require("node:crypto");
 const { spawn, spawnSync } = require("node:child_process");
 const { SheetStore } = require("./lib/rig.cjs");
 const { ModelStore } = require("./lib/models.cjs");
-const { writeBatchJob } = require("./lib/jobs.cjs");
+const { productType, writeBatchJob } = require("./lib/jobs.cjs");
 const { buildRenderPlan, cameraStateKey, applyCameraHandoff } = require("./lib/render-plan.cjs");
 const { siblingBranch, isInBranch } = require("./lib/output-layout.cjs");
 const { publishPreviews, previewFileFor } = require("./lib/preview.cjs");
@@ -365,13 +365,15 @@ function pluginRuntimeIsCommitted(pluginRoot, files) {
 async function preflight(input) {
   const selections = input.models?.length ? input.models : input.modelPath ? [{ modelPath: input.modelPath }] : [];
   const checks = [], inspected = [];
-  if (!selections.length) checks.push({ id: "models", level: "error", label: "Models", detail: "Add at least one FBX model." });
+  if (!selections.length) checks.push({ id: "models", level: "error", label: "Models", detail: "Add at least one model." });
   for (const selection of selections) {
     try {
       const model = await models.inspect(selection.modelPath), side = input.side === "auto" || !input.side ? model.side : String(input.side).toUpperCase();
       inspected.push(model);
-      if (!fs.existsSync(model.path)) checks.push({ id: `model:${model.name}`, level: "error", label: model.name, detail: "FBX file is missing." });
-      else if (!["R", "L", "U"].includes(side)) checks.push({ id: `model:${model.name}`, level: "error", label: model.name, detail: "L/R/U form factor could not be determined." });
+      // A side only means something for a sectional; a sofa has one shape and no handedness.
+      const needsSide = productType(input.productType || model.group).requiresSide;
+      if (!fs.existsSync(model.path)) checks.push({ id: `model:${model.name}`, level: "error", label: model.name, detail: "Model file is missing." });
+      else if (needsSide && !["R", "L", "U"].includes(side)) checks.push({ id: `model:${model.name}`, level: "error", label: model.name, detail: "L/R/U form factor could not be determined." });
     } catch (modelError) { checks.push({ id: `model:${selection.modelPath}`, level: "error", label: path.basename(String(selection.modelPath || "Model")), detail: modelError.message }); }
   }
   if (inspected.length) checks.push({ id: "models", level: "ok", label: "Models", detail: `${inspected.length} FBX file${inspected.length === 1 ? "" : "s"} found; dimensions and form factors are ready.` });
@@ -559,7 +561,10 @@ async function api(request, response, url) {
     for (const selection of selections) {
       const model = await models.inspect(selection.modelPath);
       const side = input.side === "auto" || !input.side ? model.side : String(input.side).toUpperCase();
-      if (!["R", "L", "U"].includes(side)) throw new Error(`Could not determine L, R, or U form factor for ${model.name}`);
+      // Only a sectional has handedness; demanding it of a sofa refuses a perfectly good model.
+      if (productType(input.productType || model.group).requiresSide && !["R", "L", "U"].includes(side)) {
+        throw new Error(`Could not determine L, R, or U form factor for ${model.name}`);
+      }
       const fingerprint = modelFingerprint(model.path), cropProfiles = Object.fromEntries((input.cameras || []).map(camera => [camera, cropProfileFor(cropStore, fingerprint, camera)]).filter(([, profile]) => profile));
       entries.push({ model, input: { ...input, ...selection, side, dimensions: selection.dimensions || model.dimensions, importYaw: selection.importYaw ?? model.importYaw, modelFingerprint: fingerprint, cropProfiles } });
     }

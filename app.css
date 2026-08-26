@@ -124,10 +124,14 @@ main{width:calc(100% - clamp(18px,2.4vw,44px));max-width:none;margin:0 auto;padd
 .settings-panel input:focus-visible{outline:0;box-shadow:var(--sel-ring)}
 .settings-panel small{font-size:11.5px;line-height:1.45;color:var(--faint)}
 .settings-actions{display:flex;gap:8px;align-items:center;margin-top:12px}
-.card-shell{position:relative;display:flex;min-width:0}
+/* The shell replaced the card as the grid item, so it has to hand the whole track back:
+   a card that sizes to its content collapses to nothing when that content is an
+   absolutely positioned image. */
+.card-shell{position:relative;display:flex;min-width:0;width:100%}
+.card-shell>:first-child{flex:1 1 auto;min-width:0;width:100%}
 .card-delete{position:absolute;bottom:7px;right:7px;z-index:3;width:27px;height:27px;border-radius:var(--radius-pill);display:grid;place-items:center;color:var(--faint);background:var(--surface-raised);box-shadow:var(--bevel),var(--lift-sm);opacity:.5;transition:opacity .16s,color .16s,background .16s,box-shadow .16s,transform .16s}
 .card-shell:hover .card-delete,.card-shell:focus-within .card-delete,.card-delete[aria-expanded=true]{opacity:1}
-.card-delete:hover{transform:scale(1.08)}
+
 .card-delete:hover{color:var(--danger);background:var(--danger-soft);box-shadow:var(--bevel),inset 0 0 0 1px var(--danger-line)}
 .card-delete svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round}
 @media (hover:none){.card-delete{opacity:.85}}
@@ -892,3 +896,14 @@ select:hover:not(:disabled),.theme-switcher button:not([aria-pressed=true]):hove
    so the delete control goes top right. History cards keep it low, where their state pill
    is not. */
 .card-shell:has(.render-preview-card)>.card-delete{top:7px;bottom:auto}
+
+/* ── render previews ────────────────────────────────────────────────
+   A preview is a window onto the render, not a card sitting on the page:
+   no shadow, no lift. What answers the pointer is the product itself. */
+.render-preview-card,.render-preview-card:hover,.render-preview-card:active{box-shadow:none;transform:none;background:var(--preview-bg,var(--surface-2))}
+.card-shell:has(.render-preview-card):hover{transform:none}
+.render-preview-media{transition:transform .32s cubic-bezier(.2,.8,.2,1)}
+.render-preview-card:hover .render-preview-media{transform:scale(1.045)}
+.render-preview-card:active .render-preview-media{transform:scale(1.02)}
+/* The delete control belongs to the frame, so it must not ride the zoom. */
+.card-shell:has(.render-preview-card)>.card-delete{transform:none}

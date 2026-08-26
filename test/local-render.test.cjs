@@ -856,14 +856,18 @@ test("model checks catch a wrong scale, a missing part and an uncorrected FBX or
 
   // Models arrive at whatever scale their exporter used, so the factor is measured per model
   // and passed through: a tracked inch model carries 2.54 and renders correctly with it.
-  assert.equal(unrealScaleFor(sofa), 0.001);
-  assert.equal(unrealScaleFor(sectional), 1);
-  assert.equal(unrealScaleFor({ scale: 2.54 }), 2.54, "what the farm sends for an inch export");
-  assert.equal(unrealScaleFor({ scale: 0 }), null);
+  // Settled by a render: an OBJ at the measured factor came out 22 pixels wide, and at a
+  // hundred times that it filled the frame. Unreal's OBJ importer reads no unit header and
+  // treats the numbers as centimetres; its FBX importer normalises the model itself.
+  assert.equal(unrealScaleFor(sofa, "obj"), 0.1);
+  assert.equal(unrealScaleFor(sectional, "fbx"), 1);
+  assert.equal(unrealScaleFor({ scale: 2.54 }, "fbx"), 2.54, "what the farm sends for an inch export");
+  assert.equal(unrealScaleFor({ scale: 0.0254 }, "obj"), 2.54, "an inch OBJ lands on the same number by conversion");
+  assert.equal(unrealScaleFor({ scale: 0 }, "obj"), null);
 
   const sofaFindings = checkModel({ name: "BELLA_TWO_SEAT_SOFA", group: "sofas", format: "obj" }, sofa);
   assert.equal(find(sofaFindings, "scale").level, "ok");
-  assert.match(find(sofaFindings, "scale").detail, /millimetres measured/);
+  assert.match(find(sofaFindings, "scale").detail, /offsetUniformScale 0\.1/);
   assert.equal(find(sofaFindings, "parts").level, "ok", "a sofa needs upholstery and feet, not stitches");
   assert.equal(find(sofaFindings, "size").level, "ok");
 

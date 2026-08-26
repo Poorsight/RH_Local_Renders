@@ -963,6 +963,24 @@ input[readonly]:hover,input[readonly]:focus{box-shadow:none}
 .frame-size-grid label>i{flex:none;font-style:normal;color:var(--faint);font-size:11px}
 .frame-size .field-hint{margin-top:11px}
 
-/* A popover sits in the top layer, so it does not scroll with the element it belongs to and
-   appears to chase the page. Keeping it pinned means repositioning while it is open. */
 .frame-size-row>.secondary-button{padding:8px 15px;font-size:12.5px}
+
+/* ── anchoring ──────────────────────────────────────────────────────
+   A popover lives in the top layer, so it does not scroll with the thing
+   it belongs to. Repositioning it from a scroll handler runs after the
+   frame is already painted, so the panel lags and visibly shakes; the
+   browser can hold it in place itself. */
+#frameSizeToggle{anchor-name:--frame-size-anchor}
+#settingsToggle{anchor-name:--settings-anchor}
+.card-delete[data-anchor=active]{anchor-name:--card-delete-anchor}
+#frameSizePanel{position-anchor:--frame-size-anchor}
+.settings-panel{position-anchor:--settings-anchor}
+.confirm-pop{position-anchor:--card-delete-anchor}
+#frameSizePanel,.settings-panel,.confirm-pop{
+  top:auto;right:auto;bottom:auto;left:auto;
+  margin:8px 0 0;
+  position-try-fallbacks:flip-block, flip-inline, flip-block flip-inline;
+  position-visibility:anchors-visible;
+}
+#frameSizePanel{position-area:block-end span-inline-end}
+.settings-panel,.confirm-pop{position-area:block-end span-inline-start}

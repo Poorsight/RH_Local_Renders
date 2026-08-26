@@ -9,7 +9,7 @@ const { spawn } = require("node:child_process");
 const { PNG } = require("pngjs");
 const { parseCsv } = require("../lib/csv.cjs");
 const { buildRig, jobLights } = require("../lib/rig.cjs");
-const { buildJob, buildBatchJob, writeJob, CAMERA_YAW, RESOLUTION_PROFILES, groupedMaterials } = require("../lib/jobs.cjs");
+const { withResolutionOverrides, buildJob, buildBatchJob, writeJob, CAMERA_YAW, RESOLUTION_PROFILES, groupedMaterials } = require("../lib/jobs.cjs");
 const { ModelStore, sectionalFormFactor } = require("../lib/models.cjs");
 const { buildUnrealLaunch } = require("../lib/unreal.cjs");
 const { history, expectedRenders } = require("../lib/history.cjs");
@@ -951,6 +951,40 @@ test("a sofa job matches the farm's shape: four angles, one layer, its own scene
   assert.ok(sectionalTask.sequence.cameras.every(camera => camera.Actor.Rotation.Roll === -90), "an FBX still carries its correction");
 });
 
+test("the frame a render starts from can be set from the page and lands in the job", () => {
+  const base = { ...baseInput, cameras: ["F"], layers: ["Fabric", "Shadow"], renderProfile: "high" };
+  const frameOf = (task, layer) => task.sequence.cameras[0].LayerResolutions.find(item => item.Name === layer);
+
+  // Nothing asked for: the profile decides, as before.
+  const plain = frameOf(buildJob(base, model, rig, "D:\out").tasks[0], "Fabric");
+  assert.deepEqual(plain.Resolution, { X: 5000, Y: 5000 });
+  assert.deepEqual(plain.SensorSize, { X: 36, Y: 36 });
+
+  // A bigger sensor is a lens change, and both layers can be set independently.
+  const asked = buildJob({ ...base, resolutions: {
+    Fabric: { Resolution: { X: 4000, Y: 4000 }, SensorSize: { X: 60, Y: 60 } },
+    Shadow: { Resolution: { X: 12000, Y: 4000 }, SensorSize: { X: 180, Y: 60 } }
+  } }, model, rig, "D:\out").tasks[0];
+  assert.deepEqual(frameOf(asked, "Fabric").Resolution, { X: 4000, Y: 4000 });
+  assert.deepEqual(frameOf(asked, "Fabric").SensorSize, { X: 60, Y: 60 });
+  assert.deepEqual(frameOf(asked, "Shadow").Resolution, { X: 12000, Y: 4000 });
+  assert.deepEqual(frameOf(asked, "Shadow").SensorSize, { X: 180, Y: 60 });
+
+  // A half-filled or nonsense field must not turn a frame into NaN or zero.
+  const partial = withResolutionOverrides(RESOLUTION_PROFILES.high, {
+    Fabric: { Resolution: { X: 4000 }, SensorSize: { Y: "" } },
+    Shadow: { Resolution: { X: -1, Y: 0 }, SensorSize: { X: "wide" } }
+  });
+  assert.deepEqual(partial.Fabric.Resolution, { X: 4000, Y: 5000 }, "the missing half keeps the profile");
+  assert.deepEqual(partial.Fabric.SensorSize, { X: 36, Y: 36 });
+  assert.deepEqual(partial.Shadow.Resolution, { X: 15000, Y: 5000 }, "a negative or zero frame is refused");
+  assert.deepEqual(partial.Shadow.SensorSize, { X: 108, Y: 36 });
+  // Pixels are whole numbers; a sensor is not.
+  assert.equal(withResolutionOverrides(RESOLUTION_PROFILES.low, { Fabric: { Resolution: { Y: 640.7 } } }).Fabric.Resolution.Y, 641);
+  assert.equal(withResolutionOverrides(RESOLUTION_PROFILES.low, { Fabric: { SensorSize: { Y: 15.408 } } }).Fabric.SensorSize.Y, 15.408);
+  assert.deepEqual(withResolutionOverrides(RESOLUTION_PROFILES.low, null), RESOLUTION_PROFILES.low);
+});
+
 test("legacy light-rig project files stay out of the unified project", () => {
   for (const legacy of ["handoff", "light-rig-reference.html", "comments.php", "ONBOARDING.md", ".claude"]) {
     assert.equal(fs.existsSync(path.join(root, legacy)), false, legacy);
@@ -1018,7 +1052,7 @@ test("main page renders the workspace, previews and dropdowns", () => {
   assert.doesNotMatch(html, /<iframe/i);
   assert.match(client, /canReachLocalService/);
   assert.match(html, /id="modelDropTarget"/);
-  assert.match(html, /id="modelFileInput" type="file" accept="\.fbx" multiple/);
+  assert.match(html, /id="modelFileInput" type="file" accept="\.fbx,\.obj" multiple/);
   assert.match(client, /droppedFilePath/);
   assert.match(client, /dropTarget\.addEventListener\("drop"/);
   assert.match(client, /useDroppedModels/);

@@ -92,6 +92,7 @@
     productType: String($("category").value || "Sectionals").toLowerCase(),
     environment: $("environment").value,
     side: $("sceneSide").value, renderProfile: selected("renderProfile")[0] || "high", cropMode: selected("cropMode")[0] || "full",
+    resolutions: frameOverrides(),
     dimensions: { width: +$("width").value, depth: +$("depth").value, height: +$("height").value },
     importYaw: +$("importYaw").value || 0,
     cameras: selected("camera"), layers: selected("layer"), materials: materialRows()
@@ -208,6 +209,34 @@
     }
     validate(false);
   };
+  // The same frames the server starts from, so the fields show what would be used and a
+  // reset puts the profile's numbers back.
+  const FRAME_PROFILES = {
+    high: { Fabric: { res: [5000, 5000], sensor: [36, 36] }, Shadow: { res: [15000, 5000], sensor: [108, 36] } },
+    low: { Fabric: { res: [500, 500], sensor: [36, 36] }, Shadow: { res: [1500, 500], sensor: [108, 36] } }
+  };
+  const FRAME_FIELDS = {
+    Fabric: { res: ["fabricResX", "fabricResY"], sensor: ["fabricSensorX", "fabricSensorY"] },
+    Shadow: { res: ["shadowResX", "shadowResY"], sensor: ["shadowSensorX", "shadowSensorY"] }
+  };
+  const currentProfile = () => (selected("renderProfile")[0] || "high");
+  const fillFrameSize = () => {
+    const profile = FRAME_PROFILES[currentProfile()] || FRAME_PROFILES.high;
+    for (const [layer, fields] of Object.entries(FRAME_FIELDS)) {
+      $(fields.res[0]).value = profile[layer].res[0]; $(fields.res[1]).value = profile[layer].res[1];
+      $(fields.sensor[0]).value = profile[layer].sensor[0]; $(fields.sensor[1]).value = profile[layer].sensor[1];
+    }
+  };
+  const frameOverrides = () => {
+    const out = {};
+    for (const [layer, fields] of Object.entries(FRAME_FIELDS)) {
+      out[layer] = {
+        Resolution: { X: Number($(fields.res[0]).value), Y: Number($(fields.res[1]).value) },
+        SensorSize: { X: Number($(fields.sensor[0]).value), Y: Number($(fields.sensor[1]).value) }
+      };
+    }
+    return out;
+  };
   const renderBatch = () => {
     if (state.modelCheck) { state.modelCheck = null; renderModelCheck(null); }
     $("modelBatch").hidden = !state.batch.length; $("batchCount").textContent = `${state.batch.length} model${state.batch.length === 1 ? "" : "s"}`;
@@ -237,7 +266,7 @@
     if (!quiet) toast(`${model.newlyAnalyzed ? "Analyzed and saved" : "Read"} ${model.materialIds.length} Material IDs from ${model.name}`);
   };
   const metadataModel = query => {
-    const value = String(query || "").trim(), needle = value.split(/[\\/]/).pop().replace(/\.fbx$/i, "").toLowerCase();
+    const value = String(query || "").trim(), needle = value.split(/[\\/]/).pop().replace(/\.(fbx|obj)$/i, "").toLowerCase();
     const entries = Object.entries(state.metadata?.models || {});
     const match = entries.find(([name]) => name.toLowerCase() === needle) || entries.filter(([name]) => name.toLowerCase().includes(needle))[0];
     if (!match) throw new Error("This FBX is not listed in data/models.json. Add its model metadata before using it.");
@@ -263,7 +292,7 @@
   const escapeHtml = (value) => String(value).replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[ch]);
   const droppedFilePath = (file, transfer) => {
     const directPath = typeof file?.path === "string" ? file.path : "";
-    if (/^[a-z]:[\\/].+\.fbx$/i.test(directPath)) return directPath.replace(/\//g, "\\");
+    if (/^[a-z]:[\\/].+\.(fbx|obj)$/i.test(directPath)) return directPath.replace(/\//g, "\\");
     const uris = String(transfer?.getData?.("text/uri-list") || "").split(/\r?\n/).filter(value => /^file:\/\/\/[a-z]:\//i.test(value));
     const uri = uris.find(value => { try { return decodeURIComponent(value).split("/").pop().toLowerCase() === String(file?.name || "").toLowerCase(); } catch { return false; } }) || (uris.length === 1 ? uris[0] : "");
     if (uri) { try { return decodeURIComponent(uri.replace(/^file:\/\/\//i, "")).replace(/\//g, "\\"); } catch {} }
@@ -274,8 +303,8 @@
   const inspectQuery = query => canReachLocalService ? api("/api/models/inspect", { method: "POST", body: JSON.stringify({ modelPath: query }) }) : Promise.resolve(metadataModel(query));
   const useDroppedModels = async (files, transfer = null) => {
     const status = $("modelDropStatus");
-    const selectedFiles = [...(files || [])], fbxFiles = selectedFiles.filter(file => /\.fbx$/i.test(file.name || ""));
-    if (!fbxFiles.length) { status.dataset.state = "error"; status.textContent = "Choose one or more FBX model files."; return toast(status.textContent, true); }
+    const selectedFiles = [...(files || [])], fbxFiles = selectedFiles.filter(file => /\.(fbx|obj)$/i.test(file.name || ""));
+    if (!fbxFiles.length) { status.dataset.state = "error"; status.textContent = "Choose one or more FBX or OBJ model files."; return toast(status.textContent, true); }
     $("inspectModel").disabled = true; $("chooseModel").disabled = true;
     let added = 0, failed = 0;
     for (let index = 0; index < fbxFiles.length; index++) {
@@ -568,6 +597,7 @@
   };
   const init = async () => {
     applyProductType();
+    fillFrameSize();
     try { await loadModelMetadata(); } catch (error) { console.warn(`Model metadata unavailable: ${error.message}`); }
     try { await loadMaterialAssets(); } catch (error) { console.warn(`Unreal materials unavailable: ${error.message}`); }
     if (!canReachLocalService) { setConnection(false); $("sheetState").textContent = "STATIC"; $("unrealState").textContent = "OFFLINE"; return; }
@@ -670,8 +700,13 @@
     const low = input.checked && input.value === "low";
     $("fabricResolutionLabel").textContent = low ? "Path Trace · 500" : "Path Trace · 5K";
     $("shadowResolutionLabel").textContent = low ? "Lumen · 1.5K×500" : "Lumen · 15K×5K";
+    fillFrameSize();
     state.jobPath = null; $("jobResult").hidden = true; validate();
   }));
+  $("resetFrameSize").addEventListener("click", () => { fillFrameSize(); state.jobPath = null; $("jobResult").hidden = true; validate(); toast("Frame size back to the profile"); });
+  for (const ids of Object.values(FRAME_FIELDS)) for (const id of [...ids.res, ...ids.sensor]) {
+    $(id).addEventListener("input", () => { state.jobPath = null; $("jobResult").hidden = true; validate(false); });
+  }
   $("copyJobPath").addEventListener("click", async () => { await navigator.clipboard.writeText(state.jobPath || ""); toast("Job path copied"); });
   $("refreshHistory").addEventListener("click", loadHistory);
   $("historySearch").addEventListener("input", renderHistoryList); $("historyFilter").addEventListener("change", renderHistoryList);

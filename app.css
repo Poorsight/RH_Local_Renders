@@ -256,7 +256,16 @@ input[type=range]:active::-webkit-slider-thumb{cursor:grabbing;box-shadow:var(--
 .model-path-actions{display:flex;gap:9px;flex-wrap:wrap}
 .model-path-actions .secondary-button{flex:1 1 130px}
 .model-drop-target{padding:0}
-.model-drop-target.dragover .model-drop-overlay{opacity:1;pointer-events:auto}
+/* The script marks the target with data-dragging; this rule used to look for a class that
+   nothing ever set, so the overlay never appeared. */
+.model-drop-target[data-dragging] .model-drop-overlay{opacity:1;pointer-events:auto}
+.model-drop-target[data-dragging] .model-drop-overlay span{color:var(--accent-ink)}
+/* And the field itself answers, so the whole area reads as ready to take the drop. */
+.model-drop-target[data-dragging]>input{box-shadow:var(--sel-gleam)}
+.model-drop-target{transition:transform .16s cubic-bezier(.2,.8,.2,1)}
+.model-drop-target[data-dragging]{transform:scale(1.012)}
+.model-drop-overlay{transition:opacity .16s,border-color .16s,background .16s}
+.model-drop-target[data-dragging] .model-drop-overlay{border-color:var(--accent);background:color-mix(in srgb,var(--surface) 78%,transparent)}
 .model-drop-overlay{position:absolute;inset:-8px;display:grid;place-content:center;gap:5px;text-align:center;border-radius:var(--radius-sm);background:color-mix(in srgb,var(--surface) 88%,transparent);border:1.5px dashed var(--accent-line);opacity:0;pointer-events:none;transition:opacity .16s;z-index:2}
 .model-drop-overlay span{color:var(--text);font-size:13.5px;font-weight:600}
 .model-drop-overlay small{color:var(--muted);font-size:11.5px}

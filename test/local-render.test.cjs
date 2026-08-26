@@ -1001,6 +1001,17 @@ test("the Unreal material list holds materials from RH folders and nothing else"
   assert.match(source, /MATERIAL_CLASSES = \["MaterialInstanceConstant", "Material"\]/);
 });
 
+test("the drop target reacts to the attribute the script actually sets", () => {
+  const styles = fs.readFileSync(path.join(root, "app.css"), "utf8");
+  const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  // The script marks the target with data-dragging, and the rule looked for a class nothing
+  // ever set — so the overlay was styled, positioned, and never once seen.
+  assert.match(client, /dropTarget\.dataset\.dragging = "true"/);
+  assert.match(styles, /\.model-drop-target\[data-dragging\] \.model-drop-overlay\{opacity:1/);
+  assert.doesNotMatch(styles, /\.model-drop-target\.dragover/, "the class it used to look for");
+  assert.match(styles, /\.model-drop-target\[data-dragging\]>input\{box-shadow:var\(--sel-gleam\)\}/);
+});
+
 test("legacy light-rig project files stay out of the unified project", () => {
   for (const legacy of ["handoff", "light-rig-reference.html", "comments.php", "ONBOARDING.md", ".claude"]) {
     assert.equal(fs.existsSync(path.join(root, legacy)), false, legacy);

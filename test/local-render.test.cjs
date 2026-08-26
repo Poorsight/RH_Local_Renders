@@ -745,6 +745,44 @@ test("the service stays same-origin until an origin is allowed, then answers a r
   } finally { service.kill(); }
 });
 
+test("an access key gates commands, leaves the status ping open and signs media instead", async () => {
+  const port = 42000 + process.pid % 4000, key = "test-access-key-2eb1";
+  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const service = spawn(process.execPath, [path.join(root, "server.cjs")], {
+    cwd: root, windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, RH_LOCAL_RENDERS_PORT: String(port), RH_ACCESS_KEY: key }
+  });
+  const at = path => `http://127.0.0.1:${port}${path}`;
+  const withKey = value => ({ Authorization: `Bearer ${value}` });
+  try {
+    let online = false;
+    for (let attempt = 0; attempt < 60 && !online; attempt++) { try { online = (await fetch(at("/api/status"))).ok; } catch {} if (!online) await sleep(50); }
+    assert.equal(online, true, "the status ping stays open so a page can discover the gate");
+
+    const anonymous = await (await fetch(at("/api/status"))).json();
+    assert.equal(anonymous.access.required, true);
+    assert.equal(anonymous.access.authorized, false);
+    assert.equal(anonymous.access.mediaToken, null, "an unauthorized caller gets no media token");
+
+    assert.equal((await fetch(at("/api/history"))).status, 401, "reads need the key too");
+    assert.equal((await fetch(at("/api/renders/status"), { headers: withKey("wrong-key-entirely") })).status, 401);
+    assert.equal((await fetch(at("/api/renders"), { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })).status, 401, "launching without the key is refused");
+
+    const signed = await (await fetch(at("/api/status"), { headers: withKey(key) })).json();
+    assert.equal(signed.access.authorized, true);
+    assert.match(signed.access.mediaToken || "", /^\d+\.[0-9a-f]{32}$/);
+    assert.equal((await fetch(at("/api/history"), { headers: withKey(key) })).status, 200);
+
+    // An <img src> cannot send a header, so a file GET rides on the token; a forged one must not pass.
+    const media = encodeURIComponent(signed.access.mediaToken);
+    assert.notEqual((await fetch(at(`/api/renders/file?path=nothing.png&t=${media}`))).status, 401, "a valid token is accepted for media");
+    assert.equal((await fetch(at("/api/renders/file?path=nothing.png&t=9999999999999.deadbeefdeadbeefdeadbeefdeadbeef"))).status, 401, "a forged token is refused");
+    assert.equal((await fetch(at("/api/renders/file?path=nothing.png"))).status, 401, "media without a token is refused");
+    // The plugin channel cannot present a key, so it is trusted only over the loopback interface.
+    assert.notEqual((await fetch(at("/api/unreal"))).status, 401, "Unreal talks to the service without a key from this machine");
+  } finally { service.kill(); }
+});
+
 test("legacy light-rig project files stay out of the unified project", () => {
   for (const legacy of ["handoff", "light-rig-reference.html", "comments.php", "ONBOARDING.md", ".claude"]) {
     assert.equal(fs.existsSync(path.join(root, legacy)), false, legacy);

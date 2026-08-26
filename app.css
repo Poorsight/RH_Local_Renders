@@ -97,6 +97,22 @@ main{width:calc(100% - clamp(18px,2.4vw,44px));max-width:none;margin:0 auto;padd
 .theme-switcher button{width:36px;height:30px;border-radius:var(--radius-pill);display:grid;place-items:center;color:var(--faint);transition:color .16s,background .16s,box-shadow .16s}
 .theme-switcher button:hover{color:var(--soft)}
 .theme-switcher button[aria-pressed=true]{color:var(--accent-ink);background:transparent;box-shadow:var(--sel-ring)}
+.icon-button{width:34px;height:34px;border-radius:var(--radius-pill);display:grid;place-items:center;color:var(--faint);background:var(--surface-2);box-shadow:var(--press-sm);transition:color .16s,background .16s,box-shadow .16s}
+.icon-button:hover{color:var(--soft)}
+.icon-button svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round}
+.settings-panel{position:fixed;margin:0;inset:auto;top:56px;right:16px;z-index:70;width:min(340px,calc(100vw - 32px));display:flex;flex-direction:column;gap:6px;padding:16px;border:0;border-radius:var(--radius-md);background:var(--surface-raised);box-shadow:var(--lift-lg);color:var(--text);opacity:0;transform:translateY(-8px) scale(.985);transition:opacity .17s ease,transform .22s cubic-bezier(.2,.8,.2,1),overlay .22s allow-discrete,display .22s allow-discrete}
+.settings-panel:popover-open{opacity:1;transform:none}
+@starting-style{.settings-panel:popover-open{opacity:0;transform:translateY(-8px) scale(.985)}}
+.settings-panel::backdrop{background:transparent}
+.settings-heading{display:flex;flex-direction:column;gap:2px;margin-bottom:6px}
+.settings-heading strong{font-size:14px;letter-spacing:-.01em}
+.settings-heading span{font-size:12px;color:var(--muted)}
+.settings-panel label{font-size:11px;font-weight:560;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin-top:6px}
+.settings-panel input{width:100%;padding:9px 11px;border-radius:var(--radius-sm);background:var(--inset);color:var(--text);box-shadow:inset 0 0 0 1px var(--line);font-size:13px;transition:box-shadow .16s}
+.settings-panel input:focus-visible{outline:0;box-shadow:var(--sel-ring)}
+.settings-panel small{font-size:11.5px;line-height:1.45;color:var(--faint)}
+.settings-actions{display:flex;gap:8px;align-items:center;margin-top:12px}
+.connection[data-state=locked]>span{background:var(--warn,#c8922f);box-shadow:0 0 0 3px rgba(200,146,47,.16)}
 .theme-switcher button svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 
 .connection{display:flex;align-items:center;gap:8px;padding:9px 15px 9px 13px;border-radius:var(--radius-pill);background:var(--surface-raised);box-shadow:var(--lift-sm);color:var(--soft);font-size:12.5px;white-space:nowrap}

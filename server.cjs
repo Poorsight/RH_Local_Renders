@@ -45,6 +45,27 @@ let child = null, bridge = null, activeRun = null, lastUnrealContactAt = null;
 let postProcessPromise = null;
 let unrealMaterialCache = null;
 
+const ACCESS_KEY = String(process.env.RH_ACCESS_KEY || "").trim();
+const timingEqual = (left, right) => {
+  const a = Buffer.from(String(left)), b = Buffer.from(String(right));
+  return a.length === b.length && a.length > 0 && crypto.timingSafeEqual(a, b);
+};
+const presentedKey = request => {
+  const header = String(request.headers?.authorization || "");
+  return header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+};
+// An <img src> cannot carry an Authorization header, so a GET for a file authenticates
+// with a short-lived token derived from the key instead of the key itself: nothing secret
+// ever lands in a URL, a browser history or a proxy log.
+const MEDIA_TOKEN_TTL = 12 * 60 * 60 * 1000;
+const mediaDigest = stamp => crypto.createHmac("sha256", ACCESS_KEY || "unset").update(String(stamp)).digest("hex").slice(0, 32);
+const issueMediaToken = () => { const expires = Date.now() + MEDIA_TOKEN_TTL; return `${expires}.${mediaDigest(expires)}`; };
+const mediaTokenValid = token => {
+  const [stamp, digest] = String(token || "").split(".");
+  const expires = Number(stamp);
+  return Number.isFinite(expires) && expires > Date.now() && timingEqual(digest || "", mediaDigest(expires));
+};
+const isLoopback = request => ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(String(request.socket?.remoteAddress || ""));
 const ALLOWED_ORIGINS = String(process.env.RH_ALLOWED_ORIGINS || "").split(",").map(value => value.trim().replace(/\/+$/, "")).filter(Boolean);
 const corsHeaders = origin => {
   if (!origin || !ALLOWED_ORIGINS.length) return {};
@@ -53,7 +74,7 @@ const corsHeaders = origin => {
   return {
     "Access-Control-Allow-Origin": ALLOWED_ORIGINS.includes("*") ? asked : asked,
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Access-Control-Max-Age": "600",
     Vary: "Origin"
   };
@@ -419,7 +440,18 @@ function readCatalog() {
   return { models: (catalog.models || []).map(model => ({ ...model, previewUrl: model.renders?.[0] ? `/api/renders/file?path=${encodeURIComponent(path.relative(path.join(ROOT, "local", "renders"), model.renders[0]))}` : null })) };
 }
 
+// The status ping stays open so a page can discover that a key is needed at all, and the
+// plugin channel cannot present one, so it is bound to the loopback interface instead.
+function isAuthorized(request, url) {
+  if (url.pathname === "/api/status") return true;
+  if (url.pathname === "/api/unreal") return isLoopback(request);
+  if (timingEqual(presentedKey(request), ACCESS_KEY)) return true;
+  const isMediaGet = request.method === "GET" && ["/api/renders/file", "/api/jobs/file"].includes(url.pathname);
+  return isMediaGet && mediaTokenValid(url.searchParams.get("t"));
+}
+
 async function api(request, response, url) {
+  if (ACCESS_KEY && !isAuthorized(request, url)) return error(response, 401, "Access key required");
   if (url.pathname === "/api/unreal" && request.method === "GET") {
     lastUnrealContactAt = new Date().toISOString();
     if (!bridge || bridge.delivered) { response.writeHead(204, { "Cache-Control": "no-store" }); response.end(); return; }
@@ -466,7 +498,10 @@ async function api(request, response, url) {
   if (request.method === "GET" && url.pathname === "/api/status") return json(response, 200, {
     project: "RH_Local_Renders", models: models.list(), sheet: sheet.status(),
     unreal: { editor: UNREAL_EDITOR, project: UNREAL_PROJECT, available: fs.existsSync(UNREAL_EDITOR) && fs.existsSync(UNREAL_PROJECT), lastContactAt: lastUnrealContactAt, cameraFitCache: { profiles: Object.keys(readCameraFitProfiles(ROOT).profiles).length, rendererToken: CAMERA_FIT_RENDERER_TOKEN } }, render: currentRender(),
-    runtime: { startedAt: RUNTIME_STARTED_AT, sourceToken: RUNTIME_SOURCE_TOKEN, stale: RUNTIME_SOURCE_TOKEN !== runtimeSourceToken() }
+    runtime: { startedAt: RUNTIME_STARTED_AT, sourceToken: RUNTIME_SOURCE_TOKEN, stale: RUNTIME_SOURCE_TOKEN !== runtimeSourceToken() },
+    access: ACCESS_KEY
+      ? { required: true, authorized: timingEqual(presentedKey(request), ACCESS_KEY), mediaToken: timingEqual(presentedKey(request), ACCESS_KEY) ? issueMediaToken() : null }
+      : { required: false, authorized: true, mediaToken: null }
   });
   if (request.method === "POST" && url.pathname === "/api/models/inspect") return json(response, 200, await models.inspect((await body(request)).modelPath));
   if (request.method === "GET" && url.pathname === "/api/materials") return json(response, 200, { materials: unrealMaterials() });

@@ -1,7 +1,6 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const state = { status: null, models: [], metadata: null, materialAssets: [], preflight: null, preflightTimer: null, batch: [], model: null, jobPath: null, poll: null, history: [], historyBatch: null, historySelection: new Set(), historyModel: null, galleryBatch: null, queueFocus: null };
-  const canReachLocalService = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
   const LOCAL_MODELS_ROOT = "D:\\GitHub\\RH_Local_Renders\\local\\models";
   const THEME_KEY = "rh-local-renders-theme";
   const applyTheme = theme => {
@@ -10,6 +9,14 @@
     document.querySelectorAll("[data-theme-value]").forEach(button => button.setAttribute("aria-pressed", String(button.dataset.themeValue === value)));
     try { localStorage.setItem(THEME_KEY, value); } catch {}
   };
+  const settings = {
+    read(name) { try { return String(localStorage.getItem(name) || "").trim(); } catch { return ""; } },
+    write(name, value) { try { value ? localStorage.setItem(name, value) : localStorage.removeItem(name); } catch {} }
+  };
+  let ACCESS_KEY = settings.read("rhAccessKey");
+  // Handed out by the service once the key checks out. An <img src> cannot carry a header,
+  // so media URLs lean on this instead and the key itself never appears in a URL.
+  let mediaToken = "";
   const API_BASE = (() => {
     const clean = value => String(value || "").trim().replace(/\/+$/, "");
     try {
@@ -20,11 +27,20 @@
     } catch {}
     return clean(window.RH_API_BASE);
   })();
+  // A page on this machine can always reach the service; a page served from anywhere else
+  // can too, but only once it has been told where the service lives.
+  const canReachLocalService = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname) || Boolean(API_BASE);
   // Relative while the page and the service share an origin, absolute once the page is
   // served from somewhere else. Everything the server hands back is origin-relative.
   const apiUrl = path => API_BASE && String(path || "").startsWith("/") ? `${API_BASE}${path}` : path;
+  const mediaUrl = path => {
+    const absolute = apiUrl(path);
+    if (!mediaToken || !absolute) return absolute;
+    return `${absolute}${absolute.includes("?") ? "&" : "?"}t=${encodeURIComponent(mediaToken)}`;
+  };
   const api = async (path, options = {}) => {
-    const response = await fetch(apiUrl(path), { headers: { "Content-Type": "application/json" }, ...options });
+    const headers = { "Content-Type": "application/json", ...(ACCESS_KEY ? { Authorization: `Bearer ${ACCESS_KEY}` } : {}), ...(options.headers || {}) };
+    const response = await fetch(apiUrl(path), { ...options, headers });
     const body = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(body.error || `Request failed (${response.status})`);
     return body;
@@ -433,10 +449,10 @@
     try {
       const selectedId = state.historyBatch?.id, { batches } = await api("/api/history");
       for (const batch of batches) {
-        batch.jobUrl = apiUrl(batch.jobUrl);
+        batch.jobUrl = mediaUrl(batch.jobUrl);
         for (const item of batch.models || []) for (const render of item.renders || []) {
-          render.url = apiUrl(render.url);
-          if (render.processed?.url) render.processed.url = apiUrl(render.processed.url);
+          render.url = mediaUrl(render.url);
+          if (render.processed?.url) render.processed.url = mediaUrl(render.processed.url);
         }
       }
       state.history = batches;
@@ -461,12 +477,38 @@
     try { await loadMaterialAssets(); } catch (error) { console.warn(`Unreal materials unavailable: ${error.message}`); }
     if (!canReachLocalService) { setConnection(false); $("sheetState").textContent = "STATIC"; $("unrealState").textContent = "OFFLINE"; return; }
     try {
-      const status = await api("/api/status"); state.status = status; state.models = status.models; setConnection(true);
+      const status = await api("/api/status"); state.status = status; state.models = status.models;
+      mediaToken = status.access?.mediaToken || "";
+      if (status.access?.required && !status.access.authorized) {
+        // The service answered, it just will not take orders without the key.
+        const node = $("connection"); node.dataset.state = "locked"; node.lastChild.textContent = " Access key required";
+        $("sheetState").textContent = "LOCKED"; $("unrealState").textContent = "LOCKED";
+        $("settingsPanel").showPopover?.();
+        toast("This service needs an access key", true);
+        return;
+      }
+      setConnection(true);
       $("modelCount").textContent = status.models.length; $("sheetState").textContent = status.sheet.source.toUpperCase(); $("unrealState").textContent = status.unreal.available ? "READY" : "MISSING";
       $("modelOptions").innerHTML = status.models.map(model => `<option value="${escapeHtml(model.path)}">${escapeHtml(model.name)}</option>`).join("");
       updateRender(status.render); loadHistory(); if (status.render.state === "running") startPolling();
     } catch { setConnection(false); $("sheetState").textContent = "OFFLINE"; $("unrealState").textContent = "OFFLINE"; }
   };
+  $("settingsToggle").addEventListener("click", () => {
+    $("settingsApiBase").value = settings.read("rhApiBase");
+    $("settingsAccessKey").value = ACCESS_KEY;
+  });
+  $("settingsSave").addEventListener("click", () => {
+    const base = $("settingsApiBase").value.trim().replace(/\/+$/, ""), key = $("settingsAccessKey").value.trim();
+    settings.write("rhApiBase", base); settings.write("rhAccessKey", key);
+    // The base is read once at start-up, so a changed address needs a fresh page.
+    if (base !== API_BASE) { location.replace(base ? `${location.pathname}?api=${encodeURIComponent(base)}` : location.pathname); return; }
+    ACCESS_KEY = key; $("settingsPanel").hidePopover?.(); toast("Connection settings saved"); init();
+  });
+  $("settingsClear").addEventListener("click", () => {
+    settings.write("rhApiBase", ""); settings.write("rhAccessKey", "");
+    ACCESS_KEY = ""; $("settingsApiBase").value = ""; $("settingsAccessKey").value = "";
+    location.replace(location.pathname);
+  });
   $("inspectModel").addEventListener("click", inspect); $("modelPath").addEventListener("keydown", event => { if (event.key === "Enter") inspect(); });
   $("chooseModel").addEventListener("click", () => $("modelFileInput").click());
   $("modelFileInput").addEventListener("change", event => { useDroppedModels(event.target.files); event.target.value = ""; });

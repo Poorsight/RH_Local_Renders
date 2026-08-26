@@ -16,6 +16,8 @@ const { history, expectedRenders } = require("../lib/history.cjs");
 const { buildRenderPlan, cameraStateKey, applyCameraHandoff } = require("../lib/render-plan.cjs");
 const { analyzeCalibrationPair, applyCropProfile } = require("../lib/crop.cjs");
 const { cameraFitStatesForJob, writeCameraFitStates } = require("../lib/camera-fit.cjs");
+const { siblingBranch, batchRootOf } = require("../lib/output-layout.cjs");
+const { publishPreviews, previewFileFor } = require("../lib/preview.cjs");
 const { READY_FOLDER_NAME, availability, isProcessedImage, processImage, processedPathFor, publishReadyToUpload, writePngText } = require("../lib/post-process.cjs");
 
 const root = path.join(__dirname, "..");
@@ -140,7 +142,9 @@ test("render history discovers saved jobs and their disk renders", () => {
   fs.mkdirSync(jobsRoot, { recursive: true }); fs.mkdirSync(output, { recursive: true });
   const input = { ...baseInput, cameras: ["F"], layers: ["Fabric"] };
   const job = buildJob(input, { ...model, materialIds: ["UPH", "Stitches", "Feet"] }, rig, output);
-  const jobPath = path.join(jobsRoot, "TEST_prod1.job.json"), image = path.join(output, "00000000_F_Product_uph.png");
+  const rawFolder = job.tasks[0].layers[0].output.folder;
+  fs.mkdirSync(rawFolder, { recursive: true });
+  const jobPath = path.join(jobsRoot, "TEST_prod1.job.json"), image = path.join(rawFolder, "00000000_F_Product_uph.png");
   try {
     fs.writeFileSync(jobPath, JSON.stringify(job)); fs.writeFileSync(image, "png"); fs.writeFileSync(processedPathFor(image), "post");
     fs.mkdirSync(path.join(output, READY_FOLDER_NAME, model.name), { recursive: true }); fs.writeFileSync(path.join(output, READY_FOLDER_NAME, model.name, `${model.name}_F.png`), "delivery");
@@ -157,10 +161,10 @@ test("render history discovers saved jobs and their disk renders", () => {
 test("processed renders publish into an isolated ready-to-upload model structure", () => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "rh-ready-upload-")), output = path.join(temp, "batch_test"), current = { ...model, materialIds: ["UPH", "Stitches", "Feet"] };
   const job = buildJob({ ...baseInput, cameras: ["F", "FH", "TQ"], layers: ["Fabric", "Shadow"] }, current, rig, output), task = job.tasks[0];
-  fs.mkdirSync(output, { recursive: true });
+  fs.mkdirSync(task.layers[0].output.folder, { recursive: true });
   try {
     for (const camera of ["F", "FH", "TQ"]) for (const layer of ["Fabric", "Shadow"]) {
-      const source = path.join(output, layer === "Shadow" ? `00000000_${camera}_Shadow.png` : `00000000_${camera}_Product_FABRIC_A.png`);
+      const source = path.join(task.layers[0].output.folder, layer === "Shadow" ? `00000000_${camera}_Shadow.png` : `00000000_${camera}_Product_FABRIC_A.png`);
       fs.writeFileSync(source, `raw-${camera}-${layer}`); fs.writeFileSync(processedPathFor(source), `post-${camera}-${layer}`);
     }
     const delivery = publishReadyToUpload(job, { root, config: { outputSuffix: "_POST" } });
@@ -171,8 +175,45 @@ test("processed renders publish into an isolated ready-to-upload model structure
       `${model.name}_F.png`, `${model.name}_FH.png`, `${model.name}_TQ.png`,
       `${model.name}_F_Shadow.png`, `${model.name}_FH_Shadow.png`, `${model.name}_TQ_Shadow.png`
     ].sort());
-    const manifest = JSON.parse(fs.readFileSync(path.join(output, READY_FOLDER_NAME, "manifest.json"), "utf8"));
+    const manifest = JSON.parse(fs.readFileSync(path.join(output, "manifest.json"), "utf8"));
     assert.equal(manifest.fileCount, 6); assert.equal(manifest.complete, true); assert.ok(manifest.files.every(file => !path.isAbsolute(file.source)));
+    assert.deepEqual(fs.readdirSync(path.join(output, READY_FOLDER_NAME)), [model.name], "POST holds delivery folders only");
+  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+});
+
+test("every output kind lands in its own branch and previews stay small", () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "rh-layout-")), batch = path.join(temp, "batch_test");
+  const current = { ...model, materialIds: ["UPH", "Stitches", "Feet"] };
+  const job = buildBatchJob([{ model: current, input: { ...baseInput, cameras: ["F"], layers: ["Fabric"], cropMode: "optimized", modelFingerprint: "layout" } }], rig, batch, "batch_test");
+  const raw = job.tasks[0].layers[0].output.folder;
+  assert.equal(path.relative(batch, raw), path.join("raw", model.name), "raw renders live in the raw branch");
+  assert.equal(path.relative(batch, siblingBranch(raw, "calibration")).replace(/\$/, ""), path.join("calibration", model.name), "500px probes get their own branch");
+  assert.equal(path.relative(batch, siblingBranch(raw, "preview")).replace(/\$/, ""), path.join("preview", model.name), "proxies get their own branch");
+  assert.equal(batchRootOf(raw), path.resolve(batch));
+  // A pre-split batch has no raw segment, so the old nested folder must still resolve.
+  assert.match(siblingBranch(path.join(batch, model.name), "calibration"), /_crop_calibration/);
+
+  const wide = new PNG({ width: 3000, height: 1000 });
+  for (let y = 0; y < 1000; y++) for (let x = 0; x < 3000; x++) {
+    const index = ((y * 3000) + x) << 2, inside = x > 600 && x < 2400 && y > 200 && y < 800;
+    wide.data[index] = 200; wide.data[index + 1] = 120; wide.data[index + 2] = 60; wide.data[index + 3] = inside ? 255 : 0;
+  }
+  try {
+    fs.mkdirSync(raw, { recursive: true });
+    const source = path.join(raw, "00000000_F_Product_uph.png");
+    fs.writeFileSync(source, PNG.sync.write(wide));
+    const result = publishPreviews([source]);
+    assert.equal(result.created, 1); assert.deepEqual(result.failed, []);
+    const proxy = previewFileFor(source);
+    assert.equal(path.relative(batch, proxy), path.join("preview", model.name, "00000000_F_Product_uph.png"));
+    const shrunk = PNG.sync.read(fs.readFileSync(proxy));
+    assert.equal(shrunk.width, 1200); assert.equal(shrunk.height, 400, "aspect ratio survives the downscale");
+    assert.ok(fs.statSync(proxy).size < fs.statSync(source).size, "a proxy must be cheaper than its source");
+    // Premultiplied averaging: an interior pixel keeps its colour instead of bleeding to black.
+    const middle = ((200 * 1200) + 600) << 2;
+    assert.equal(shrunk.data[middle + 3], 255);
+    assert.ok(Math.abs(shrunk.data[middle] - 200) <= 2 && Math.abs(shrunk.data[middle + 1] - 120) <= 2, `interior colour drifted: ${shrunk.data[middle]},${shrunk.data[middle + 1]},${shrunk.data[middle + 2]}`);
+    assert.equal(publishPreviews([source]).skipped, 1, "an up-to-date proxy is not rebuilt");
   } finally { fs.rmSync(temp, { recursive: true, force: true }); }
 });
 
@@ -518,8 +559,10 @@ test("local render service calibrates, saves and applies an optimized crop befor
     assert.equal(status.state, "success", status.log);
     assert.equal(status.rendered, 4); assert.equal(status.totalRenders, 4);
     assert.equal(status.postProcess.total, 2, "calibration frames are not delivery outputs"); assert.equal(status.postProcess.state, "success");
-    assert.ok(fs.existsSync(path.join(output, READY_FOLDER_NAME, "manifest.json")), "automatic post-process publishes directly into POST");
-    assert.equal(fs.readdirSync(output).filter(name => /_POST\.png$/i.test(name)).length, 0, "processed copies are not left beside RAW files");
+    assert.ok(fs.existsSync(path.join(output, READY_FOLDER_NAME, model.name)), "automatic post-process publishes directly into POST");
+    assert.ok(fs.existsSync(path.join(output, "manifest.json")), "the manifest sits beside POST, not inside the delivery");
+    assert.equal(fs.readdirSync(path.join(output, READY_FOLDER_NAME)).filter(name => name === "manifest.json").length, 0, "POST carries delivery files only");
+    assert.equal(fs.readdirSync(job.tasks[0].layers[0].output.folder).filter(name => /_POST\.png$/i.test(name)).length, 0, "processed copies are not left beside RAW files");
     const launches = fs.readFileSync(fakeLog, "utf8").trim().split(/\r?\n/).map(line => JSON.parse(line));
     assert.deepEqual(launches.map(item => item.phase), ["Crop calibration · Fabric", "Crop calibration · Shadow", "Fabric", "Shadow"]);
     const saved = JSON.parse(fs.readFileSync(jobPath, "utf8")), [fabric, shadow] = saved.tasks[0].sequence.cameras[0].LayerResolutions;

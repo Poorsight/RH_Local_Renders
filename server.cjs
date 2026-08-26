@@ -9,7 +9,9 @@ const { SheetStore } = require("./lib/rig.cjs");
 const { ModelStore } = require("./lib/models.cjs");
 const { writeBatchJob } = require("./lib/jobs.cjs");
 const { buildRenderPlan, cameraStateKey, applyCameraHandoff } = require("./lib/render-plan.cjs");
-const { CALIBRATION_FOLDER, modelFingerprint, readCropProfiles, writeCropProfiles, cropProfileFor, analyzeCalibrationPair, applyCropProfileToCamera, calibrationFiles } = require("./lib/crop.cjs");
+const { siblingBranch, isInBranch } = require("./lib/output-layout.cjs");
+const { publishPreviews, previewFileFor } = require("./lib/preview.cjs");
+const { modelFingerprint, readCropProfiles, writeCropProfiles, cropProfileFor, analyzeCalibrationPair, applyCropProfileToCamera, calibrationFiles } = require("./lib/crop.cjs");
 const { rendererToken, readCameraFitProfiles, cameraFitStatesForJob, writeCameraFitState } = require("./lib/camera-fit.cjs");
 const { buildUnrealLaunch } = require("./lib/unreal.cjs");
 const { history, expectedRenders } = require("./lib/history.cjs");
@@ -79,7 +81,7 @@ const taskLayerExpected = (task, layerName) => {
 };
 const taskOutputFolder = (task, layerName) => path.resolve(String((task.layers || []).find(layer => String(layer.name || "").toLowerCase() === layerName.toLowerCase())?.output?.folder || ""));
 const runProducedImages = (run, folder, layerName, calibration = false) => scanImages(folder).filter(file => {
-  const isCalibration = file.split(path.sep).includes(CALIBRATION_FOLDER);
+  const isCalibration = isInBranch(file, "calibration");
   return isCalibration === calibration && imageLayer(file) === layerName && run.before.get(file) !== `${fs.statSync(file).size}:${fs.statSync(file).mtimeMs}`;
 });
 
@@ -170,6 +172,11 @@ function startPostProcessing(job, jobPath, files, options = {}) {
     render.message = `${created} processed image${created === 1 ? "" : "s"} ready${skipped ? ` · ${skipped} already current` : ""} · POST folder ready`;
     render.postProcess = { ...render.postProcess, state: "success", completed: results.length, created, skipped, readyToUpload, finishedAt: render.finishedAt };
     appendRenderLog(`Post-process complete: ${created} created, ${skipped} already current. RAW originals stay untouched; processed files are isolated in ${readyToUpload?.folder || "POST"} (${readyToUpload?.files || 0} files).\n`);
+    // Proxies for the gallery: small enough to serve over the web, generated from the raw
+    // frames the gallery already shows rather than from the 75 Mpx delivery canvases.
+    const proxies = publishPreviews(files);
+    render.postProcess = { ...render.postProcess, previews: proxies };
+    appendRenderLog(`Previews: ${proxies.created} created, ${proxies.skipped} already current${proxies.failed.length ? `, ${proxies.failed.length} failed` : ""}.\n`);
     updateCatalog(jobPath);
   }).catch(postError => {
     render.state = options.automatic ? "success" : "failed"; render.finishedAt = new Date().toISOString(); render.currentTask = null; render.currentCamera = null;
@@ -184,7 +191,7 @@ function finalizeCropCalibration(run) {
   const records = [], profiles = new Map();
   for (const task of run.job.tasks || []) {
     const baseOutput = path.resolve(String((task.layers || []).find(layer => layer.output?.folder)?.output?.folder || ""));
-    const folder = path.join(baseOutput, CALIBRATION_FOLDER);
+    const folder = siblingBranch(baseOutput, "calibration");
     for (const camera of task.sequence?.cameras || []) {
       if (camera._rhLocalCrop?.status !== "pending") continue;
       const files = calibrationFiles(folder, camera.name), fingerprint = camera._rhLocalCrop.fingerprint;

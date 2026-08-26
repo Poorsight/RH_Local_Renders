@@ -4,6 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#ededed" media="(prefers-color-scheme: light)" data-scheme="light">
+  <meta name="theme-color" content="#242424" media="(prefers-color-scheme: dark)" data-scheme="dark">
   <title>RH Local Renders</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <script>try{document.documentElement.dataset.theme=localStorage.getItem("rh-local-renders-theme")||"system"}catch{}</script>
@@ -31,14 +33,19 @@
       <button id="settingsToggle" class="icon-button" type="button" aria-label="Connection settings" title="Connection settings" popovertarget="settingsPanel">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.1"/><path d="M12 4v2.2M12 17.8V20M4 12h2.2M17.8 12H20M6.3 6.3l1.6 1.6M16.1 16.1l1.6 1.6M17.7 6.3l-1.6 1.6M7.9 16.1l-1.6 1.6"/></svg>
       </button>
+      <div id="deleteConfirm" class="confirm-pop" popover>
+        <strong id="deleteConfirmTitle">Delete</strong>
+        <p id="deleteConfirmBody"></p>
+        <div class="confirm-actions">
+          <button id="deleteConfirmCancel" class="quiet-button" type="button">Cancel</button>
+          <button id="deleteConfirmGo" class="danger-solid-button" type="button">Delete</button>
+        </div>
+      </div>
       <div id="settingsPanel" class="settings-panel" popover>
-        <div class="settings-heading"><strong>Connection</strong><span>Where this page sends its commands</span></div>
-        <label for="settingsApiBase">Service address</label>
-        <input id="settingsApiBase" type="url" inputmode="url" spellcheck="false" placeholder="leave empty for this machine" autocomplete="off">
-        <small>Empty means the service that served this page. Set it when the page lives on the web.</small>
+        <div class="settings-heading"><strong>Access</strong><span id="settingsService">Looking is open to everyone</span></div>
         <label for="settingsAccessKey">Access key</label>
-        <input id="settingsAccessKey" type="password" spellcheck="false" placeholder="required by a remote service" autocomplete="off">
-        <small>Stored in this browser only, sent as a bearer token. A service started without a key ignores it.</small>
+        <input id="settingsAccessKey" type="password" spellcheck="false" placeholder="paste the key to start renders" autocomplete="off">
+        <small>Anyone can watch the queue and browse the renders without it. Starting, stopping and deleting need the key. It is kept in this browser only and sent as a bearer token.</small>
         <div class="settings-actions">
           <button id="settingsSave" class="primary-button" type="button">Save and reconnect</button>
           <button id="settingsClear" class="quiet-button danger-button" type="button">Forget</button>

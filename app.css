@@ -22,6 +22,7 @@
   --press-sm:inset 2px 2px 5px rgba(154,154,154,.36), inset -2px -2px 5px rgba(255,255,255,.80);
   --accent-glow:rgba(47,143,91,.18); --accent-glow-lit:rgba(47,143,91,.30); --accent-edge:rgba(47,143,91,.62);
   --sel-ring:inset 0 0 0 1px var(--accent-edge),0 0 7px -2px var(--accent-glow);
+  --bevel:inset 0 1px 0 rgba(255,255,255,.92), inset 0 0 0 1px rgba(124,124,124,.16), inset 0 -1px 0 rgba(124,124,124,.10);
   --bronze:var(--accent); --bronze-strong:var(--accent-ink); --bronze-bg:var(--accent-soft);
   --success:var(--accent); --success-strong:var(--accent-ink);
   --preview-bg:#e2e2e2; --preview-caption:#4d4d4d; --preview-aspect:1.5;
@@ -38,13 +39,15 @@
     --bg:#242424; --bg-tint:rgba(150,150,150,.07);
     --surface:#2c2c2c; --surface-2:#323232; --surface-raised:#343434; --inset:#272727;
     --line:rgba(255,255,255,.09); --line-soft:rgba(255,255,255,.055); --line-strong:rgba(255,255,255,.16);
+  --bevel:inset 0 1px 0 rgba(255,255,255,.085), inset 0 0 0 1px rgba(255,255,255,.06), inset 0 -1px 0 rgba(0,0,0,.35);
+    --bevel:inset 0 1px 0 rgba(255,255,255,.085), inset 0 0 0 1px rgba(255,255,255,.06), inset 0 -1px 0 rgba(0,0,0,.35);
     --text:#ebebeb; --soft:#c6c6c6; --muted:#9a9a9a; --faint:#868686;
     --accent:#5cc98d; --accent-soft:rgba(92,201,141,.13); --accent-line:rgba(92,201,141,.30); --accent-ink:#8fdcaf;
     --amber:#d8b478; --amber-soft:rgba(216,180,120,.12);
     --danger:#e08a80; --danger-soft:rgba(224,138,128,.11); --danger-line:rgba(224,138,128,.28);
     --ink-btn:#3a3a3a; --ink-btn-text:#f0f0f0;
-    --lift:0 18px 40px rgba(0,0,0,.55); --lift-sm:0 8px 20px rgba(0,0,0,.45); --lift-lg:0 26px 60px rgba(0,0,0,.6);
-    --press:inset 0 1px 2px rgba(0,0,0,.55); --press-sm:inset 0 1px 2px rgba(0,0,0,.45);
+    --lift:inset 0 1px 0 rgba(255,255,255,.075), 0 10px 26px rgba(0,0,0,.5), 0 2px 5px rgba(0,0,0,.42); --lift-sm:inset 0 1px 0 rgba(255,255,255,.065), 0 5px 14px rgba(0,0,0,.42), 0 1px 3px rgba(0,0,0,.38); --lift-lg:inset 0 1px 0 rgba(255,255,255,.08), 0 26px 60px rgba(0,0,0,.6), 0 3px 8px rgba(0,0,0,.45);
+    --press:inset 0 2px 4px rgba(0,0,0,.6), inset 0 0 0 1px rgba(255,255,255,.05); --press-sm:inset 0 1px 3px rgba(0,0,0,.5), inset 0 0 0 1px rgba(255,255,255,.045);
   }
   :root:not([data-theme=light]) .panel,
   :root:not([data-theme=light]) .hero,
@@ -64,8 +67,8 @@
   --amber:#d8b478; --amber-soft:rgba(216,180,120,.12);
   --danger:#e08a80; --danger-soft:rgba(224,138,128,.11); --danger-line:rgba(224,138,128,.28);
   --ink-btn:#3a3a3a; --ink-btn-text:#f0f0f0;
-  --lift:0 18px 40px rgba(0,0,0,.55); --lift-sm:0 8px 20px rgba(0,0,0,.45); --lift-lg:0 26px 60px rgba(0,0,0,.6);
-  --press:inset 0 1px 2px rgba(0,0,0,.55); --press-sm:inset 0 1px 2px rgba(0,0,0,.45);
+  --lift:inset 0 1px 0 rgba(255,255,255,.075), 0 10px 26px rgba(0,0,0,.5), 0 2px 5px rgba(0,0,0,.42); --lift-sm:inset 0 1px 0 rgba(255,255,255,.065), 0 5px 14px rgba(0,0,0,.42), 0 1px 3px rgba(0,0,0,.38); --lift-lg:inset 0 1px 0 rgba(255,255,255,.08), 0 26px 60px rgba(0,0,0,.6), 0 3px 8px rgba(0,0,0,.45);
+  --press:inset 0 2px 4px rgba(0,0,0,.6), inset 0 0 0 1px rgba(255,255,255,.05); --press-sm:inset 0 1px 3px rgba(0,0,0,.5), inset 0 0 0 1px rgba(255,255,255,.045);
 }
 :root[data-theme=dark] .panel,:root[data-theme=dark] .hero,:root[data-theme=dark] .history-detail,:root[data-theme=dark] .job-dialog{border:1px solid var(--line)}
 
@@ -97,7 +100,7 @@ main{width:calc(100% - clamp(18px,2.4vw,44px));max-width:none;margin:0 auto;padd
 .theme-switcher button{width:36px;height:30px;border-radius:var(--radius-pill);display:grid;place-items:center;color:var(--faint);transition:color .16s,background .16s,box-shadow .16s}
 .theme-switcher button:hover{color:var(--soft)}
 .theme-switcher button[aria-pressed=true]{color:var(--accent-ink);background:transparent;box-shadow:var(--sel-ring)}
-.icon-button{width:34px;height:34px;border-radius:var(--radius-pill);display:grid;place-items:center;color:var(--faint);background:var(--surface-2);box-shadow:var(--press-sm);transition:color .16s,background .16s,box-shadow .16s}
+.icon-button{width:34px;height:34px;border-radius:var(--radius-pill);display:grid;place-items:center;color:var(--faint);background:var(--surface-raised);box-shadow:var(--bevel),var(--lift-sm);transition:color .16s,background .16s,box-shadow .16s}
 .icon-button:hover{color:var(--soft)}
 .icon-button svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round}
 .settings-panel{position:fixed;margin:0;inset:auto;top:56px;right:16px;z-index:70;width:min(340px,calc(100vw - 32px));display:flex;flex-direction:column;gap:6px;padding:16px;border:0;border-radius:var(--radius-md);background:var(--surface-raised);box-shadow:var(--lift-lg);color:var(--text);opacity:0;transform:translateY(-8px) scale(.985);transition:opacity .17s ease,transform .22s cubic-bezier(.2,.8,.2,1),overlay .22s allow-discrete,display .22s allow-discrete}
@@ -112,10 +115,26 @@ main{width:calc(100% - clamp(18px,2.4vw,44px));max-width:none;margin:0 auto;padd
 .settings-panel input:focus-visible{outline:0;box-shadow:var(--sel-ring)}
 .settings-panel small{font-size:11.5px;line-height:1.45;color:var(--faint)}
 .settings-actions{display:flex;gap:8px;align-items:center;margin-top:12px}
+.card-shell{position:relative;display:flex;min-width:0}
+.card-delete{position:absolute;top:8px;right:8px;z-index:2;width:24px;height:24px;border-radius:var(--radius-pill);display:grid;place-items:center;color:var(--faint);background:var(--surface-raised);box-shadow:var(--bevel),var(--lift-sm);opacity:0;transition:opacity .16s,color .16s,background .16s,box-shadow .16s}
+.card-shell:hover .card-delete,.card-shell:focus-within .card-delete,.card-delete[aria-expanded=true]{opacity:1}
+.card-delete:hover{color:var(--danger);background:var(--danger-soft);box-shadow:var(--bevel),inset 0 0 0 1px var(--danger-line)}
+.card-delete svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round}
+@media (hover:none){.card-delete{opacity:1}}
+.confirm-pop{position:fixed;margin:0;inset:auto;z-index:80;width:min(300px,calc(100vw - 28px));display:flex;flex-direction:column;gap:6px;padding:15px;border:0;border-radius:var(--radius-md);background:var(--surface-raised);box-shadow:var(--lift-lg);color:var(--text);opacity:0;transform:translateY(-6px) scale(.985);transition:opacity .16s ease,transform .2s cubic-bezier(.2,.8,.2,1),overlay .2s allow-discrete,display .2s allow-discrete}
+.confirm-pop:popover-open{opacity:1;transform:none}
+@starting-style{.confirm-pop:popover-open{opacity:0;transform:translateY(-6px) scale(.985)}}
+.confirm-pop::backdrop{background:rgba(0,0,0,.16)}
+.confirm-pop strong{font-size:13.5px;letter-spacing:-.01em}
+.confirm-pop p{font-size:12px;line-height:1.5;color:var(--muted);overflow-wrap:anywhere}
+.confirm-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}
+.danger-solid-button{border-radius:var(--radius-pill);padding:9px 16px;font-size:12.5px;font-weight:560;background:var(--danger);color:#fff;box-shadow:var(--bevel),var(--lift-sm);transition:transform .14s,box-shadow .16s,filter .16s}
+.danger-solid-button:hover{filter:brightness(1.06)}
+.danger-solid-button:active{transform:translateY(1px)}
 .connection[data-state=locked]>span{background:var(--warn,#c8922f);box-shadow:0 0 0 3px rgba(200,146,47,.16)}
 .theme-switcher button svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 
-.connection{display:flex;align-items:center;gap:8px;padding:9px 15px 9px 13px;border-radius:var(--radius-pill);background:var(--surface-raised);box-shadow:var(--lift-sm);color:var(--soft);font-size:12.5px;white-space:nowrap}
+.connection{display:flex;align-items:center;gap:8px;padding:9px 15px 9px 13px;border-radius:var(--radius-pill);background:var(--surface-raised);box-shadow:var(--bevel),var(--lift-sm);color:var(--soft);font-size:12.5px;white-space:nowrap}
 .connection>span{width:8px;height:8px;flex:none;border-radius:50%;background:var(--amber);box-shadow:0 0 0 3px var(--amber-soft)}
 .connection[data-state=online]>span{background:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
 .connection[data-state=offline]>span{background:var(--danger);box-shadow:0 0 0 3px var(--danger-soft)}
@@ -148,14 +167,14 @@ main{width:calc(100% - clamp(18px,2.4vw,44px));max-width:none;margin:0 auto;padd
 
 /* ── buttons ────────────────────────────────────────────────────── */
 .primary-button,.secondary-button,.quiet-button{border-radius:var(--radius-pill);font-size:13px;font-weight:560;letter-spacing:-.005em;padding:11px 20px;transition:transform .14s,box-shadow .16s,color .16s,background .16s;white-space:nowrap}
-.primary-button{background:var(--ink-btn);color:var(--ink-btn-text);box-shadow:var(--lift-sm);padding:13px 26px;font-weight:600;display:inline-flex;align-items:center;gap:9px;justify-content:center}
-.primary-button:hover:not(:disabled){transform:translateY(-1px);box-shadow:var(--lift)}
+.primary-button{background:var(--ink-btn);color:var(--ink-btn-text);box-shadow:var(--bevel),var(--lift-sm);padding:13px 26px;font-weight:600;display:inline-flex;align-items:center;gap:9px;justify-content:center}
+.primary-button:hover:not(:disabled){transform:translateY(-1px);box-shadow:var(--bevel),var(--lift)}
 .primary-button:active:not(:disabled){transform:translateY(0);box-shadow:var(--press-sm)}
-.secondary-button{background:var(--surface-raised);color:var(--soft);box-shadow:var(--lift-sm)}
+.secondary-button{background:var(--surface-raised);color:var(--soft);box-shadow:var(--bevel),var(--lift-sm)}
 .secondary-button:hover:not(:disabled){color:var(--text);transform:translateY(-1px)}
 .secondary-button:active:not(:disabled){box-shadow:var(--press-sm);transform:none}
 .quiet-button{background:transparent;color:var(--muted);padding:8px 14px;font-size:12.5px}
-.quiet-button:hover:not(:disabled){color:var(--text);background:var(--surface-2)}
+.quiet-button:hover:not(:disabled){color:var(--text);background:var(--surface-2);box-shadow:var(--bevel)}
 .render-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .danger-button{color:var(--danger)}
 .danger-button:hover:not(:disabled){color:var(--danger);background:var(--danger-soft);box-shadow:inset 0 0 0 1px var(--danger-line)}

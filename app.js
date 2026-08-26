@@ -3,20 +3,29 @@
   const state = { status: null, models: [], metadata: null, materialAssets: [], preflight: null, preflightTimer: null, batch: [], model: null, jobPath: null, poll: null, history: [], historyBatch: null, historySelection: new Set(), historyModel: null, galleryBatch: null, queueFocus: null };
   const LOCAL_MODELS_ROOT = "D:\\GitHub\\RH_Local_Renders\\local\\models";
   const THEME_KEY = "rh-local-renders-theme";
-  const applyTheme = theme => {
+  const THEME_CHROME = { light: "#ededed", dark: "#242424" };
+  const applyTheme = (theme, remember = false) => {
     const allowed = ["light", "system", "dark"], value = allowed.includes(theme) ? theme : "system";
     document.documentElement.dataset.theme = value;
     document.querySelectorAll("[data-theme-value]").forEach(button => button.setAttribute("aria-pressed", String(button.dataset.themeValue === value)));
-    try { localStorage.setItem(THEME_KEY, value); } catch {}
+    // The media-scoped tags in the markup already follow the device; an explicit choice has
+    // to overrule them, or a phone paints its address bar the colour the device asked for
+    // while the page shows the other one.
+    // Each tag is restored from the role it declares, never from the colour it currently
+    // holds: reading the colour back loses the light one the moment both are darkened.
+    for (const tag of document.querySelectorAll('meta[name="theme-color"][data-scheme]')) {
+      const scheme = tag.dataset.scheme;
+      if (value === "system") { tag.content = THEME_CHROME[scheme]; tag.setAttribute("media", `(prefers-color-scheme: ${scheme})`); }
+      else { tag.removeAttribute("media"); tag.content = THEME_CHROME[value]; }
+    }
+    // Storing on every load would turn the default into a decision nobody made.
+    if (remember) { try { localStorage.setItem(THEME_KEY, value); } catch {} }
   };
   const settings = {
     read(name) { try { return String(localStorage.getItem(name) || "").trim(); } catch { return ""; } },
     write(name, value) { try { value ? localStorage.setItem(name, value) : localStorage.removeItem(name); } catch {} }
   };
   let ACCESS_KEY = settings.read("rhAccessKey");
-  // Handed out by the service once the key checks out. An <img src> cannot carry a header,
-  // so media URLs lean on this instead and the key itself never appears in a URL.
-  let mediaToken = "";
   const API_BASE = (() => {
     const clean = value => String(value || "").trim().replace(/\/+$/, "");
     // Order matters. A deployed config.js carries the address of the tunnel that is up right
@@ -35,11 +44,6 @@
   // Relative while the page and the service share an origin, absolute once the page is
   // served from somewhere else. Everything the server hands back is origin-relative.
   const apiUrl = path => API_BASE && String(path || "").startsWith("/") ? `${API_BASE}${path}` : path;
-  const mediaUrl = path => {
-    const absolute = apiUrl(path);
-    if (!mediaToken || !absolute) return absolute;
-    return `${absolute}${absolute.includes("?") ? "&" : "?"}t=${encodeURIComponent(mediaToken)}`;
-  };
   const api = async (path, options = {}) => {
     const headers = { "Content-Type": "application/json", ...(ACCESS_KEY ? { Authorization: `Bearer ${ACCESS_KEY}` } : {}), ...(options.headers || {}) };
     const response = await fetch(apiUrl(path), { ...options, headers });
@@ -328,11 +332,35 @@
     return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
   };
   const historyStateLabel = value => ({ complete: "Complete", partial: "Partial", running: "Rendering", failed: "Failed", ready: "Job ready", invalid: "Invalid" })[value] || value;
+  const TRASH_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12M10.5 10.5v6M13.5 10.5v6"/></svg>';
+  // One popover for every delete on the page: the card only says what is being removed,
+  // the confirmation lives here so no card has to carry a second state of its own.
+  let pendingDelete = null;
+  const askDelete = (trigger, { title, detail, run }) => {
+    pendingDelete = run;
+    $("deleteConfirmTitle").textContent = title;
+    $("deleteConfirmBody").textContent = detail;
+    const pop = $("deleteConfirm");
+    pop.showPopover?.();
+    const box = trigger.getBoundingClientRect(), width = pop.offsetWidth || 300, height = pop.offsetHeight || 150;
+    // Prefer sitting under the trigger, flip above when that would fall off the bottom, and
+    // clamp either way: a fixed popover placed from an off-screen trigger lands nowhere.
+    const preferred = box.bottom + height + 12 > window.innerHeight ? box.top - height - 8 : box.bottom + 8;
+    const clamp = (value, max) => Math.max(12, Math.min(max - 12, value));
+    pop.style.left = `${clamp(box.right - width, window.innerWidth - width)}px`;
+    pop.style.top = `${clamp(preferred, window.innerHeight - height)}px`;
+    trigger.setAttribute("aria-expanded", "true");
+  };
+  const closeDelete = () => {
+    pendingDelete = null;
+    $("deleteConfirm").hidePopover?.();
+    document.querySelectorAll('.card-delete[aria-expanded="true"]').forEach(button => button.setAttribute("aria-expanded", "false"));
+  };
   const renderHistoryList = () => {
     const query = $("historySearch").value.trim().toLowerCase(), filter = $("historyFilter").value;
     const batches = state.history.filter(batch => (filter === "all" || batch.state === filter) && (!query || batch.id.toLowerCase().includes(query) || (batch.models || []).some(model => model.name.toLowerCase().includes(query))));
     $("historyCount").textContent = batches.length === state.history.length ? `${state.history.length} job${state.history.length === 1 ? "" : "s"}` : `${batches.length} of ${state.history.length}`;
-    $("historyList").innerHTML = batches.length ? batches.map(batch => `<button class="history-card${state.historyBatch?.id === batch.id ? " active" : ""}" type="button" data-history-id="${escapeHtml(batch.id)}"><span class="history-card-top"><strong>${escapeHtml(batch.id)}</strong><i class="history-state" data-state="${escapeHtml(batch.state)}">${escapeHtml(historyStateLabel(batch.state))}</i></span><span class="history-card-meta"><b>${batch.modelCount} model${batch.modelCount === 1 ? "" : "s"}</b><b>${batch.renderCount}/${batch.expectedRenders} renders · ${batch.postProcessCount || 0} POST</b></span><small>${escapeHtml(formatDate(batch.updatedAt || batch.generatedAt))}</small></button>`).join("") : '<div class="empty-state">No jobs match this filter.</div>';
+    $("historyList").innerHTML = batches.length ? batches.map(batch => `<div class="card-shell"><button class="history-card${state.historyBatch?.id === batch.id ? " active" : ""}" type="button" data-history-id="${escapeHtml(batch.id)}"><span class="history-card-top"><strong>${escapeHtml(batch.id)}</strong><i class="history-state" data-state="${escapeHtml(batch.state)}">${escapeHtml(historyStateLabel(batch.state))}</i></span><span class="history-card-meta"><b>${batch.modelCount} model${batch.modelCount === 1 ? "" : "s"}</b><b>${batch.renderCount}/${batch.expectedRenders} renders · ${batch.postProcessCount || 0} POST</b></span><small>${escapeHtml(formatDate(batch.updatedAt || batch.generatedAt))}</small></button><button class="card-delete" type="button" aria-expanded="false" aria-label="Delete this batch" title="Delete batch" data-delete-batch="${escapeHtml(batch.id)}">${TRASH_ICON}</button></div>`).join("") : '<div class="empty-state">No jobs match this filter.</div>';
   };
   const renderHistoryDetail = () => {
     const batch = state.historyBatch;
@@ -341,7 +369,7 @@
     const selective = `<div class="selective-controls"><div><span>SELECTIVE RENDER</span><button type="button" data-history-action="selectAll">All</button><button type="button" data-history-action="selectNone">None</button></div><div class="selective-options"><label><input type="checkbox" data-select-camera value="F" checked><span>F</span></label><label><input type="checkbox" data-select-camera value="FH" checked><span>FH</span></label><label><input type="checkbox" data-select-camera value="TQ" checked><span>TQ</span></label><i></i><label><input type="checkbox" data-select-layer value="Fabric" checked><span>Fabric</span></label><label><input type="checkbox" data-select-layer value="Shadow" checked><span>Shadow</span></label></div></div>`;
     const needsPost = batch.renderCount > 0 && (batch.postProcessCount < batch.renderCount || !batch.readyToUpload?.complete);
     const openOutput = batch.readyToUpload?.files ? `<button class="secondary-button" type="button" data-history-action="openReady">Open POST</button>` : `<button class="secondary-button" type="button" data-history-action="openRenders"${batch.renderCount ? "" : " disabled"}>Open renders</button>`;
-    $("historyDetail").innerHTML = `<div class="history-detail-heading"><div><span>SAVED JOB</span><strong>${escapeHtml(batch.id)}</strong><small>${escapeHtml(formatDate(batch.generatedAt))}</small></div><i class="history-state" data-state="${escapeHtml(batch.state)}">${escapeHtml(historyStateLabel(batch.state))}</i></div><div class="history-summary"><div><span>MODELS</span><strong>${batch.modelCount}</strong></div><div><span>RENDERS</span><strong>${batch.renderCount}/${batch.expectedRenders}</strong></div><div><span>POST</span><strong>${batch.postProcessCount || 0}/${batch.renderCount}</strong></div></div>${selective}${models}${batch.error ? `<p class="inline-warning">${escapeHtml(batch.error)}</p>` : ""}<code class="history-path" title="${escapeHtml(batch.jobPath)}">${escapeHtml(batch.jobPath)}</code><div class="history-actions"><button class="primary-button" type="button" data-history-action="selective"${batch.modelCount ? "" : " disabled"}>Edit selection</button><button class="secondary-button" type="button" data-history-action="rerun"${batch.state === "invalid" ? " disabled" : ""}>Run again</button>${needsPost ? `<button class="secondary-button" type="button" data-history-action="postprocess">Build POST</button>` : ""}${openOutput}<button class="quiet-button" type="button" data-history-action="viewJob">View JSON</button><button class="quiet-button danger-button" type="button" data-history-action="deleteRenders"${batch.renderCount ? "" : " disabled"}>Delete renders</button><button class="quiet-button danger-button" type="button" data-history-action="deleteBatch">Delete batch</button></div>`;
+    $("historyDetail").innerHTML = `<div class="history-detail-heading"><div><span>SAVED JOB</span><strong>${escapeHtml(batch.id)}</strong><small>${escapeHtml(formatDate(batch.generatedAt))}</small></div><i class="history-state" data-state="${escapeHtml(batch.state)}">${escapeHtml(historyStateLabel(batch.state))}</i></div><div class="history-summary"><div><span>MODELS</span><strong>${batch.modelCount}</strong></div><div><span>RENDERS</span><strong>${batch.renderCount}/${batch.expectedRenders}</strong></div><div><span>POST</span><strong>${batch.postProcessCount || 0}/${batch.renderCount}</strong></div></div>${selective}${models}${batch.error ? `<p class="inline-warning">${escapeHtml(batch.error)}</p>` : ""}<code class="history-path" title="${escapeHtml(batch.jobPath)}">${escapeHtml(batch.jobPath)}</code><div class="history-actions"><button class="primary-button" type="button" data-history-action="selective"${batch.modelCount ? "" : " disabled"}>Edit selection</button><button class="secondary-button" type="button" data-history-action="rerun"${batch.state === "invalid" ? " disabled" : ""}>Run again</button>${needsPost ? `<button class="secondary-button" type="button" data-history-action="postprocess">Build POST</button>` : ""}${openOutput}<button class="quiet-button" type="button" data-history-action="viewJob">View JSON</button></div>`;
   };
   const renderGalleryModels = () => {
     const batch = state.galleryBatch, group = $("galleryModelGroup");
@@ -359,13 +387,13 @@
     const card = render => {
       const issues = render.issues || [];
       const diagnostics = [render.width && render.height ? `${render.width}×${render.height}` : "Unknown size", render.alpha === true ? "Alpha" : render.alpha === false ? "No alpha" : "Alpha unknown", ...(issues || [])];
-      return `<a class="render-preview-card${issues.length ? " render-warning" : ""}" data-layer="${escapeHtml(render.layer || "Fabric")}" href="${escapeHtml(render.url)}" target="_blank" rel="noreferrer"><div class="render-preview-media" style="--preview-aspect:${Number(render.width) || 1}/${Number(render.height) || 1}"><img src="${escapeHtml(render.previewUrl || render.url)}" alt="${escapeHtml(model.name)} ${escapeHtml(render.camera || "render")} ${escapeHtml(render.layer || "")}" loading="lazy"></div><span>${escapeHtml(render.layer || render.camera || render.name)} · RAW${issues.length ? " · Check" : ""}</span><small>${escapeHtml(diagnostics.join(" · "))}</small></a>`;
+      return `<div class="card-shell"><a class="render-preview-card${issues.length ? " render-warning" : ""}" data-layer="${escapeHtml(render.layer || "Fabric")}" href="${escapeHtml(render.url)}" target="_blank" rel="noreferrer"><div class="render-preview-media" style="--preview-aspect:${Number(render.width) || 1}/${Number(render.height) || 1}"><img src="${escapeHtml(render.previewUrl || render.url)}" alt="${escapeHtml(model.name)} ${escapeHtml(render.camera || "render")} ${escapeHtml(render.layer || "")}" loading="lazy"></div><span>${escapeHtml(render.layer || render.camera || render.name)} · RAW${issues.length ? " · Check" : ""}</span><small>${escapeHtml(diagnostics.join(" · "))}</small></a><button class="card-delete" type="button" aria-expanded="false" aria-label="Delete this render" title="Delete render" data-delete-render="${escapeHtml(render.file || "")}" data-delete-label="${escapeHtml(`${render.camera || "render"} ${render.layer || ""}`.trim())}">${TRASH_ICON}</button></div>`;
     };
     const combinedCard = (fabric, shadow) => {
       if (!fabric || !shadow) return "";
       const fabricWidth = Math.min(100, Math.max(1, (Number(fabric.width) || 1) / (Number(shadow.width) || 1) * 100));
       const issues = [...(fabric.issues || []), ...(shadow.issues || [])];
-      return `<button type="button" class="render-preview-card render-combined${issues.length ? " render-warning" : ""}" data-layer="Combined" data-fabric-url="${escapeHtml(fabric.url)}" data-shadow-url="${escapeHtml(shadow.url)}" data-fabric-width="${fabricWidth}" data-combined-title="${escapeHtml(`${model.name} · ${fabric.camera || "render"} · Combined`)}"><div class="render-preview-media" style="--preview-aspect:${Number(shadow.width) || 1}/${Number(shadow.height) || 1};--fabric-width:${fabricWidth}%"><img class="render-composite-shadow" src="${escapeHtml(shadow.previewUrl || shadow.url)}" alt="" loading="lazy"><img class="render-composite-fabric" src="${escapeHtml(fabric.previewUrl || fabric.url)}" alt="${escapeHtml(model.name)} ${escapeHtml(fabric.camera || "render")} Fabric and Shadow combined" loading="lazy"></div><span>Combined · RAW${issues.length ? " · Check" : ""}</span><small>Fabric over Shadow · click to open</small></button>`;
+      return `<div class="card-shell"><button type="button" class="render-preview-card render-combined${issues.length ? " render-warning" : ""}" data-layer="Combined" data-fabric-url="${escapeHtml(fabric.url)}" data-shadow-url="${escapeHtml(shadow.url)}" data-fabric-width="${fabricWidth}" data-combined-title="${escapeHtml(`${model.name} · ${fabric.camera || "render"} · Combined`)}"><div class="render-preview-media" style="--preview-aspect:${Number(shadow.width) || 1}/${Number(shadow.height) || 1};--fabric-width:${fabricWidth}%"><img class="render-composite-shadow" src="${escapeHtml(shadow.previewUrl || shadow.url)}" alt="" loading="lazy"><img class="render-composite-fabric" src="${escapeHtml(fabric.previewUrl || fabric.url)}" alt="${escapeHtml(model.name)} ${escapeHtml(fabric.camera || "render")} Fabric and Shadow combined" loading="lazy"></div><span>Combined · RAW${issues.length ? " · Check" : ""}</span><small>Fabric over Shadow · click to open</small></button><button class="card-delete" type="button" aria-expanded="false" aria-label="Delete both layers" title="Delete both layers" data-delete-render="${escapeHtml([fabric.file, shadow.file].filter(Boolean).join("|"))}" data-delete-label="${escapeHtml(`${fabric.camera || "render"} Fabric and Shadow`)}">${TRASH_ICON}</button></div>`;
     };
     $("renderGalleryImages").innerHTML = model.renders.length ? cameras.map(camera => {
       const renders = model.renders.filter(render => (render.camera || "Other") === camera).sort((left, right) => (left.layer === "Shadow" ? 1 : 0) - (right.layer === "Shadow" ? 1 : 0) || left.name.localeCompare(right.name));
@@ -451,11 +479,11 @@
     try {
       const selectedId = state.historyBatch?.id, { batches } = await api("/api/history");
       for (const batch of batches) {
-        batch.jobUrl = mediaUrl(batch.jobUrl);
+        batch.jobUrl = apiUrl(batch.jobUrl);
         for (const item of batch.models || []) for (const render of item.renders || []) {
-          render.url = mediaUrl(render.url);
-          if (render.previewUrl) render.previewUrl = mediaUrl(render.previewUrl);
-          if (render.processed?.url) render.processed.url = mediaUrl(render.processed.url);
+          render.url = apiUrl(render.url);
+          if (render.previewUrl) render.previewUrl = apiUrl(render.previewUrl);
+          if (render.processed?.url) render.processed.url = apiUrl(render.processed.url);
         }
       }
       state.history = batches;
@@ -481,36 +509,71 @@
     if (!canReachLocalService) { setConnection(false); $("sheetState").textContent = "STATIC"; $("unrealState").textContent = "OFFLINE"; return; }
     try {
       const status = await api("/api/status"); state.status = status; state.models = status.models;
-      mediaToken = status.access?.mediaToken || "";
-      if (status.access?.required && !status.access.authorized) {
-        // The service answered, it just will not take orders without the key.
-        const node = $("connection"); node.dataset.state = "locked"; node.lastChild.textContent = " Access key required";
-        $("sheetState").textContent = "LOCKED"; $("unrealState").textContent = "LOCKED";
-        $("settingsPanel").showPopover?.();
-        toast("This service needs an access key", true);
-        return;
-      }
+      // Without the key the page is still fully readable, so it loads as usual and only
+      // says that actions are out of reach.
+      state.canAct = !status.access?.required || Boolean(status.access.authorized);
       setConnection(true);
+      if (!state.canAct) $("connection").lastChild.textContent = " Read-only · key needed to act";
       $("modelCount").textContent = status.models.length; $("sheetState").textContent = status.sheet.source.toUpperCase(); $("unrealState").textContent = status.unreal.available ? "READY" : "MISSING";
       $("modelOptions").innerHTML = status.models.map(model => `<option value="${escapeHtml(model.path)}">${escapeHtml(model.name)}</option>`).join("");
       updateRender(status.render); loadHistory(); if (status.render.state === "running") startPolling();
     } catch { setConnection(false); $("sheetState").textContent = "OFFLINE"; $("unrealState").textContent = "OFFLINE"; }
   };
+  // Both kinds of delete land here: the card names the target, the popover confirms it.
+  document.addEventListener("click", event => {
+    const trigger = event.target.closest(".card-delete");
+    if (!trigger) return;
+    event.preventDefault(); event.stopPropagation();
+    const batchId = trigger.dataset.deleteBatch;
+    if (batchId) {
+      const batch = state.history.find(item => item.id === batchId);
+      if (!batch) return;
+      askDelete(trigger, {
+        title: "Delete this batch?",
+        detail: `${batch.id} — ${batch.modelCount} model${batch.modelCount === 1 ? "" : "s"}, ${batch.renderCount} render${batch.renderCount === 1 ? "" : "s"} and the job file. Cannot be undone.`,
+        run: async () => {
+          const result = await api("/api/renders/delete", { method: "POST", body: JSON.stringify({ jobPath: batch.jobPath }) });
+          if (state.historyBatch?.id === batch.id) { state.historyBatch = null; state.galleryBatch = null; state.historyModel = null; }
+          toast(`Deleted ${result.deleted.length} item${result.deleted.length === 1 ? "" : "s"}`);
+          await loadHistory(); renderGalleryModels(); renderGallery();
+        }
+      });
+      return;
+    }
+    const files = String(trigger.dataset.deleteRender || "").split("|").filter(Boolean);
+    if (!files.length) return;
+    askDelete(trigger, {
+      title: files.length > 1 ? "Delete both layers?" : "Delete this render?",
+      detail: `${trigger.dataset.deleteLabel || "render"} — ${files.length} file${files.length === 1 ? "" : "s"} plus its preview and POST copy. The batch and the job stay.`,
+      run: async () => {
+        for (const file of files) await api("/api/renders/delete", { method: "POST", body: JSON.stringify({ file }) });
+        toast(`Deleted ${files.length} render${files.length === 1 ? "" : "s"}`);
+        await loadHistory(); renderGalleryModels(); renderGallery();
+      }
+    });
+  }, true);
+  $("deleteConfirmCancel").addEventListener("click", closeDelete);
+  $("deleteConfirmGo").addEventListener("click", async () => {
+    const run = pendingDelete;
+    closeDelete();
+    if (!run) return;
+    try { await run(); } catch (error) { toast(error.message, true); }
+  });
+  $("deleteConfirm").addEventListener("toggle", event => { if (event.newState === "closed") closeDelete(); });
   $("settingsToggle").addEventListener("click", () => {
-    $("settingsApiBase").value = settings.read("rhApiBase");
     $("settingsAccessKey").value = ACCESS_KEY;
+    $("settingsService").textContent = state.canAct === false ? "Read-only until the key is entered" : "Looking is open to everyone";
   });
   $("settingsSave").addEventListener("click", () => {
-    const base = $("settingsApiBase").value.trim().replace(/\/+$/, ""), key = $("settingsAccessKey").value.trim();
-    settings.write("rhApiBase", base); settings.write("rhAccessKey", key);
-    // The base is read once at start-up, so a changed address needs a fresh page.
-    if (base !== API_BASE) { location.replace(base ? `${location.pathname}?api=${encodeURIComponent(base)}` : location.pathname); return; }
-    ACCESS_KEY = key; $("settingsPanel").hidePopover?.(); toast("Connection settings saved"); init();
+    ACCESS_KEY = $("settingsAccessKey").value.trim();
+    settings.write("rhAccessKey", ACCESS_KEY);
+    $("settingsPanel").hidePopover?.();
+    toast(ACCESS_KEY ? "Access key saved" : "Access key cleared");
+    init();
   });
   $("settingsClear").addEventListener("click", () => {
-    settings.write("rhApiBase", ""); settings.write("rhAccessKey", "");
-    ACCESS_KEY = ""; $("settingsApiBase").value = ""; $("settingsAccessKey").value = "";
-    location.replace(location.pathname);
+    ACCESS_KEY = ""; settings.write("rhAccessKey", ""); $("settingsAccessKey").value = "";
+    $("settingsPanel").hidePopover?.(); toast("Access key cleared"); init();
   });
   $("inspectModel").addEventListener("click", inspect); $("modelPath").addEventListener("keydown", event => { if (event.key === "Enter") inspect(); });
   $("chooseModel").addEventListener("click", () => $("modelFileInput").click());
@@ -566,20 +629,7 @@
       else if (action === "postprocess") { const result = await api("/api/postprocess", { method: "POST", body: JSON.stringify({ jobPath: batch.jobPath }) }); toast("POST recovery started; RAW originals stay unchanged"); updateRender(result); startPolling(); }
       else if (action === "viewJob") await viewHistoryJob(batch);
       else if (action === "showJob") { await openLocal("showJob", batch.jobPath); toast("JSON selected in Explorer"); }
-      else if (action === "deleteRenders" || action === "deleteBatch") {
-        const keepJob = action === "deleteRenders";
-        if (button.dataset.confirm !== "pending") {
-          button.dataset.confirm = "pending";
-          button.textContent = keepJob ? "Confirm delete" : "Confirm delete batch";
-          setTimeout(() => { button.dataset.confirm = ""; button.textContent = keepJob ? "Delete renders" : "Delete batch"; }, 5000);
-          return;
-        }
-        const result = await api("/api/renders/delete", { method: "POST", body: JSON.stringify({ jobPath: batch.jobPath, keepJob }) });
-        toast(`Deleted ${result.deleted.length} item${result.deleted.length === 1 ? "" : "s"}`);
-        if (!keepJob) { state.historyBatch = null; state.galleryBatch = null; state.historyModel = null; }
-        await loadHistory();
-        renderGalleryModels(); renderGallery();
-      }
+
       else if (action === "openReady") { await openLocal("openRenders", batch.readyToUpload?.folder); toast("POST folder opened"); }
       else if (action === "openRenders") { await openLocal("openRenders", batch.outputFolder); toast("Render folder opened"); }
     } catch (error) { toast(error.message, true); }
@@ -598,7 +648,7 @@
   });
   $("closeJobDialog").addEventListener("click", () => $("jobDialog").close());
   $("jobDialog").addEventListener("click", event => { if (event.target === $("jobDialog")) $("jobDialog").close(); });
-  document.querySelectorAll("[data-theme-value]").forEach(button => button.addEventListener("click", () => applyTheme(button.dataset.themeValue)));
+  document.querySelectorAll("[data-theme-value]").forEach(button => button.addEventListener("click", () => applyTheme(button.dataset.themeValue, true)));
   applyTheme(document.documentElement.dataset.theme);
   /* ── suggestion popups ────────────────────────────────────────────────────
      A native datalist popup cannot be styled, cannot be animated, and cuts long

@@ -626,6 +626,7 @@
   $("deleteConfirm").addEventListener("toggle", event => { if (event.newState === "closed") closeDelete(); });
   $("category").addEventListener("change", applyProductType);
   $("checkModels").addEventListener("click", checkModels);
+  $("closeModelCheck").addEventListener("click", () => { state.modelCheck = null; renderModelCheck(null); });
   $("repairModels").addEventListener("click", repairModels);
   $("settingsToggle").addEventListener("click", () => {
     $("settingsAccessKey").value = ACCESS_KEY;

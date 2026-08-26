@@ -936,3 +936,7 @@ legend+.choice-row,legend+.selective-options{margin-top:8px}
    one only invites it to be changed by a stray scroll. */
 input[readonly]{background:transparent;box-shadow:none;color:var(--text);cursor:default;font-variant-numeric:tabular-nums}
 input[readonly]:hover,input[readonly]:focus{box-shadow:none}
+
+/* The report needed a way out: it only cleared when the batch changed. */
+.model-check-actions{display:flex;align-items:center;gap:8px}
+.model-check-actions .card-delete{position:static;opacity:1;width:24px;height:24px;font-size:15px;line-height:1}

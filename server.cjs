@@ -560,6 +560,20 @@ async function api(request, response, url) {
       try {
         const record = await models.inspect(name);
         const findings = checkModel(record, record);
+        // Blender splits an OBJ on face groups, so it reads the parts of a file Unreal would
+        // merge into one mesh. Asking Blender therefore cannot see this problem at all — the
+        // file itself has to be read.
+        if (String(record.format).toLowerCase() === "obj" && fs.existsSync(record.path)) {
+          const parts = await inspectObjParts(record.path);
+          if (parts.needsNormalising) {
+            findings.unshift({
+              level: "warning", code: "obj-parts-hidden", label: "Parts invisible to Unreal", repairable: true,
+              detail: `${parts.namedParts.join(", ") || "the parts"} are marked only as face groups${Object.keys(parts.materials).length < 2 ? " sharing one material" : ""}. Unreal splits an OBJ by object and material, so it would arrive as a single mesh with nothing to assign a material to.`
+            });
+          } else {
+            findings.push({ level: "ok", code: "obj-parts", label: "OBJ parts", detail: `${parts.namedParts.join(", ")} named as objects with their own materials.` });
+          }
+        }
         results.push({ name, path: record.path, group: record.group || "", format: record.format || "", findings, ...summarise(findings) });
       } catch (checkError) {
         const findings = [{ level: "error", code: "inspect-failed", label: "Could not inspect", detail: checkError.message }];

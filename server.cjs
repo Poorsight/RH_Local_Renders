@@ -15,7 +15,7 @@ const { modelFingerprint, readCropProfiles, writeCropProfiles, cropProfileFor, a
 const { rendererToken, readCameraFitProfiles, cameraFitStatesForJob, writeCameraFitState } = require("./lib/camera-fit.cjs");
 const { buildUnrealLaunch } = require("./lib/unreal.cjs");
 const { history, expectedRenders } = require("./lib/history.cjs");
-const { availability: postProcessAvailability, isProcessedImage, originalFilesForJob, processJob } = require("./lib/post-process.cjs");
+const { availability: postProcessAvailability, isProcessedImage, originalFilesForJob, processJob, processedPathFor } = require("./lib/post-process.cjs");
 
 const ROOT = __dirname;
 const HOST = "127.0.0.1";
@@ -489,6 +489,32 @@ async function api(request, response, url) {
     refreshRunProgress();
     startRenderPhase();
     return json(response, 202, currentRender());
+  }
+  if (request.method === "POST" && url.pathname === "/api/renders/delete") {
+    if (child || activeRun || postProcessPromise) return error(response, 409, "Finish or stop the running render before deleting anything");
+    const input = await body(request), rendersRoot = path.join(ROOT, "local", "renders"), jobsRoot = path.join(ROOT, "local", "jobs", "generated");
+    if (input.file) {
+      const file = path.resolve(String(input.file));
+      if (!within(file, rendersRoot)) return error(response, 400, "Only files under local/renders can be deleted");
+      if (!fs.existsSync(file)) return error(response, 404, "That render is already gone");
+      // The proxy and the processed copy are derived from this frame, so they go with it
+      // rather than dangling as previews of nothing.
+      const removed = [file, previewFileFor(file), processedPathFor(file)].filter(target => fs.existsSync(target));
+      for (const target of removed) fs.rmSync(target, { force: true });
+      return json(response, 200, { deleted: removed.map(target => path.relative(rendersRoot, target)), kind: "file" });
+    }
+    const jobPath = path.resolve(String(input.jobPath || ""));
+    if (!within(jobPath, jobsRoot) || !fs.existsSync(jobPath)) return error(response, 400, "Only generated local job files can be deleted");
+    let outputFolder = "";
+    try { outputFolder = path.resolve(String(JSON.parse(fs.readFileSync(jobPath, "utf8"))._rhLocal?.outputFolder || "")); } catch { outputFolder = ""; }
+    const deleted = [];
+    if (outputFolder && within(outputFolder, rendersRoot) && fs.existsSync(outputFolder)) {
+      fs.rmSync(outputFolder, { recursive: true, force: true });
+      deleted.push(path.relative(rendersRoot, outputFolder));
+    }
+    if (!input.keepJob) { fs.rmSync(jobPath, { force: true }); deleted.push(path.relative(ROOT, jobPath)); }
+    updateCatalog(jobPath);
+    return json(response, 200, { deleted, kind: input.keepJob ? "renders" : "batch" });
   }
   if (request.method === "POST" && url.pathname === "/api/renders/stop") {
     if (!activeRun && !child) return error(response, 409, postProcessPromise ? "Post-processing cannot be interrupted; it finishes on its own" : "No render is running");

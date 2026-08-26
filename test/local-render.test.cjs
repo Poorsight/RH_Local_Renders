@@ -667,6 +667,58 @@ test("a forced stop kills Unreal, disarms the automatic resume and leaves the se
   }
 });
 
+test("deleting from the web drops the renders, their proxies and only the asked-for job", async () => {
+  const suffix = `del_${process.pid}_${Date.now()}`, port = 46000 + process.pid % 4000;
+  const jobsRoot = path.join(root, "local", "jobs", "generated"), batch = path.join(root, "local", "renders", `test_${suffix}`);
+  const jobPath = path.join(jobsRoot, `test_${suffix}.job.json`);
+  fs.mkdirSync(jobsRoot, { recursive: true });
+  const job = buildBatchJob([{ model: { ...model, materialIds: ["UPH", "Stitches", "Feet"] }, input: { ...baseInput, cameras: ["F"], layers: ["Fabric"] } }], rig, batch, `test_${suffix}`);
+  fs.writeFileSync(jobPath, JSON.stringify(job));
+  const raw = job.tasks[0].layers[0].output.folder, render = path.join(raw, "00000000_F_Product_uph.png");
+  fs.mkdirSync(raw, { recursive: true });
+  const tiny = new PNG({ width: 8, height: 8 });
+  for (let i = 0; i < tiny.data.length; i += 4) { tiny.data[i] = 180; tiny.data[i + 1] = 120; tiny.data[i + 2] = 90; tiny.data[i + 3] = 255; }
+  fs.writeFileSync(render, PNG.sync.write(tiny));
+  fs.writeFileSync(processedPathFor(render), "post");
+  publishPreviews([render]);
+  const proxy = previewFileFor(render);
+  const service = spawn(process.execPath, [path.join(root, "server.cjs")], {
+    cwd: root, windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, RH_LOCAL_RENDERS_PORT: String(port) }
+  });
+  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const post = (bodyValue) => fetch(`http://127.0.0.1:${port}/api/renders/delete`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(bodyValue) });
+  try {
+    let online = false;
+    for (let attempt = 0; attempt < 50 && !online; attempt++) { try { online = (await fetch(`http://127.0.0.1:${port}/api/status`)).ok; } catch {} if (!online) await sleep(50); }
+    assert.equal(online, true);
+
+    assert.equal((await post({ file: path.join(root, "server.cjs") })).status, 400, "only files under local/renders may be deleted");
+    assert.equal((await post({ jobPath: path.join(root, "package.json") })).status, 400, "only generated job files may be deleted");
+
+    assert.equal(fs.existsSync(proxy), true, "the proxy exists before the delete");
+    const single = await (await post({ file: render })).json();
+    assert.equal(single.kind, "file");
+    // A frame takes its derivatives with it, or the gallery keeps a preview of nothing.
+    assert.equal(fs.existsSync(render), false);
+    assert.equal(fs.existsSync(proxy), false, "the proxy goes with its frame");
+    assert.equal(fs.existsSync(processedPathFor(render)), false, "the processed copy goes with its frame");
+    assert.equal((await post({ file: render })).status, 404, "a second delete has nothing to remove");
+
+    const renders = await (await post({ jobPath, keepJob: true })).json();
+    assert.equal(renders.kind, "renders");
+    assert.equal(fs.existsSync(batch), false, "the whole batch folder goes");
+    assert.equal(fs.existsSync(jobPath), true, "keepJob leaves the job behind so it can be run again");
+
+    const whole = await (await post({ jobPath })).json();
+    assert.equal(whole.kind, "batch");
+    assert.equal(fs.existsSync(jobPath), false);
+  } finally {
+    service.kill();
+    fs.rmSync(jobPath, { force: true }); fs.rmSync(batch, { recursive: true, force: true });
+  }
+});
+
 test("legacy light-rig project files stay out of the unified project", () => {
   for (const legacy of ["handoff", "light-rig-reference.html", "comments.php", "ONBOARDING.md", ".claude"]) {
     assert.equal(fs.existsSync(path.join(root, legacy)), false, legacy);

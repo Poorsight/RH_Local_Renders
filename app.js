@@ -309,7 +309,7 @@
     const selective = `<div class="selective-controls"><div><span>SELECTIVE RENDER</span><button type="button" data-history-action="selectAll">All</button><button type="button" data-history-action="selectNone">None</button></div><div class="selective-options"><label><input type="checkbox" data-select-camera value="F" checked><span>F</span></label><label><input type="checkbox" data-select-camera value="FH" checked><span>FH</span></label><label><input type="checkbox" data-select-camera value="TQ" checked><span>TQ</span></label><i></i><label><input type="checkbox" data-select-layer value="Fabric" checked><span>Fabric</span></label><label><input type="checkbox" data-select-layer value="Shadow" checked><span>Shadow</span></label></div></div>`;
     const needsPost = batch.renderCount > 0 && (batch.postProcessCount < batch.renderCount || !batch.readyToUpload?.complete);
     const openOutput = batch.readyToUpload?.files ? `<button class="secondary-button" type="button" data-history-action="openReady">Open POST</button>` : `<button class="secondary-button" type="button" data-history-action="openRenders"${batch.renderCount ? "" : " disabled"}>Open renders</button>`;
-    $("historyDetail").innerHTML = `<div class="history-detail-heading"><div><span>SAVED JOB</span><strong>${escapeHtml(batch.id)}</strong><small>${escapeHtml(formatDate(batch.generatedAt))}</small></div><i class="history-state" data-state="${escapeHtml(batch.state)}">${escapeHtml(historyStateLabel(batch.state))}</i></div><div class="history-summary"><div><span>MODELS</span><strong>${batch.modelCount}</strong></div><div><span>RENDERS</span><strong>${batch.renderCount}/${batch.expectedRenders}</strong></div><div><span>POST</span><strong>${batch.postProcessCount || 0}/${batch.renderCount}</strong></div></div>${selective}${models}${batch.error ? `<p class="inline-warning">${escapeHtml(batch.error)}</p>` : ""}<code class="history-path" title="${escapeHtml(batch.jobPath)}">${escapeHtml(batch.jobPath)}</code><div class="history-actions"><button class="primary-button" type="button" data-history-action="selective"${batch.modelCount ? "" : " disabled"}>Edit selection</button><button class="secondary-button" type="button" data-history-action="rerun"${batch.state === "invalid" ? " disabled" : ""}>Run again</button>${needsPost ? `<button class="secondary-button" type="button" data-history-action="postprocess">Build POST</button>` : ""}${openOutput}<button class="quiet-button" type="button" data-history-action="viewJob">View JSON</button></div>`;
+    $("historyDetail").innerHTML = `<div class="history-detail-heading"><div><span>SAVED JOB</span><strong>${escapeHtml(batch.id)}</strong><small>${escapeHtml(formatDate(batch.generatedAt))}</small></div><i class="history-state" data-state="${escapeHtml(batch.state)}">${escapeHtml(historyStateLabel(batch.state))}</i></div><div class="history-summary"><div><span>MODELS</span><strong>${batch.modelCount}</strong></div><div><span>RENDERS</span><strong>${batch.renderCount}/${batch.expectedRenders}</strong></div><div><span>POST</span><strong>${batch.postProcessCount || 0}/${batch.renderCount}</strong></div></div>${selective}${models}${batch.error ? `<p class="inline-warning">${escapeHtml(batch.error)}</p>` : ""}<code class="history-path" title="${escapeHtml(batch.jobPath)}">${escapeHtml(batch.jobPath)}</code><div class="history-actions"><button class="primary-button" type="button" data-history-action="selective"${batch.modelCount ? "" : " disabled"}>Edit selection</button><button class="secondary-button" type="button" data-history-action="rerun"${batch.state === "invalid" ? " disabled" : ""}>Run again</button>${needsPost ? `<button class="secondary-button" type="button" data-history-action="postprocess">Build POST</button>` : ""}${openOutput}<button class="quiet-button" type="button" data-history-action="viewJob">View JSON</button><button class="quiet-button danger-button" type="button" data-history-action="deleteRenders"${batch.renderCount ? "" : " disabled"}>Delete renders</button><button class="quiet-button danger-button" type="button" data-history-action="deleteBatch">Delete batch</button></div>`;
   };
   const renderGalleryModels = () => {
     const batch = state.galleryBatch, group = $("galleryModelGroup");
@@ -499,6 +499,20 @@
       else if (action === "postprocess") { const result = await api("/api/postprocess", { method: "POST", body: JSON.stringify({ jobPath: batch.jobPath }) }); toast("POST recovery started; RAW originals stay unchanged"); updateRender(result); startPolling(); }
       else if (action === "viewJob") await viewHistoryJob(batch);
       else if (action === "showJob") { await openLocal("showJob", batch.jobPath); toast("JSON selected in Explorer"); }
+      else if (action === "deleteRenders" || action === "deleteBatch") {
+        const keepJob = action === "deleteRenders";
+        if (button.dataset.confirm !== "pending") {
+          button.dataset.confirm = "pending";
+          button.textContent = keepJob ? "Confirm delete" : "Confirm delete batch";
+          setTimeout(() => { button.dataset.confirm = ""; button.textContent = keepJob ? "Delete renders" : "Delete batch"; }, 5000);
+          return;
+        }
+        const result = await api("/api/renders/delete", { method: "POST", body: JSON.stringify({ jobPath: batch.jobPath, keepJob }) });
+        toast(`Deleted ${result.deleted.length} item${result.deleted.length === 1 ? "" : "s"}`);
+        if (!keepJob) { state.historyBatch = null; state.galleryBatch = null; state.historyModel = null; }
+        await loadHistory();
+        renderGalleryModels(); renderGallery();
+      }
       else if (action === "openReady") { await openLocal("openRenders", batch.readyToUpload?.folder); toast("POST folder opened"); }
       else if (action === "openRenders") { await openLocal("openRenders", batch.outputFolder); toast("Render folder opened"); }
     } catch (error) { toast(error.message, true); }

@@ -6,11 +6,11 @@
 /* ── tokens ─────────────────────────────────────────────────────── */
 :root{
   color-scheme:light;
-  --bg:#ededed; --bg-tint:rgba(140,140,140,.08);
-  --surface:#ededed; --surface-2:#e6e6e6; --surface-raised:#f1f1f1; --inset:#e8e8e8;
+  --bg:#e1e1e1; --bg-tint:rgba(140,140,140,.08);
+  --surface:#e1e1e1; --surface-2:#dadada; --surface-raised:#e5e5e5; --inset:#dcdcdc;
   --line:rgba(124,124,124,.20); --line-soft:rgba(124,124,124,.12); --line-strong:rgba(124,124,124,.34);
   --text:#252525; --soft:#424242; --muted:#727272; --faint:#969696;
-  --accent:#2f8f5b; --accent-soft:rgba(47,143,91,.12); --accent-line:rgba(47,143,91,.32); --accent-ink:#1e6d43;
+  --accent:#427e5e; --accent-soft:rgba(66,126,94,.13); --accent-line:rgba(66,126,94,.30); --accent-ink:#2c5f47;
   --amber:#b0812f; --amber-soft:rgba(176,129,47,.12);
   --danger:#b4483f; --danger-soft:rgba(180,72,63,.10); --danger-line:rgba(180,72,63,.30);
   --ink-btn:#2e2e2e; --ink-btn-text:#f2f2f2;
@@ -20,10 +20,10 @@
   --lift-lg:12px 12px 32px rgba(152,152,152,.36), -10px -10px 28px rgba(255,255,255,.85);
   --press:inset 3px 3px 8px rgba(154,154,154,.46), inset -3px -3px 8px rgba(255,255,255,.88);
   --press-sm:inset 2px 2px 6px rgba(154,154,154,.40), inset -2px -2px 6px rgba(255,255,255,.84);
-  --accent-glow:rgba(47,143,91,.18); --accent-glow-lit:rgba(47,143,91,.30); --accent-edge:rgba(47,143,91,.62);
+  --accent-glow:rgba(66,126,94,.14); --accent-glow-lit:rgba(66,126,94,.22); --accent-edge:rgba(66,126,94,.50);
   --sel-ring:inset 0 0 0 1px var(--accent-edge),0 0 7px -2px var(--accent-glow);
   --bevel:inset 0 1px 0 rgba(255,255,255,.95), inset 0 0 0 1px rgba(124,124,124,.22), inset 0 -1px 0 rgba(124,124,124,.14);
-  --accent-gleam:rgba(47,143,91,.88);
+  --accent-gleam:rgba(66,126,94,.68);
   --sel-gleam:inset 0 1.5px 0 var(--accent-gleam), inset 0 0 0 1px var(--accent-line), inset 0 -1px 0 rgba(124,124,124,.12), 0 0 15px -4px var(--accent-glow-lit), 0 5px 14px rgba(154,154,154,.32);
   --sel-gleam-lit:inset 0 2px 0 var(--accent), inset 0 0 0 1px var(--accent-edge), inset 0 -1px 0 rgba(124,124,124,.12), 0 0 24px -5px var(--accent-glow-lit), 0 7px 18px rgba(154,154,154,.34);
   --bronze:var(--accent); --bronze-strong:var(--accent-ink); --bronze-bg:var(--accent-soft);
@@ -38,20 +38,20 @@
 @media (prefers-color-scheme:dark){
   :root:not([data-theme=light]){
     color-scheme:dark;
-    --preview-bg:#2a2a2a; --preview-caption:#b8b8b8; --accent-glow:rgba(92,201,141,.22); --accent-glow-lit:rgba(92,201,141,.38); --accent-edge:rgba(92,201,141,.66);
+    --preview-bg:#2a2a2a; --preview-caption:#b8b8b8; --accent-glow:rgba(116,189,151,.17); --accent-glow-lit:rgba(116,189,151,.27); --accent-edge:rgba(116,189,151,.52);
     --bg:#242424; --bg-tint:rgba(150,150,150,.07);
     --surface:#2c2c2c; --surface-2:#323232; --surface-raised:#343434; --inset:#272727;
     --line:rgba(255,255,255,.09); --line-soft:rgba(255,255,255,.055); --line-strong:rgba(255,255,255,.16);
   --bevel:inset 0 1px 0 rgba(255,255,255,.085), inset 0 0 0 1px rgba(255,255,255,.06), inset 0 -1px 0 rgba(0,0,0,.35);
-  --accent-gleam:rgba(150,245,197,.55);
+  --accent-gleam:rgba(178,222,200,.40);
   --sel-gleam:inset 0 1.5px 0 var(--accent-gleam), inset 0 0 0 1px var(--accent-line), inset 0 -1px 0 rgba(0,0,0,.35), 0 0 18px -4px var(--accent-glow-lit), 0 6px 16px rgba(0,0,0,.45);
   --sel-gleam-lit:inset 0 2px 0 var(--accent), inset 0 0 0 1px var(--accent-edge), inset 0 -1px 0 rgba(0,0,0,.35), 0 0 28px -5px var(--accent-glow-lit), 0 8px 20px rgba(0,0,0,.5);
     --bevel:inset 0 1px 0 rgba(255,255,255,.085), inset 0 0 0 1px rgba(255,255,255,.06), inset 0 -1px 0 rgba(0,0,0,.35);
-    --accent-gleam:rgba(150,245,197,.55);
+    --accent-gleam:rgba(178,222,200,.40);
     --sel-gleam:inset 0 1.5px 0 var(--accent-gleam), inset 0 0 0 1px var(--accent-line), inset 0 -1px 0 rgba(0,0,0,.35), 0 0 18px -4px var(--accent-glow-lit), 0 6px 16px rgba(0,0,0,.45);
     --sel-gleam-lit:inset 0 2px 0 var(--accent), inset 0 0 0 1px var(--accent-edge), inset 0 -1px 0 rgba(0,0,0,.35), 0 0 28px -5px var(--accent-glow-lit), 0 8px 20px rgba(0,0,0,.5);
     --text:#ebebeb; --soft:#c6c6c6; --muted:#9a9a9a; --faint:#868686;
-    --accent:#5cc98d; --accent-soft:rgba(92,201,141,.13); --accent-line:rgba(92,201,141,.30); --accent-ink:#8fdcaf;
+    --accent:#74bd97; --accent-soft:rgba(116,189,151,.12); --accent-line:rgba(116,189,151,.28); --accent-ink:#a6cdb8;
     --amber:#d8b478; --amber-soft:rgba(216,180,120,.12);
     --danger:#e08a80; --danger-soft:rgba(224,138,128,.11); --danger-line:rgba(224,138,128,.28);
     --ink-btn:#3a3a3a; --ink-btn-text:#f0f0f0;
@@ -67,12 +67,12 @@
 
 :root[data-theme=dark]{
   color-scheme:dark;
-  --preview-bg:#2a2a2a; --preview-caption:#b8b8b8; --accent-glow:rgba(92,201,141,.22); --accent-glow-lit:rgba(92,201,141,.38); --accent-edge:rgba(92,201,141,.66);
+  --preview-bg:#2a2a2a; --preview-caption:#b8b8b8; --accent-glow:rgba(116,189,151,.17); --accent-glow-lit:rgba(116,189,151,.27); --accent-edge:rgba(116,189,151,.52);
   --bg:#242424; --bg-tint:rgba(150,150,150,.07);
   --surface:#2c2c2c; --surface-2:#323232; --surface-raised:#343434; --inset:#272727;
   --line:rgba(255,255,255,.09); --line-soft:rgba(255,255,255,.055); --line-strong:rgba(255,255,255,.16);
   --text:#ebebeb; --soft:#c6c6c6; --muted:#9a9a9a; --faint:#868686;
-  --accent:#5cc98d; --accent-soft:rgba(92,201,141,.13); --accent-line:rgba(92,201,141,.30); --accent-ink:#8fdcaf;
+  --accent:#74bd97; --accent-soft:rgba(116,189,151,.12); --accent-line:rgba(116,189,151,.28); --accent-ink:#a6cdb8;
   --amber:#d8b478; --amber-soft:rgba(216,180,120,.12);
   --danger:#e08a80; --danger-soft:rgba(224,138,128,.11); --danger-line:rgba(224,138,128,.28);
   --ink-btn:#3a3a3a; --ink-btn-text:#f0f0f0;
@@ -202,7 +202,8 @@ main{width:calc(100% - clamp(18px,2.4vw,44px));max-width:none;margin:0 auto;padd
 label{display:flex;flex-direction:column;gap:8px;font-size:12px;font-weight:560;color:var(--muted);min-width:0}
 input:where(:not([type=checkbox]):not([type=radio]):not([type=range])),select,textarea{width:100%;padding:12px 14px;border:0;border-radius:var(--radius-xs);background:var(--inset);box-shadow:var(--press);color:var(--text);font-size:13.5px;font-weight:500;transition:box-shadow .16s}
 input:where(:not([type=checkbox]):not([type=radio]):not([type=range])):hover,select:hover{box-shadow:var(--press),0 0 0 1px var(--line)}
-input:focus,select:focus,textarea:focus{outline:0;box-shadow:var(--press),0 0 0 2px var(--accent-line)}
+input:focus,select:focus,textarea:focus{outline:0;box-shadow:var(--press)}
+input:focus-visible,select:focus-visible,textarea:focus-visible{outline:0;box-shadow:var(--press),0 0 0 2px var(--accent-line)}
 /* Only browsers without the customisable select need a drawn chevron and the room to
    put it in -- with base-select the engine supplies ::picker-icon, and keeping this
    would show two arrows. */
@@ -265,7 +266,7 @@ input[type=range]:active::-webkit-slider-thumb{cursor:grabbing;box-shadow:var(--
 .batch-model.active{background:transparent;box-shadow:var(--sel-ring)}
 .batch-model-select{flex:1 1 auto;min-width:0;text-align:left;color:var(--text);font-size:12.5px;font-weight:520}
 .batch-model-select:hover{color:var(--accent-ink)}
-.batch-model-remove{width:24px;height:24px;flex:0 0 24px;margin-top:-1px;border-radius:7px;color:var(--faint);font-size:15px;line-height:1;display:grid;place-items:center}
+.batch-model-remove{width:24px;height:24px;flex:0 0 24px;align-self:center;border-radius:7px;color:var(--faint);font-size:15px;line-height:1;display:grid;place-items:center}
 .batch-model-remove:hover{color:var(--danger);background:var(--danger-soft)}
 .model-details{display:flex;flex-direction:column;gap:14px}
 .model-name-row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
@@ -735,7 +736,7 @@ input[type=radio]:checked{animation:accent-breathe 3.6s ease-in-out infinite}
 .segmented:before,.theme-switcher:before{
   content:"";position:absolute;inset:var(--seg-pad) auto var(--seg-pad) var(--seg-pad);
   width:calc((100% - 2*var(--seg-pad) - (var(--n,2) - 1)*var(--seg-gap))/var(--n,2));
-  border-radius:var(--seg-radius);box-shadow:var(--sel-ring);opacity:0;pointer-events:none;
+  border-radius:var(--seg-radius);box-shadow:none;opacity:0;pointer-events:none;
   transform:translateX(0);
   transition:transform .34s cubic-bezier(.34,1.2,.5,1),opacity .18s ease,box-shadow .18s}
 /* how many options: the last nth-of-type that exists wins */
@@ -879,3 +880,15 @@ select:hover:not(:disabled),.theme-switcher button:not([aria-pressed=true]):hove
 .card-shell:hover{transform:translateY(-2px)}
 .card-shell:hover>.history-card,.card-shell:hover>.render-preview-card,
 .card-shell:active>.history-card,.card-shell:active>.render-preview-card{transform:none}
+
+/* A form row is not a card. Lifting it under the pointer moved the select inside it, which
+   is what made its chevron flicker; answer with light instead of movement. */
+.material-row:hover{transform:none;box-shadow:var(--bevel),var(--lift)}
+
+/* The x is a glyph, not an icon: centre it optically rather than by box. */
+.batch-model-remove{line-height:24px;padding:0;font-size:16px}
+
+/* On a render card the caption owns the bottom edge and the layer badge owns the top left,
+   so the delete control goes top right. History cards keep it low, where their state pill
+   is not. */
+.card-shell:has(.render-preview-card)>.card-delete{top:7px;bottom:auto}

@@ -3,7 +3,7 @@
   const state = { status: null, models: [], metadata: null, materialAssets: [], preflight: null, preflightTimer: null, batch: [], model: null, jobPath: null, poll: null, history: [], historyBatch: null, historySelection: new Set(), historyModel: null, galleryBatch: null, queueFocus: null };
   const LOCAL_MODELS_ROOT = "D:\\GitHub\\RH_Local_Renders\\local\\models";
   const THEME_KEY = "rh-local-renders-theme";
-  const THEME_CHROME = { light: "#ededed", dark: "#242424" };
+  const THEME_CHROME = { light: "#e1e1e1", dark: "#242424" };
   const applyTheme = (theme, remember = false) => {
     const allowed = ["light", "system", "dark"], value = allowed.includes(theme) ? theme : "system";
     document.documentElement.dataset.theme = value;

@@ -19,13 +19,15 @@
   let mediaToken = "";
   const API_BASE = (() => {
     const clean = value => String(value || "").trim().replace(/\/+$/, "");
+    // Order matters. A deployed config.js carries the address of the tunnel that is up right
+    // now, so it has to beat whatever this browser remembered from a tunnel that is gone.
     try {
       const asked = clean(new URLSearchParams(location.search).get("api"));
       if (asked) { localStorage.setItem("rhApiBase", asked); return asked; }
-      const remembered = clean(localStorage.getItem("rhApiBase"));
-      if (remembered) return remembered;
     } catch {}
-    return clean(window.RH_API_BASE);
+    const deployed = clean(window.RH_API_BASE);
+    if (deployed) return deployed;
+    try { return clean(localStorage.getItem("rhApiBase")); } catch { return ""; }
   })();
   // A page on this machine can always reach the service; a page served from anywhere else
   // can too, but only once it has been told where the service lives.

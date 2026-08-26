@@ -911,3 +911,23 @@ select:hover:not(:disabled),.theme-switcher button:not([aria-pressed=true]):hove
 /* A raised option carries an outer glow, and the legend sat exactly on the row's top edge,
    so the glow washed over the caption. Give it room. */
 legend+.choice-row,legend+.selective-options{margin-top:8px}
+
+/* ── model checks ───────────────────────────────────────────────────
+   Findings sit under the batch they describe, in the same recessed well
+   the model rows use, so a report reads as part of the list rather than
+   as another panel. */
+.model-batch-tools{display:flex;align-items:center;gap:10px}
+.model-check{margin-top:11px;padding:10px;border-radius:var(--radius-sm);background:var(--inset);box-shadow:var(--press)}
+.model-check-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px;padding:0 3px}
+.model-check-heading strong{font-size:11.5px;font-weight:600;color:var(--muted);letter-spacing:.02em}
+.model-check-list{display:flex;flex-direction:column;gap:8px}
+.model-check-row{padding:10px 12px;border-radius:var(--radius-xs);background:var(--surface-raised);box-shadow:var(--bevel),var(--lift-sm)}
+.model-check-row>strong{display:block;font-size:12px;font-weight:600;overflow-wrap:anywhere;margin-bottom:5px}
+.model-check-row>strong small{margin-left:7px;font-weight:500;font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.08em}
+.model-check-finding{display:flex;gap:8px;align-items:baseline;font-size:11.5px;line-height:1.5;color:var(--muted)}
+.model-check-finding>i{flex:none;width:52px;font-style:normal;font-size:9.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase}
+.model-check-finding[data-level=ok]>i{color:var(--accent-ink)}
+.model-check-finding[data-level=info]>i{color:var(--faint)}
+.model-check-finding[data-level=warning]>i{color:var(--amber,#c8922f)}
+.model-check-finding[data-level=error]>i{color:var(--danger)}
+.model-check-row[data-worst=error]{box-shadow:var(--bevel),var(--lift-sm),inset 0 0 0 1px var(--danger-line)}

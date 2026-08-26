@@ -146,7 +146,52 @@
     }).join("");
     document.querySelectorAll("[data-material-key]").forEach(input => { updateMaterialStatus(input); input.addEventListener("input", () => { updateMaterialStatus(input); validate(); }); });
   };
+  // Checks the models about to be rendered, not the whole library: what matters is whether
+  // this batch will come out right.
+  const LEVEL_ORDER = { error: 0, warning: 1, info: 2, ok: 3 };
+  const renderModelCheck = report => {
+    const panel = $("modelCheck");
+    panel.hidden = !report;
+    if (!report) return;
+    const rows = (report.models || []).slice().sort((a, b) => (b.errors - a.errors) || (b.warnings - a.warnings) || a.name.localeCompare(b.name));
+    $("modelCheckSummary").textContent = report.failing
+      ? `${report.failing} of ${report.checked} need attention`
+      : report.warning ? `${report.checked} checked · ${report.warning} with warnings` : `${report.checked} checked · all sound`;
+    const repairable = rows.some(row => (row.findings || []).some(finding => finding.repairable));
+    $("repairModels").hidden = !repairable;
+    $("modelCheckList").innerHTML = rows.map(row => {
+      const findings = (row.findings || []).slice().sort((a, b) => LEVEL_ORDER[a.level] - LEVEL_ORDER[b.level]);
+      const worst = findings[0]?.level || "ok";
+      return `<div class="model-check-row" data-worst="${escapeHtml(worst)}"><strong>${escapeHtml(row.name)}${row.format ? `<small>${escapeHtml(row.format)}${row.group ? ` · ${escapeHtml(row.group)}` : ""}</small>` : ""}</strong>${findings.map(finding => `<div class="model-check-finding" data-level="${escapeHtml(finding.level)}"><i>${escapeHtml(finding.level)}</i><span>${escapeHtml(finding.label)}: ${escapeHtml(finding.detail)}</span></div>`).join("")}</div>`;
+    }).join("");
+  };
+  const checkModels = async () => {
+    const names = state.batch.map(model => model.name);
+    if (!names.length) { toast("Add models to the batch first", true); return; }
+    const button = $("checkModels");
+    button.disabled = true; button.textContent = "Checking…";
+    try {
+      const report = await api("/api/models/check", { method: "POST", body: JSON.stringify({ models: names }) });
+      state.modelCheck = report; renderModelCheck(report);
+      toast(report.failing ? `${report.failing} model${report.failing === 1 ? "" : "s"} need attention` : "All models look sound");
+    } catch (error) { toast(error.message, true); }
+    finally { button.disabled = false; button.textContent = "Check models"; }
+  };
+  const repairModels = async () => {
+    const names = (state.modelCheck?.models || [])
+      .filter(row => (row.findings || []).some(finding => finding.repairable)).map(row => row.name);
+    if (!names.length) return;
+    const button = $("repairModels");
+    button.disabled = true; button.textContent = "Repairing…";
+    try {
+      const result = await api("/api/models/repair", { method: "POST", body: JSON.stringify({ models: names }) });
+      toast(`Repaired ${result.repaired} model${result.repaired === 1 ? "" : "s"}; re-checking`);
+      await checkModels();
+    } catch (error) { toast(error.message, true); }
+    finally { button.disabled = false; button.textContent = "Repair OBJ parts"; }
+  };
   const renderBatch = () => {
+    if (state.modelCheck) { state.modelCheck = null; renderModelCheck(null); }
     $("modelBatch").hidden = !state.batch.length; $("batchCount").textContent = `${state.batch.length} model${state.batch.length === 1 ? "" : "s"}`;
     $("batchList").innerHTML = state.batch.map(model => `<div class="batch-model${state.model?.path === model.path ? " active" : ""}" data-model-path="${escapeHtml(model.path)}"><button class="batch-model-select" type="button" title="Open ${escapeHtml(model.name)}"><span>${escapeHtml(model.name)}</span><small>${model.dimensions.width} × ${model.dimensions.depth} × ${model.dimensions.height} cm · ${escapeHtml(model.materialIds.length)} IDs</small></button><button class="batch-model-remove" type="button" title="Remove ${escapeHtml(model.name)}" aria-label="Remove ${escapeHtml(model.name)}">×</button></div>`).join("");
   };
@@ -560,6 +605,8 @@
     try { await run(); } catch (error) { toast(error.message, true); }
   });
   $("deleteConfirm").addEventListener("toggle", event => { if (event.newState === "closed") closeDelete(); });
+  $("checkModels").addEventListener("click", checkModels);
+  $("repairModels").addEventListener("click", repairModels);
   $("settingsToggle").addEventListener("click", () => {
     $("settingsAccessKey").value = ACCESS_KEY;
     $("settingsService").textContent = state.canAct === false ? "Read-only until the key is entered" : "Looking is open to everyone";

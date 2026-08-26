@@ -57,6 +57,12 @@ const presentedKey = request => {
   return header.startsWith("Bearer ") ? header.slice(7).trim() : "";
 };
 const isLoopback = request => ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(String(request.socket?.remoteAddress || ""));
+// A tunnel connects to the service over loopback too, so the socket alone proves nothing.
+// Cloudflare stamps every request it forwards and a client cannot strip those headers, so
+// their absence is what distinguishes somebody sitting at this machine from the internet.
+const TUNNEL_HEADERS = ["cf-ray", "cf-connecting-ip", "cf-warp-tag-id", "x-forwarded-for"];
+const cameThroughTunnel = request => TUNNEL_HEADERS.some(name => request.headers?.[name]);
+const isLocalOperator = request => isLoopback(request) && !cameThroughTunnel(request);
 const ALLOWED_ORIGINS = String(process.env.RH_ALLOWED_ORIGINS || "").split(",").map(value => value.trim().replace(/\/+$/, "")).filter(Boolean);
 const corsHeaders = origin => {
   if (!origin || !ALLOWED_ORIGINS.length) return {};
@@ -441,6 +447,9 @@ const OPEN_POSTS = new Set(["/api/preflight"]);
 function isAuthorized(request, url) {
   if (url.pathname === "/api/unreal") return isLoopback(request);
   if (request.method === "GET" || OPEN_POSTS.has(url.pathname)) return true;
+  // Somebody at this machine already has the run of it; the key exists to guard the way in
+  // from outside, not to make the local page ask permission of itself.
+  if (isLocalOperator(request)) return true;
   return timingEqual(presentedKey(request), ACCESS_KEY);
 }
 
@@ -493,7 +502,8 @@ async function api(request, response, url) {
     project: "RH_Local_Renders", models: models.list(), sheet: sheet.status(),
     unreal: { editor: UNREAL_EDITOR, project: UNREAL_PROJECT, available: fs.existsSync(UNREAL_EDITOR) && fs.existsSync(UNREAL_PROJECT), lastContactAt: lastUnrealContactAt, cameraFitCache: { profiles: Object.keys(readCameraFitProfiles(ROOT).profiles).length, rendererToken: CAMERA_FIT_RENDERER_TOKEN } }, render: currentRender(),
     runtime: { startedAt: RUNTIME_STARTED_AT, sourceToken: RUNTIME_SOURCE_TOKEN, stale: RUNTIME_SOURCE_TOKEN !== runtimeSourceToken() },
-    access: { required: Boolean(ACCESS_KEY), authorized: !ACCESS_KEY || timingEqual(presentedKey(request), ACCESS_KEY) }
+    // The same verdict the gate uses, or the page would call itself read-only while acting.
+    access: { required: Boolean(ACCESS_KEY), authorized: !ACCESS_KEY || isLocalOperator(request) || timingEqual(presentedKey(request), ACCESS_KEY) }
   });
   if (request.method === "POST" && url.pathname === "/api/models/repair") {
     // Some downloads name their parts where an importer never looks. Rewriting the file puts

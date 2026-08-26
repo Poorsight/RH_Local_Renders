@@ -756,7 +756,10 @@ test("without the key the service still shows everything and refuses only the ac
   });
   const at = path => `http://127.0.0.1:${port}${path}`;
   const signed = { Authorization: `Bearer ${key}` };
-  const json = { "Content-Type": "application/json" };
+  // This test runs on the machine the service is on, and a request from here is treated as
+  // the operator. A tunnel stamp is what makes a call stand in for one from outside.
+  const outside = { "CF-Ray": "8f0a1b2c3d4e-FRA" };
+  const json = { "Content-Type": "application/json", ...outside };
   try {
     let online = false;
     for (let attempt = 0; attempt < 60 && !online; attempt++) { try { online = (await fetch(at("/api/status"))).ok; } catch {} if (!online) await sleep(50); }
@@ -769,8 +772,11 @@ test("without the key the service still shows everything and refuses only the ac
     assert.notEqual((await fetch(at("/api/renders/file?path=nothing.png"))).status, 401, "renders are readable without a key");
     assert.notEqual((await fetch(at("/api/preflight"), { method: "POST", headers: json, body: "{}" })).status, 401, "preflight only validates, so it stays open");
 
-    const anonymous = await (await fetch(at("/api/status"))).json();
-    assert.deepEqual(anonymous.access, { required: true, authorized: false });
+    // Status must answer with the verdict the gate would give, not a different one.
+    const fromOutside = await (await fetch(at("/api/status"), { headers: outside })).json();
+    assert.deepEqual(fromOutside.access, { required: true, authorized: false });
+    const fromHere = await (await fetch(at("/api/status"))).json();
+    assert.deepEqual(fromHere.access, { required: true, authorized: true }, "the operator's own page is not read-only");
     assert.deepEqual((await (await fetch(at("/api/status"), { headers: signed })).json()).access, { required: true, authorized: true });
 
     // Acting is not: everything that starts work, writes a file or reaches the network.
@@ -778,11 +784,16 @@ test("without the key the service still shows everything and refuses only the ac
       assert.equal((await fetch(at(path), { method: "POST", headers: json, body: "{}" })).status, 401, `${path} must need the key`);
     }
     assert.equal((await fetch(at("/api/renders"), { method: "POST", headers: { ...json, Authorization: "Bearer wrong-key-entirely" }, body: "{}" })).status, 401);
+    assert.notEqual((await fetch(at("/api/renders"), { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })).status, 401,
+      "the same call from this machine, with no tunnel stamp, is the operator");
     // With the key the same call gets through to the endpoint's own validation, not a 401.
     assert.notEqual((await fetch(at("/api/renders"), { method: "POST", headers: { ...json, ...signed }, body: "{}" })).status, 401);
 
     // The plugin channel cannot present a key, so it is trusted over the loopback interface.
     assert.notEqual((await fetch(at("/api/unreal"))).status, 401);
+
+    assert.equal((await fetch(at("/api/renders/delete"), { method: "POST", headers: { "Content-Type": "application/json", "X-Forwarded-For": "203.0.113.7" }, body: "{}" })).status, 401,
+      "any tunnel stamp puts a caller outside");
   } finally { service.kill(); }
 });
 

@@ -104,8 +104,12 @@
         </label>
 
         <div id="modelBatch" class="model-batch" hidden>
-          <div class="model-batch-heading"><span>MODEL BATCH</span><strong id="batchCount">0 models</strong></div>
+          <div class="model-batch-heading"><span>MODEL BATCH</span><div class="model-batch-tools"><button id="checkModels" class="quiet-button" type="button">Check models</button><strong id="batchCount">0 models</strong></div></div>
           <div id="batchList" class="model-batch-list"></div>
+          <div id="modelCheck" class="model-check" hidden>
+            <div class="model-check-heading"><strong id="modelCheckSummary"></strong><button id="repairModels" class="quiet-button danger-button" type="button" hidden>Repair OBJ parts</button></div>
+            <div id="modelCheckList" class="model-check-list"></div>
+          </div>
         </div>
 
         <div id="modelEmpty" class="empty-state">Choose a model to read its dimensions and Material IDs.</div>

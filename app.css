@@ -320,7 +320,7 @@ input[type=range]:active::-webkit-slider-thumb{cursor:grabbing;box-shadow:var(--
 .selective-options{display:flex;flex-wrap:wrap;gap:7px}
 
 /* ── light rig ──────────────────────────────────────────────────── */
-.history-section,.catalog-section,.reference-section{margin-top:clamp(20px,2.2vw,32px);display:flex;flex-direction:column;gap:clamp(15px,1.4vw,22px)}
+.history-section,.renders-section,.catalog-section,.reference-section{margin-top:clamp(20px,2.2vw,32px);display:flex;flex-direction:column;gap:clamp(15px,1.4vw,22px)}
 /* The two views fit different viewBoxes into the same box, so the plan is drawn at about
    0.28 scale and the elevation at about 0.48. Each gets its own user-unit sizes so both
    land near a 12px label, a 9px dot and a 2px halo on screen. */
@@ -741,3 +741,25 @@ input[type=radio]:checked{animation:accent-breathe 3.6s ease-in-out infinite}
   .job-dialog,.job-dialog::backdrop,.suggest-pop,::picker(select){transition:opacity .01s}
   .batch-model:hover,.material-row:hover{transform:none}
 }
+
+/* Disk render preview: its own full-width section, the batch's models on top and the
+   gallery under them. Everything here fills the width it is given. */
+.gallery-model-group{padding:16px;border-radius:var(--radius-sm);background:var(--surface);box-shadow:var(--lift);display:flex;flex-direction:column;gap:11px}
+.gallery-model-heading{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.gallery-model-heading span{color:var(--faint);font-size:10px;font-weight:750;letter-spacing:.16em}
+.gallery-model-heading small{color:var(--muted);font-size:11px}
+.gallery-models{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:8px;max-height:min(38vh,330px);overflow:auto;padding:4px 4px 5px}
+.gallery-model{display:flex;flex-direction:column;gap:3px;width:100%;padding:10px 12px;border-radius:var(--radius-xs);background:var(--surface-2);box-shadow:var(--press-sm);color:var(--text);text-align:left;transition:background .16s,box-shadow .16s}
+.gallery-model>span{color:var(--faint);font-size:10px;font-weight:700;letter-spacing:.08em;font-variant-numeric:tabular-nums}
+.gallery-model>strong{min-width:0;font-size:12px;font-weight:560;line-height:1.35;overflow-wrap:anywhere}
+.gallery-model>small{min-width:0;color:var(--muted);font-size:10.5px;line-height:1.45;overflow-wrap:anywhere}
+.gallery-model:hover{background:var(--surface-raised)}
+.gallery-model.active{background:transparent;box-shadow:var(--sel-ring)}
+.gallery-model.active>strong{color:var(--accent-ink)}
+.render-gallery{padding:16px;border-radius:var(--radius-sm);background:var(--surface);box-shadow:var(--lift);display:flex;flex-direction:column;gap:12px}
+.render-gallery-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:11px}
+.render-gallery-heading span{color:var(--faint);font-size:10px;font-weight:750;letter-spacing:.16em}
+.render-gallery-heading strong{display:block;margin-top:4px;font-size:13px;font-weight:560;overflow-wrap:anywhere}
+.render-gallery-heading>span:last-child{color:var(--muted);font-size:11px;letter-spacing:0;font-weight:500}
+.render-gallery-images{display:flex;flex-direction:column;gap:12px}
+.render-gallery-images img{display:block;width:100%;height:auto;background:none}

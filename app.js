@@ -1,6 +1,6 @@
 (() => {
   const $ = (id) => document.getElementById(id);
-  const state = { status: null, models: [], metadata: null, materialAssets: [], preflight: null, preflightTimer: null, batch: [], model: null, jobPath: null, poll: null, history: [], historyBatch: null, historySelection: new Set(), historyModel: null, queueFocus: null };
+  const state = { status: null, models: [], metadata: null, materialAssets: [], preflight: null, preflightTimer: null, batch: [], model: null, jobPath: null, poll: null, history: [], historyBatch: null, historySelection: new Set(), historyModel: null, galleryBatch: null, queueFocus: null };
   const canReachLocalService = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
   const LOCAL_MODELS_ROOT = "D:\\GitHub\\RH_Local_Renders\\local\\models";
   const THEME_KEY = "rh-local-renders-theme";
@@ -52,7 +52,7 @@
     models: state.batch.map(model => ({ modelPath: model.path, dimensions: model.dimensions, importYaw: model.importYaw })),
     category: $("category").value,
     environment: $("environment").value,
-    side: $("sceneSide").value, sourceMode: $("sourceMode").value, renderProfile: selected("renderProfile")[0] || "high", cropMode: selected("cropMode")[0] || "full",
+    side: $("sceneSide").value, renderProfile: selected("renderProfile")[0] || "high", cropMode: selected("cropMode")[0] || "full",
     dimensions: { width: +$("width").value, depth: +$("depth").value, height: +$("height").value },
     importYaw: +$("importYaw").value || 0,
     cameras: selected("camera"), layers: selected("layer"), materials: materialRows()
@@ -288,12 +288,52 @@
     const openOutput = batch.readyToUpload?.files ? `<button class="secondary-button" type="button" data-history-action="openReady">Open POST</button>` : `<button class="secondary-button" type="button" data-history-action="openRenders"${batch.renderCount ? "" : " disabled"}>Open renders</button>`;
     $("historyDetail").innerHTML = `<div class="history-detail-heading"><div><span>SAVED JOB</span><strong>${escapeHtml(batch.id)}</strong><small>${escapeHtml(formatDate(batch.generatedAt))}</small></div><i class="history-state" data-state="${escapeHtml(batch.state)}">${escapeHtml(historyStateLabel(batch.state))}</i></div><div class="history-summary"><div><span>MODELS</span><strong>${batch.modelCount}</strong></div><div><span>RENDERS</span><strong>${batch.renderCount}/${batch.expectedRenders}</strong></div><div><span>POST</span><strong>${batch.postProcessCount || 0}/${batch.renderCount}</strong></div></div>${selective}${models}${batch.error ? `<p class="inline-warning">${escapeHtml(batch.error)}</p>` : ""}<code class="history-path" title="${escapeHtml(batch.jobPath)}">${escapeHtml(batch.jobPath)}</code><div class="history-actions"><button class="primary-button" type="button" data-history-action="selective"${batch.modelCount ? "" : " disabled"}>Edit selection</button><button class="secondary-button" type="button" data-history-action="rerun"${batch.state === "invalid" ? " disabled" : ""}>Run again</button>${needsPost ? `<button class="secondary-button" type="button" data-history-action="postprocess">Build POST</button>` : ""}${openOutput}<button class="quiet-button" type="button" data-history-action="viewJob">View JSON</button></div>`;
   };
+  const renderGalleryModels = () => {
+    const batch = state.galleryBatch, group = $("galleryModelGroup");
+    group.hidden = !batch?.models?.length;
+    if (!batch?.models?.length) return;
+    $("galleryModelCount").textContent = `${batch.models.length} model${batch.models.length === 1 ? "" : "s"}`;
+    $("galleryModels").innerHTML = batch.models.map((model, index) => `<button type="button" class="gallery-model${state.historyModel === model ? " active" : ""}" data-state="${escapeHtml(model.state || "pending")}" data-gallery-model-index="${index}" title="${escapeHtml(model.name)}"><span>${String(index + 1).padStart(2, "0")}</span><strong>${escapeHtml(model.name)}</strong><small>${escapeHtml(model.state || "pending")} · ${model.renders.length}/${model.expectedRenders} renders</small></button>`).join("");
+  };
+  const renderGallery = () => {
+    const model = state.historyModel, gallery = $("renderGallery");
+    gallery.hidden = !model;
+    if (!model) return;
+    $("renderGalleryModel").textContent = model.name; $("renderGalleryCount").textContent = `${model.renders.length} file${model.renders.length === 1 ? "" : "s"}`;
+    const cameraRank = { F: 0, FH: 1, TQ: 2 }, cameras = [...new Set(model.renders.map(render => render.camera || "Other"))].sort((left, right) => (cameraRank[left] ?? 9) - (cameraRank[right] ?? 9));
+    const card = render => {
+      const issues = render.issues || [];
+      const diagnostics = [render.width && render.height ? `${render.width}×${render.height}` : "Unknown size", render.alpha === true ? "Alpha" : render.alpha === false ? "No alpha" : "Alpha unknown", ...(issues || [])];
+      return `<a class="render-preview-card${issues.length ? " render-warning" : ""}" data-layer="${escapeHtml(render.layer || "Fabric")}" href="${escapeHtml(render.url)}" target="_blank" rel="noreferrer"><div class="render-preview-media" style="--preview-aspect:${Number(render.width) || 1}/${Number(render.height) || 1}"><img src="${escapeHtml(render.url)}" alt="${escapeHtml(model.name)} ${escapeHtml(render.camera || "render")} ${escapeHtml(render.layer || "")}" loading="lazy"></div><span>${escapeHtml(render.layer || render.camera || render.name)} · RAW${issues.length ? " · Check" : ""}</span><small>${escapeHtml(diagnostics.join(" · "))}</small></a>`;
+    };
+    const combinedCard = (fabric, shadow) => {
+      if (!fabric || !shadow) return "";
+      const fabricWidth = Math.min(100, Math.max(1, (Number(fabric.width) || 1) / (Number(shadow.width) || 1) * 100));
+      const issues = [...(fabric.issues || []), ...(shadow.issues || [])];
+      return `<button type="button" class="render-preview-card render-combined${issues.length ? " render-warning" : ""}" data-layer="Combined" data-fabric-url="${escapeHtml(fabric.url)}" data-shadow-url="${escapeHtml(shadow.url)}" data-fabric-width="${fabricWidth}" data-combined-title="${escapeHtml(`${model.name} · ${fabric.camera || "render"} · Combined`)}"><div class="render-preview-media" style="--preview-aspect:${Number(shadow.width) || 1}/${Number(shadow.height) || 1};--fabric-width:${fabricWidth}%"><img class="render-composite-shadow" src="${escapeHtml(shadow.url)}" alt="" loading="lazy"><img class="render-composite-fabric" src="${escapeHtml(fabric.url)}" alt="${escapeHtml(model.name)} ${escapeHtml(fabric.camera || "render")} Fabric and Shadow combined" loading="lazy"></div><span>Combined · RAW${issues.length ? " · Check" : ""}</span><small>Fabric over Shadow · click to open</small></button>`;
+    };
+    $("renderGalleryImages").innerHTML = model.renders.length ? cameras.map(camera => {
+      const renders = model.renders.filter(render => (render.camera || "Other") === camera).sort((left, right) => (left.layer === "Shadow" ? 1 : 0) - (right.layer === "Shadow" ? 1 : 0) || left.name.localeCompare(right.name));
+      const fabric = renders.find(render => render.layer === "Fabric"), shadow = renders.find(render => render.layer === "Shadow");
+      return `<section class="render-camera-group"><div><strong>${escapeHtml(camera)}</strong><span>${fabric && shadow ? "Fabric · Shadow · Combined" : `${renders.length} layer${renders.length === 1 ? "" : "s"}`}</span></div><div>${renders.map(card).join("")}${combinedCard(fabric, shadow)}</div></section>`;
+    }).join("") : '<div class="empty-state">This model has no render files on disk yet.</div>';
+  };
+  const openCombinedPreview = card => {
+    const popup = window.open("", "_blank");
+    if (!popup) return toast("Allow pop-ups to open the combined preview", true);
+    popup.opener = null;
+    const title = card.dataset.combinedTitle || "Combined render", fabric = card.dataset.fabricUrl, shadow = card.dataset.shadowUrl, fabricWidth = Number(card.dataset.fabricWidth) || 33.333;
+    popup.document.write(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title><style>html,body{height:100%;margin:0;background:#121418;color:#e8e8e5;font:14px Inter,Segoe UI,sans-serif}body{display:grid;grid-template-rows:auto 1fr}.bar{padding:14px 18px;border-bottom:1px solid #343941}.stage{min-height:0;display:grid;place-items:center;padding:20px}.frame{position:relative;width:min(100%,calc((100vh - 84px)*3));aspect-ratio:3/1;overflow:hidden;background:#1a1e23}.frame img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}.frame .fabric{left:50%;width:${fabricWidth}%;transform:translateX(-50%)}</style></head><body><div class="bar">${escapeHtml(title)}</div><div class="stage"><div class="frame"><img src="${escapeHtml(shadow)}" alt=""><img class="fabric" src="${escapeHtml(fabric)}" alt="${escapeHtml(title)}"></div></div></body></html>`);
+    popup.document.close();
+  };
   const selectHistoryModel = model => {
     if (!model) return;
     state.historyModel = model;
+    renderGalleryModels(); renderGallery();
   };
   const selectHistoryBatch = batch => {
     state.historyBatch = batch; state.historySelection = new Set((batch.models || []).map(model => model.name));
+    state.galleryBatch = batch; renderGalleryModels();
     renderHistoryList(); renderHistoryDetail();
     if (batch.models?.length) selectHistoryModel(batch.models[0]);
   };
@@ -321,7 +361,6 @@
         // Orientation fixes in current model metadata must supersede stale yaw
         // values embedded in an older saved job when it is loaded for editing.
         importYaw: Number.isFinite(+inspected.importYaw) ? +inspected.importYaw : (Number(record.importYaw) || 0),
-        sourceMode: record.sourceMode || inspected.sourceMode || "B"
       });
     }
     const materialValues = new Map();
@@ -347,7 +386,7 @@
     document.querySelectorAll('input[name="cropMode"]').forEach(input => input.checked = input.value === crop);
     const sides = new Set(restored.map(model => model.side).filter(side => ["R", "L", "U"].includes(side)));
     $("sceneSide").value = sides.size === 1 ? [...sides][0] : "auto";
-    $("sourceMode").value = restored[0].sourceMode || "B"; $("jobResult").hidden = true;
+    $("jobResult").hidden = true;
     validate(); document.querySelector(".workspace").scrollIntoView({ behavior: "smooth", block: "start" });
     const conflicts = [...materialValues.values()].filter(values => values.size > 1).length;
     toast(`Loaded ${restored.length} model${restored.length === 1 ? "" : "s"} for editing${conflicts ? ` · ${conflicts} material conflict${conflicts === 1 ? "" : "s"} need review` : ""}`);
@@ -360,6 +399,10 @@
       state.historyBatch = selectedBatch;
       if (changedBatch || !state.historySelection.size) state.historySelection = new Set((selectedBatch?.models || []).map(model => model.name));
       renderHistoryList(); renderHistoryDetail();
+      state.galleryBatch = selectedBatch; renderGalleryModels();
+      if (state.historyModel && selectedBatch) {
+        const updated = (selectedBatch.models || []).find(model => model.name === state.historyModel.name); if (updated) selectHistoryModel(updated);
+      } else if (selectedBatch?.models?.length) selectHistoryModel(selectedBatch.models[0]);
     } catch (error) { $("historyList").innerHTML = `<div class="empty-state">History unavailable: ${escapeHtml(error.message)}</div>`; }
   };
   const refreshSheet = async () => {
@@ -393,7 +436,7 @@
       const [removed] = state.batch.splice(index, 1); state.jobPath = null;
       if (state.model?.path === removed.path) state.model = state.batch[Math.min(index, state.batch.length - 1)] || null;
       renderMaterials(); renderBatch();
-      if (state.model) selectModel(state.model); else { $("modelDetails").hidden = true; $("modelEmpty").hidden = false; $("rigUseModel").disabled = true; $("modelPath").value = ""; }
+      if (state.model) selectModel(state.model); else { $("modelDetails").hidden = true; $("modelEmpty").hidden = false; $("modelPath").value = ""; }
       validate(); return;
     }
     selectModel(state.batch[index]);
@@ -440,6 +483,14 @@
   $("historyDetail").addEventListener("change", event => {
     const input = event.target.closest("[data-history-model-select]"); if (!input) return;
     if (input.checked) state.historySelection.add(input.dataset.historyModelSelect); else state.historySelection.delete(input.dataset.historyModelSelect);
+  });
+  $("galleryModels").addEventListener("click", event => {
+    const button = event.target.closest("[data-gallery-model-index]"); if (!button || !state.galleryBatch) return;
+    selectHistoryModel(state.galleryBatch.models[+button.dataset.galleryModelIndex]);
+  });
+  $("renderGalleryImages").addEventListener("click", event => {
+    const combined = event.target.closest("[data-fabric-url][data-shadow-url]");
+    if (combined) openCombinedPreview(combined);
   });
   $("closeJobDialog").addEventListener("click", () => $("jobDialog").close());
   $("jobDialog").addEventListener("click", event => { if (event.target === $("jobDialog")) $("jobDialog").close(); });

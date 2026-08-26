@@ -199,6 +199,20 @@
       </div>
     </section>
 
+    <section class="renders-section" aria-labelledby="rendersTitle">
+      <div class="section-heading">
+        <div><p class="eyebrow">ON DISK</p><h2 id="rendersTitle">Render preview</h2><p>Switch between the models of the selected job and look at what Unreal actually wrote.</p></div>
+      </div>
+      <div id="galleryModelGroup" class="gallery-model-group" hidden>
+        <div class="gallery-model-heading"><span>BATCH MODELS</span><small id="galleryModelCount"></small></div>
+        <div id="galleryModels" class="gallery-models"></div>
+      </div>
+      <div id="renderGallery" class="render-gallery" hidden>
+        <div class="render-gallery-heading"><div><span>DISK RENDERS</span><strong id="renderGalleryModel"></strong></div><span id="renderGalleryCount"></span></div>
+        <div id="renderGalleryImages" class="render-gallery-images"></div>
+      </div>
+    </section>
+
   </main>
 
   <dialog id="jobDialog" class="job-dialog" aria-labelledby="jobDialogTitle">

@@ -87,6 +87,9 @@
     modelPath: state.model.path,
     models: state.batch.map(model => ({ modelPath: model.path, dimensions: model.dimensions, importYaw: model.importYaw })),
     category: $("category").value,
+    // The dropdown decides what is being rendered; the folder a model sits in is evidence,
+    // and preflight says so when the two disagree.
+    productType: String($("category").value || "Sectionals").toLowerCase(),
     environment: $("environment").value,
     side: $("sceneSide").value, renderProfile: selected("renderProfile")[0] || "high", cropMode: selected("cropMode")[0] || "full",
     dimensions: { width: +$("width").value, depth: +$("depth").value, height: +$("height").value },

@@ -116,9 +116,9 @@
         <div id="modelDetails" class="model-details" hidden>
           <div class="model-name-row"><div><span>MODEL</span><strong id="inspectedName"></strong></div><span id="modelSide" class="tag"></span></div>
           <div class="dimension-grid">
-            <label>Width <span>cm</span><input id="width" type="number" min="1" step="0.1"></label>
-            <label>Depth <span>cm</span><input id="depth" type="number" min="1" step="0.1"></label>
-            <label>Height <span>cm</span><input id="height" type="number" min="1" step="0.1"></label>
+            <label>Width <span>cm</span><input id="width" type="text" inputmode="decimal" readonly tabindex="-1"></label>
+            <label>Depth <span>cm</span><input id="depth" type="text" inputmode="decimal" readonly tabindex="-1"></label>
+            <label>Height <span>cm</span><input id="height" type="text" inputmode="decimal" readonly tabindex="-1"></label>
             <label>Import yaw <span>°</span><input id="importYaw" type="number" step="90"></label>
           </div>
           <p id="modelWarning" class="inline-warning" hidden></p>

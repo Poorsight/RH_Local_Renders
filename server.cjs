@@ -370,8 +370,15 @@ async function preflight(input) {
     try {
       const model = await models.inspect(selection.modelPath), side = input.side === "auto" || !input.side ? model.side : String(input.side).toUpperCase();
       inspected.push(model);
-      // A side only means something for a sectional; a sofa has one shape and no handedness.
-      const needsSide = productType(input.productType || model.group).requiresSide;
+      // The chosen type drives the job. Where a model sits says what it is, so a model from
+      // another type's folder would be rendered with the wrong cameras, lights and scene.
+      const chosen = String(input.productType || model.group || "sectionals").toLowerCase();
+      const implied = String(model.group || "sectionals").toLowerCase();
+      if (chosen !== implied) {
+        checks.push({ id: `model:${model.name}:type`, level: "error", label: model.name,
+          detail: `Model type is ${chosen}, but this model is filed under ${implied}. It would render with the wrong cameras and lights.` });
+      }
+      const needsSide = productType(chosen).requiresSide;
       if (!fs.existsSync(model.path)) checks.push({ id: `model:${model.name}`, level: "error", label: model.name, detail: "Model file is missing." });
       else if (needsSide && !["R", "L", "U"].includes(side)) checks.push({ id: `model:${model.name}`, level: "error", label: model.name, detail: "L/R/U form factor could not be determined." });
     } catch (modelError) { checks.push({ id: `model:${selection.modelPath}`, level: "error", label: path.basename(String(selection.modelPath || "Model")), detail: modelError.message }); }
@@ -400,7 +407,18 @@ async function preflight(input) {
     const missing = assigned.map(row => String(row.material).trim()).filter(name => !assetNames.has(name.toLowerCase()));
     checks.push(missing.length ? { id: "materials", level: "error", label: "Materials", detail: `Not found in Unreal: ${missing.join(", ")}` } : { id: "materials", level: "ok", label: "Materials", detail: `${assigned.length} assignment${assigned.length === 1 ? "" : "s"} found in Unreal Content.` });
   }
-  checks.push(sheet.status().rows ? { id: "lights", level: sheet.status().source === "live" ? "ok" : "warning", label: "Light data", detail: `${sheet.status().rows} Sectionals / Indoor rows · ${sheet.status().source}` } : { id: "lights", level: "error", label: "Light data", detail: "No light rows are available." });
+  // "auto" means the side comes from the model, so the scene has to be built from the side
+  // that was actually resolved rather than from the word in the form.
+  const resolvedSide = ["R", "L", "U"].includes(String(input.side).toUpperCase())
+    ? String(input.side).toUpperCase()
+    : String(inspected[0]?.side || "R").toUpperCase();
+  const lightScene = productType(input.productType).scene(resolvedSide);
+  const sceneRows = Object.keys(sheet.rig()[lightScene] || {}).length;
+  checks.push(sheet.status().rows
+    ? sceneRows
+      ? { id: "lights", level: sheet.status().source === "live" ? "ok" : "warning", label: "Light data", detail: `${sceneRows} camera${sceneRows === 1 ? "" : "s"} lit for ${lightScene} · ${sheet.status().rows} rows · ${sheet.status().source}` }
+      : { id: "lights", level: "error", label: "Light data", detail: `The sheet has no lights for ${lightScene}.` }
+    : { id: "lights", level: "error", label: "Light data", detail: "No light rows are available." });
   const pluginRoot = path.join(path.dirname(UNREAL_PROJECT), "Plugins", "BatchRender"), markerFile = path.join(pluginRoot, "Source", "BatchRenderEditor", "Public", "JobModel.h");
   const bridgeSource = fs.existsSync(markerFile) && fs.readFileSync(markerFile, "utf8").includes("CameraFocalHandoffVersion");
   const sourceTime = latestModified(path.join(pluginRoot, "Source"), [".h", ".cpp"]), binaryRelative = [path.join("Binaries", "Win64", "UnrealEditor-BatchRender.dll"), path.join("Binaries", "Win64", "UnrealEditor-BatchRenderEditor.dll")], binaryFiles = binaryRelative.map(file => path.join(pluginRoot, file));

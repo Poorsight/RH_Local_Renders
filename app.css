@@ -931,3 +931,8 @@ legend+.choice-row,legend+.selective-options{margin-top:8px}
 .model-check-finding[data-level=warning]>i{color:var(--amber,#c8922f)}
 .model-check-finding[data-level=error]>i{color:var(--danger)}
 .model-check-row[data-worst=error]{box-shadow:var(--bevel),var(--lift-sm),inset 0 0 0 1px var(--danger-line)}
+
+/* A measurement is not a setting. These come out of the model file, and a spinner next to
+   one only invites it to be changed by a stray scroll. */
+input[readonly]{background:transparent;box-shadow:none;color:var(--text);cursor:default;font-variant-numeric:tabular-nums}
+input[readonly]:hover,input[readonly]:focus{box-shadow:none}

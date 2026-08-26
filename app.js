@@ -463,24 +463,26 @@
   const TRASH_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12M10.5 10.5v6M13.5 10.5v6"/></svg>';
   // One popover for every delete on the page: the card only says what is being removed,
   // the confirmation lives here so no card has to carry a second state of its own.
-  let pendingDelete = null;
+  let pendingDelete = null, pendingAnchor = null;
   const askDelete = (trigger, { title, detail, run }) => {
     pendingDelete = run;
     $("deleteConfirmTitle").textContent = title;
     $("deleteConfirmBody").textContent = detail;
     const pop = $("deleteConfirm");
     pop.showPopover?.();
-    const box = trigger.getBoundingClientRect(), width = pop.offsetWidth || 300, height = pop.offsetHeight || 150;
-    // Prefer sitting under the trigger, flip above when that would fall off the bottom, and
-    // clamp either way: a fixed popover placed from an off-screen trigger lands nowhere.
-    const preferred = box.bottom + height + 12 > window.innerHeight ? box.top - height - 8 : box.bottom + 8;
-    const clamp = (value, max) => Math.max(12, Math.min(max - 12, value));
-    pop.style.left = `${clamp(box.right - width, window.innerWidth - width)}px`;
-    pop.style.top = `${clamp(preferred, window.innerHeight - height)}px`;
+    const side = anchorPopover(pop, trigger, "right");
+    pendingAnchor = () => anchorPopover(pop, trigger, "right", side);
+    window.addEventListener("scroll", pendingAnchor, { passive: true, capture: true });
+    window.addEventListener("resize", pendingAnchor);
     trigger.setAttribute("aria-expanded", "true");
   };
   const closeDelete = () => {
     pendingDelete = null;
+    if (pendingAnchor) {
+      window.removeEventListener("scroll", pendingAnchor, { capture: true });
+      window.removeEventListener("resize", pendingAnchor);
+      pendingAnchor = null;
+    }
     $("deleteConfirm").hidePopover?.();
     document.querySelectorAll('.card-delete[aria-expanded="true"]').forEach(button => button.setAttribute("aria-expanded", "false"));
   };
@@ -740,16 +742,37 @@
   for (const ids of Object.values(FRAME_FIELDS)) for (const id of [...ids.res, ...ids.sensor]) {
     $(id).addEventListener("input", () => { describeFrameSize(); state.jobPath = null; $("jobResult").hidden = true; validate(false); });
   }
-  // Positioned once it is open, never before: a closed popover is display:none, so measuring
-  // it then gives zero and the panel lands wherever the fallback guessed.
-  $("frameSizePanel").addEventListener("toggle", event => {
-    if (event.newState !== "open") return;
-    const pop = $("frameSizePanel"), box = $("frameSizeToggle").getBoundingClientRect();
-    const { width, height } = pop.getBoundingClientRect();
+  // A popover lives in the top layer, so it does not scroll with the thing it belongs to and
+  // looks like it is chasing the page. Anchoring means re-placing it while it is open — and
+  // only once it is open, because a closed popover is display:none and measures as zero.
+  // The side is decided once, when it opens. Re-deciding on every scroll makes the panel hop
+  // from under the button to above it and back as room appears.
+  const anchorPopover = (pop, trigger, align = "left", side = null) => {
+    const box = trigger.getBoundingClientRect(), { width, height } = pop.getBoundingClientRect();
     const clamp = (value, max) => Math.max(12, Math.min(Math.max(12, max - 12), value));
-    pop.style.left = `${clamp(box.left, window.innerWidth - width)}px`;
-    pop.style.top = `${clamp(box.bottom + height + 12 > window.innerHeight ? box.top - height - 8 : box.bottom + 8, window.innerHeight - height)}px`;
-  });
+    const above = side ? side === "above" : box.bottom + height + 12 > window.innerHeight;
+    const left = align === "right" ? box.right - width : box.left;
+    pop.style.left = `${clamp(left, window.innerWidth - width)}px`;
+    pop.style.top = `${clamp(above ? box.top - height - 8 : box.bottom + 8, window.innerHeight - height)}px`;
+    return above ? "above" : "below";
+  };
+  const pinPopover = (popId, triggerId, align) => {
+    const pop = $(popId);
+    let follow = null;
+    pop.addEventListener("toggle", event => {
+      if (event.newState === "open") {
+        const side = anchorPopover(pop, $(triggerId), align);
+        follow = () => anchorPopover(pop, $(triggerId), align, side);
+        window.addEventListener("scroll", follow, { passive: true, capture: true });
+        window.addEventListener("resize", follow);
+      } else if (follow) {
+        window.removeEventListener("scroll", follow, { capture: true });
+        window.removeEventListener("resize", follow);
+        follow = null;
+      }
+    });
+  };
+  pinPopover("frameSizePanel", "frameSizeToggle");
   $("copyJobPath").addEventListener("click", async () => { await navigator.clipboard.writeText(state.jobPath || ""); toast("Job path copied"); });
   $("refreshHistory").addEventListener("click", loadHistory);
   $("historySearch").addEventListener("input", renderHistoryList); $("historyFilter").addEventListener("change", renderHistoryList);

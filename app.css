@@ -112,7 +112,7 @@ main{width:calc(100% - clamp(18px,2.4vw,44px));max-width:none;margin:0 auto;padd
 .icon-button{width:34px;height:34px;border-radius:var(--radius-pill);display:grid;place-items:center;color:var(--faint);background:var(--surface-raised);box-shadow:var(--bevel),var(--lift-sm);transition:color .16s,background .16s,box-shadow .16s}
 .icon-button:hover{color:var(--soft)}
 .icon-button svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round}
-.settings-panel{position:fixed;margin:0;inset:auto;top:56px;right:16px;z-index:70;width:min(340px,calc(100vw - 32px));display:none;flex-direction:column;gap:6px;padding:16px;border:0;border-radius:var(--radius-md);background:var(--surface-raised);box-shadow:var(--lift-lg);color:var(--text);opacity:0;transform:translateY(-8px) scale(.985);transition:opacity .17s ease,transform .22s cubic-bezier(.2,.8,.2,1),overlay .22s allow-discrete,display .22s allow-discrete}
+.settings-panel{position:fixed;margin:0;inset:auto;top:56px;right:16px;z-index:70;width:min(340px,calc(100vw - 32px));display:none;flex-direction:column;gap:6px;padding:16px;border:0;border-radius:var(--radius-sm);background:var(--surface-raised);box-shadow:var(--lift-lg);color:var(--text);opacity:0;transform:translateY(-8px) scale(.985);transition:opacity .17s ease,transform .22s cubic-bezier(.2,.8,.2,1),overlay .22s allow-discrete,display .22s allow-discrete}
 .settings-panel:popover-open{display:flex;opacity:1;transform:none}
 @starting-style{.settings-panel:popover-open{opacity:0;transform:translateY(-8px) scale(.985)}}
 .settings-panel::backdrop{background:transparent}
@@ -135,7 +135,7 @@ main{width:calc(100% - clamp(18px,2.4vw,44px));max-width:none;margin:0 auto;padd
 .card-delete:hover{color:var(--danger);background:var(--danger-soft);box-shadow:var(--bevel),inset 0 0 0 1px var(--danger-line)}
 .card-delete svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round}
 @media (hover:none){.card-delete{opacity:.85}}
-.confirm-pop{position:fixed;margin:0;inset:auto;z-index:80;width:min(300px,calc(100vw - 28px));display:none;flex-direction:column;gap:6px;padding:15px;border:0;border-radius:var(--radius-md);background:var(--surface-raised);box-shadow:var(--lift-lg);color:var(--text);opacity:0;transform:translateY(-6px) scale(.985);transition:opacity .16s ease,transform .2s cubic-bezier(.2,.8,.2,1),overlay .2s allow-discrete,display .2s allow-discrete}
+.confirm-pop{position:fixed;margin:0;inset:auto;z-index:80;width:min(300px,calc(100vw - 28px));display:none;flex-direction:column;gap:6px;padding:15px;border:0;border-radius:var(--radius-sm);background:var(--surface-raised);box-shadow:var(--lift-lg);color:var(--text);opacity:0;transform:translateY(-6px) scale(.985);transition:opacity .16s ease,transform .2s cubic-bezier(.2,.8,.2,1),overlay .2s allow-discrete,display .2s allow-discrete}
 .confirm-pop:popover-open{display:flex;opacity:1;transform:none}
 @starting-style{.confirm-pop:popover-open{opacity:0;transform:translateY(-6px) scale(.985)}}
 .confirm-pop::backdrop{background:rgba(0,0,0,.16)}
@@ -949,7 +949,7 @@ input[readonly]:hover,input[readonly]:focus{box-shadow:none}
 .frame-size-row>small{font-size:11px;color:var(--faint)}
 .frame-size-row>small[data-state=custom]{color:var(--accent-ink)}
 #frameSizeToggle[data-state=custom]{color:var(--accent-ink);box-shadow:var(--sel-gleam)}
-.frame-size{position:fixed;margin:0;inset:auto;z-index:75;width:min(460px,calc(100vw - 28px));display:none;flex-direction:column;padding:16px;border:0;border-radius:var(--radius-md);background:var(--surface-raised);box-shadow:var(--lift-lg);color:var(--text);opacity:0;transform:translateY(-8px) scale(.985);transition:opacity .17s ease,transform .22s cubic-bezier(.2,.8,.2,1),overlay .22s allow-discrete,display .22s allow-discrete}
+.frame-size{position:fixed;margin:0;inset:auto;z-index:75;width:min(460px,calc(100vw - 28px));display:none;flex-direction:column;padding:16px;border:0;border-radius:var(--radius-sm);background:var(--surface-raised);box-shadow:var(--lift-lg);color:var(--text);opacity:0;transform:translateY(-8px) scale(.985);transition:opacity .17s ease,transform .22s cubic-bezier(.2,.8,.2,1),overlay .22s allow-discrete,display .22s allow-discrete}
 .frame-size:popover-open{display:flex;opacity:1;transform:none}
 @starting-style{.frame-size:popover-open{opacity:0;transform:translateY(-8px) scale(.985)}}
 .frame-size:not(:popover-open){pointer-events:none}
@@ -962,3 +962,7 @@ input[readonly]:hover,input[readonly]:focus{box-shadow:none}
 .frame-size-grid label>input{flex:1 1 0;min-width:0;width:auto;padding:7px 9px;font-size:12px}
 .frame-size-grid label>i{flex:none;font-style:normal;color:var(--faint);font-size:11px}
 .frame-size .field-hint{margin-top:11px}
+
+/* A popover sits in the top layer, so it does not scroll with the element it belongs to and
+   appears to chase the page. Keeping it pinned means repositioning while it is open. */
+.frame-size-row>.secondary-button{padding:8px 15px;font-size:12.5px}

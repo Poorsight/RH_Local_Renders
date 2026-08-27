@@ -1163,6 +1163,70 @@ test("no closed popover is left standing in the layout", () => {
   assert.match(styles, /\[popover\]:not\(:popover-open\)\{pointer-events:none\}/);
 });
 
+test("run timing is kept per phase, and prices a job that has never run", () => {
+  const stats = require("../lib/run-stats.cjs");
+  const job = { tasks: [
+    { sequence: { cameras: [{ name: "F" }, { name: "TQ" }] }, layers: [{ name: "Fabric" }, { name: "Shadow" }] },
+    { sequence: { cameras: [{ name: "F" }, { name: "TQ" }] }, layers: [{ name: "Fabric" }, { name: "Shadow" }, { name: "Fabric", _rhLocalPrefit: true }] }
+  ] };
+  assert.deepEqual(stats.frameCounts(job), { Fabric: 4, Shadow: 4 }, "a prefit layer hands a camera over, it does not render");
+
+  // A Fabric frame and a Shadow frame are different work -- separate Unreal processes, one
+  // with Substrate and one without -- so they are measured apart rather than averaged.
+  const runs = [{
+    jobId: "a", seconds: 600, frames: { Fabric: 4, Shadow: 4 },
+    phases: [
+      { name: "Crop calibration · Fabric", layer: "Fabric", calibration: true, frames: 4, seconds: 40 },
+      { name: "Fabric", layer: "Fabric", calibration: false, frames: 4, seconds: 400 },
+      { name: "Shadow", layer: "Shadow", calibration: false, frames: 4, seconds: 160 }
+    ]
+  }];
+  const summary = stats.summarise(runs);
+  assert.equal(summary.perFrame.Fabric.seconds, 100, "400s over four frames");
+  assert.equal(summary.perFrame.Shadow.seconds, 40, "and the calibration probe is left out of both");
+
+  // Pricing a job is then its own frame count against those rates.
+  const estimate = stats.estimateFor(job, summary);
+  assert.equal(estimate.seconds, 4 * 100 + 4 * 40);
+  assert.deepEqual(estimate.frames, { Fabric: 4, Shadow: 4 });
+
+  // A layer nobody has ever rendered is reported as unmeasured, not guessed at.
+  const partial = stats.summarise([{ phases: [{ layer: "Fabric", calibration: false, frames: 2, seconds: 100 }] }]);
+  assert.deepEqual(stats.estimateFor(job, partial).unmeasuredLayers, ["Shadow"]);
+  assert.equal(stats.estimateFor(job, { perFrame: {} }), null, "with nothing measured there is no estimate to give");
+});
+
+test("the page reads a job's own cameras, product type and check verdicts", () => {
+  const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
+  const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const styles = fs.readFileSync(path.join(root, "app.css"), "utf8");
+  const historyLib = fs.readFileSync(path.join(root, "lib", "history.cjs"), "utf8");
+  const jobs = fs.readFileSync(path.join(root, "lib", "jobs.cjs"), "utf8");
+
+  // Selective render used to offer F, FH, TQ whatever the job was built for, and "Edit
+  // selection" then restored those onto a sofa.
+  assert.match(historyLib, /cameras: \[\.\.\.new Set\(\(job\.tasks \|\| \[\]\)/);
+  assert.match(client, /batch\.cameras\?\.length \? batch\.cameras/);
+  assert.match(client, /batch\.layers\?\.length \? batch\.layers/);
+
+  // The model type is written into the job and put back when one is loaded for editing.
+  assert.match(jobs, /productType: type\.key/);
+  assert.match(client, /const productTypeOfJob =/);
+  assert.match(client, /\$\("category"\)\.value = jobProductType; applyProductType\(\)/);
+
+  // A model wears its verdict in the list, and the batch heading says how many want looking
+  // at -- a problem below the fold has to announce itself.
+  assert.match(html, /id="checkJump"/);
+  assert.match(client, /const checkStateOf = name =>/);
+  assert.match(styles, /\.batch-model\[data-check=error\]:before\{background:var\(--danger\)\}/);
+  assert.match(client, /\$\("checkJump"\)\.addEventListener/);
+
+  // The close control is not a delete. Wearing that class subscribed it to the page's
+  // delete interception, which consumed the click before the button ever saw it.
+  assert.match(html, /id="closeModelCheck" class="panel-close"/);
+  assert.doesNotMatch(html, /card-delete/, "delete controls are generated where they have a target to name");
+});
+
 test("legacy light-rig project files stay out of the unified project", () => {
   for (const legacy of ["handoff", "light-rig-reference.html", "comments.php", "ONBOARDING.md", ".claude"]) {
     assert.equal(fs.existsSync(path.join(root, legacy)), false, legacy);

@@ -17,6 +17,7 @@ const { modelFingerprint, readCropProfiles, writeCropProfiles, cropProfileFor, a
 const { rendererToken, readCameraFitProfiles, cameraFitStatesForJob, writeCameraFitState } = require("./lib/camera-fit.cjs");
 const { buildUnrealLaunch } = require("./lib/unreal.cjs");
 const { history, expectedRenders } = require("./lib/history.cjs");
+const runStats = require("./lib/run-stats.cjs");
 const { availability: postProcessAvailability, isProcessedImage, originalFilesForJob, processJob, processedPathFor } = require("./lib/post-process.cjs");
 
 const ROOT = __dirname;
@@ -165,6 +166,17 @@ function finishRun(state, message) {
   const run = activeRun, produced = changedImages(run.outputFolder, run.before), originals = new Set(originalFilesForJob(run.job).map(file => path.resolve(file))), deliverables = produced.filter(file => originals.has(path.resolve(file))), succeeded = state === "success" && deliverables.length > 0;
   render.pid = null;
   appendRenderLog(`\nRender plan ${succeeded ? "success" : "failed"}: ${message}; changed images: ${produced.length}\n`);
+  // Every way a run ends passes through here, so this is where its timing is written down.
+  const endedAt = new Date().toISOString();
+  const openPhase = run.phases[run.index];
+  if (openPhase && openPhase.startedAt && !openPhase.finishedAt) openPhase.finishedAt = endedAt;
+  try {
+    runStats.recordRun(ROOT, {
+      jobId: run.job?.jobId || path.basename(run.jobPath || "", ".job.json"),
+      jobPath: run.jobPath, job: run.job, startedAt: render.startedAt, finishedAt: endedAt,
+      state: succeeded ? "success" : "failed", phases: run.phases
+    });
+  } catch (statsError) { appendRenderLog("Could not record run timing: " + statsError.message + "\n"); }
   activeRun = null; bridge = null;
   if (!succeeded) {
     render.state = "failed"; render.finishedAt = new Date().toISOString();
@@ -255,6 +267,7 @@ function advancePhaseOrFinish(message) {
     try { finalizeCropCalibration(activeRun); }
     catch (calibrationError) { return finishRun("failed", calibrationError.message); }
   }
+  phase.finishedAt = phase.finishedAt || new Date().toISOString();
   if (activeRun.index + 1 < activeRun.phases.length) {
     activeRun.index += 1; render.pid = null; render.phase = `Preparing ${activeRun.phases[activeRun.index].name}`; render.phaseIndex = activeRun.index + 1; render.substrate = null; render.currentTask = null;
     appendRenderLog(`${phase.name} is complete. Restarting Unreal for ${activeRun.phases[activeRun.index].name} with Substrate ${activeRun.phases[activeRun.index].substrate ? "ON" : "OFF"}.\n`);
@@ -275,6 +288,12 @@ function restartRenderPhase(reason) {
 function startRenderPhase() {
   if (!activeRun) return;
   const phase = activeRun.phases[activeRun.index], apiUrl = `http://${HOST}:${PORT}/api/unreal`;
+  // Stamped once, not on every automatic restart, so a retry does not reset the clock on
+  // work the phase has already done.
+  if (!phase.startedAt) {
+    phase.startedAt = new Date().toISOString();
+    phase.frames = Object.values(runStats.frameCounts(phase.job)).reduce((total, count) => total + count, 0);
+  }
   let phaseJob = remainingPhaseJob(activeRun, phase);
   if (!phaseJob.tasks.length) return advancePhaseOrFinish(`${phase.name} already complete`);
   const canApplyPersistentFits = phase.layerName === "Fabric" && activeRun.cachedCameraStateKeys.size > 0;
@@ -723,7 +742,21 @@ Forced stop during ${stoppedDuring}. Unreal is being killed and the run is aband
     startPostProcessing(job, jobPath, files, { automatic: false });
     return json(response, 202, currentRender());
   }
-  if (request.method === "GET" && url.pathname === "/api/history") return json(response, 200, { batches: history(ROOT, currentRender()) });
+  if (request.method === "GET" && url.pathname === "/api/history") {
+    // Timing rides along with the archive: what each job took, and -- from every run so far
+    // -- what a frame of each layer costs, so a job that has never run can be estimated.
+    const runs = runStats.readRuns(ROOT), summary = runStats.summarise(runs);
+    const byJob = new Map(runs.map(run => [run.jobId, run]));
+    const batches = history(ROOT, currentRender()).map(batch => {
+      const run = byJob.get(batch.id);
+      let job = null;
+      if (!run) { try { job = JSON.parse(fs.readFileSync(batch.jobPath, "utf8")); } catch { job = null; } }
+      return { ...batch,
+        timing: run ? { seconds: run.seconds, phases: run.phases, at: run.finishedAt } : null,
+        estimate: run ? null : (job ? runStats.estimateFor(job, summary) : null) };
+    });
+    return json(response, 200, { batches, timing: summary });
+  }
   if (request.method === "GET" && url.pathname === "/api/jobs/file") {
     const jobsRoot = path.join(ROOT, "local", "jobs", "generated"), file = path.resolve(jobsRoot, url.searchParams.get("path") || "");
     if (!within(file, jobsRoot) || !file.toLowerCase().endsWith(".job.json")) return error(response, 403, "Job file is outside the generated jobs folder");

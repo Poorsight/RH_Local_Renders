@@ -735,7 +735,11 @@ test("deleting from the web drops the renders, their proxies and only the asked-
 test("the service stays same-origin until an origin is allowed, then answers a remote page", async () => {
   const port = await freePort(), remote = "https://preview.3dsource.com";
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-  const start = env => spawn(process.execPath, [path.join(root, "server.cjs")], { cwd: root, windowsHide: true, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, RH_LOCAL_RENDERS_PORT: String(port), ...env } });
+  const start = env => {
+    const inherited = { ...process.env, RH_LOCAL_RENDERS_PORT: String(port) };
+    delete inherited.RH_ALLOWED_ORIGINS;
+    return spawn(process.execPath, [path.join(root, "server.cjs")], { cwd: root, windowsHide: true, stdio: ["ignore", "pipe", "pipe"], env: { ...inherited, ...env } });
+  };
   const waitFor = async () => { for (let attempt = 0; attempt < 60; attempt++) { try { if ((await fetch(`http://127.0.0.1:${port}/api/status`)).ok) return true; } catch {} await sleep(50); } return false; };
   let service = start({});
   try {
@@ -1299,6 +1303,87 @@ test("a checked model is not checked again until its file changes", () => {
     "a keyless reader has to be able to see verdicts already earned");
   assert.match(client, /const loadCachedChecks = async/);
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("a render is measured against the frame its job asked for, not the profile's", () => {
+  const { history } = require("../lib/history.cjs");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "rh-size-"));
+  const jobs = path.join(dir, "local", "jobs", "generated");
+  const out = path.join(dir, "local", "renders", "batch_1");
+  const raw = path.join(out, "raw", "SOFA");
+  fs.mkdirSync(jobs, { recursive: true });
+  fs.mkdirSync(raw, { recursive: true });
+
+  // Enough of a PNG for the header reader: signature, then IHDR with width, height and a
+  // colour type that carries alpha. Padded past the "suspiciously small" floor.
+  const png = (width, height) => {
+    const buffer = Buffer.alloc(2048);
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(buffer, 0);
+    buffer.writeUInt32BE(width, 16);
+    buffer.writeUInt32BE(height, 20);
+    buffer[25] = 6;                       // truecolour with alpha
+    return buffer;
+  };
+  // A job given a frame of its own, then cropped: 3600 wide, trimmed to 1528 tall.
+  const asked = { Fabric: { X: 3600, Y: 1528 }, Shadow: { X: 10800, Y: 1528 } };
+  fs.writeFileSync(path.join(raw, "00000000_F_Fabric.png"), png(asked.Fabric.X, asked.Fabric.Y));
+  fs.writeFileSync(path.join(raw, "00000000_F_Shadow.png"), png(asked.Shadow.X, asked.Shadow.Y));
+
+  const job = {
+    jobId: "batch_1",
+    _rhLocal: { outputFolder: out + path.sep, models: [{ name: "SOFA", outputFolder: raw }] },
+    tasks: [{
+      taskId: "SOFA",
+      sequence: { cameras: [{ name: "F", LayerResolutions: [
+        { Name: "Fabric", Resolution: asked.Fabric, SensorSize: { X: 36, Y: 15.28 } },
+        { Name: "Shadow", Resolution: asked.Shadow, SensorSize: { X: 108, Y: 15.28 } }
+      ] }] },
+      layers: [{ name: "Fabric", output: { folder: raw } }, { name: "Shadow", output: { folder: raw } }]
+    }]
+  };
+  fs.writeFileSync(path.join(jobs, "batch_1.job.json"), JSON.stringify(job, null, 2));
+
+  const renders = history(dir)[0].models[0].renders;
+  assert.equal(renders.length, 2);
+  for (const render of renders) {
+    assert.deepEqual(render.issues, [],
+      `${render.layer} at ${render.width}x${render.height} is exactly what the job asked for`);
+  }
+
+  // And a frame that genuinely is not what was asked for is still caught.
+  fs.writeFileSync(path.join(raw, "00000000_F_Fabric.png"), png(2000, 1528));
+  const wrong = history(dir)[0].models[0].renders.find(render => render.layer === "Fabric");
+  assert.deepEqual(wrong.issues, ["Unexpected size"]);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("a job carries the frame it was given, and reopens with it", () => {
+  const { buildJob } = require("../lib/jobs.cjs");
+  const model = { name: "SOFA", path: "D:\m\sofas\s.obj", group: "sofas", offsetUniformScale: 0.1, materialIds: ["UPH", "Feet"] };
+  const asked = {
+    Fabric: { Resolution: { X: 3600, Y: 3600 }, SensorSize: { X: 36, Y: 36 } },
+    Shadow: { Resolution: { X: 10800, Y: 3600 }, SensorSize: { X: 108, Y: 36 } }
+  };
+  const job = buildJob({ productType: "sofas", cameras: ["F"], layers: ["Fabric", "Shadow"], renderProfile: "high",
+    cropMode: "optimized", dimensions: { width: 277, depth: 106, height: 85 }, resolutions: asked,
+    materials: [{ meshes: ["UPH"], material: "FAB" }, { meshes: ["Feet"], material: "WOOD" }] }, model, rig, "D:\out");
+
+  // The crop rewrites LayerResolutions in place, so the frame a person typed has to be kept
+  // apart from them or reopening the job would offer the cropped numbers as the base.
+  assert.deepEqual(job._rhLocal.baseFrame.Fabric.Resolution, { X: 3600, Y: 3600 });
+  assert.deepEqual(job._rhLocal.baseFrame.Shadow.Resolution, { X: 10800, Y: 3600 });
+
+  const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  assert.match(client, /const applyFrameSize = frame =>/);
+  assert.match(client, /applyFrameSize\(job\._rhLocal\?\.baseFrame \|\| metadataRows\[0\]\?\.baseFrame\)/);
+  // It has to land after the profile switch, which fills the fields from the profile.
+  const styles = fs.readFileSync(path.join(root, "app.css"), "utf8");
+  assert.ok(client.indexOf("applyFrameSize(job._rhLocal") > client.indexOf('input[name="renderProfile"]:checked'),
+            "the profile fills the fields, so a recorded frame goes in after it");
+  // A flagged render was the one preview that got its lift back, because that rule outweighed
+  // the one taking the shadow off every preview.
+  assert.doesNotMatch(styles, /render-preview-card\.render-warning\{box-shadow:var\(--bevel\),var\(--lift-sm\)/);
+  assert.match(styles, /\.render-preview-card\.render-warning>small\{color:var\(--danger\)/);
 });
 
 test("legacy light-rig project files stay out of the unified project", () => {

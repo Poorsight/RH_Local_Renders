@@ -296,6 +296,21 @@
     $("fabricResolutionLabel").textContent = `Path Trace · ${size("Fabric")}`;
     $("shadowResolutionLabel").textContent = `Lumen · ${size("Shadow")}`;
   };
+  // Puts a recorded frame back into the fields. fillFrameSize only knows the profile, and a
+  // job that was given a frame of its own has to be reopened with that frame, not the
+  // profile's -- otherwise editing it silently re-renders at a different size.
+  const applyFrameSize = frame => {
+    let applied = false;
+    for (const [layer, fields] of Object.entries(FRAME_FIELDS)) {
+      const asked = frame?.[layer];
+      if (!asked?.Resolution || !asked?.SensorSize) continue;
+      $(fields.res[0]).value = asked.Resolution.X; $(fields.res[1]).value = asked.Resolution.Y;
+      $(fields.sensor[0]).value = asked.SensorSize.X; $(fields.sensor[1]).value = asked.SensorSize.Y;
+      applied = true;
+    }
+    if (applied) describeFrameSize();
+    return applied;
+  };
   const frameOverrides = () => {
     const out = {};
     for (const [layer, fields] of Object.entries(FRAME_FIELDS)) {
@@ -685,6 +700,8 @@
     const profile = String(job._rhLocal?.renderProfile || metadataRows[0]?.renderProfile || "").toLowerCase() || ((tasks[0]?.sequence?.cameras?.[0]?.LayerResolutions || []).some(layer => Number(layer.Resolution?.Y) <= 500) ? "low" : "high");
     document.querySelectorAll('input[name="renderProfile"]').forEach(input => input.checked = input.value === profile);
     document.querySelector('input[name="renderProfile"]:checked')?.dispatchEvent(new Event("change"));
+    // After the profile, because switching it fills the fields from that profile.
+    applyFrameSize(job._rhLocal?.baseFrame || metadataRows[0]?.baseFrame);
     const crop = String(job._rhLocal?.cropMode || metadataRows[0]?.cropMode || "full").toLowerCase();
     document.querySelectorAll('input[name="cropMode"]').forEach(input => input.checked = input.value === crop);
     const sides = new Set(restored.map(model => model.side).filter(side => ["R", "L", "U"].includes(side)));

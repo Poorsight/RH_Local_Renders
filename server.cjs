@@ -13,7 +13,7 @@ const { siblingBranch, isInBranch } = require("./lib/output-layout.cjs");
 const { publishPreviews, previewFileFor } = require("./lib/preview.cjs");
 const { checkModel, summarise } = require("./lib/model-check.cjs");
 const { inspectObjParts, normalizeObjParts, writeMaterialLibrary } = require("./lib/obj-parts.cjs");
-const { modelFingerprint, readCropProfiles, writeCropProfiles, cropProfileFor, analyzeCalibrationPair, applyCropProfileToCamera, calibrationFiles } = require("./lib/crop.cjs");
+const { modelFingerprint, readCropProfiles, writeCropProfiles, cropProfileFor, forgetCropProfiles, analyzeCalibrationPair, applyCropProfileToCamera, calibrationFiles } = require("./lib/crop.cjs");
 const { rendererToken, readCameraFitProfiles, cameraFitStatesForJob, writeCameraFitState } = require("./lib/camera-fit.cjs");
 const { buildUnrealLaunch } = require("./lib/unreal.cjs");
 const { history, expectedRenders } = require("./lib/history.cjs");
@@ -440,21 +440,35 @@ async function preflight(input) {
     } catch (modelError) { checks.push({ id: `model:${selection.modelPath}`, level: "error", label: path.basename(String(selection.modelPath || "Model")), detail: modelError.message }); }
   }
   if (inspected.length) checks.push({ id: "models", level: "ok", label: "Models", detail: `${inspected.length} FBX file${inspected.length === 1 ? "" : "s"} found; dimensions and form factors are ready.` });
-  const cameras = Array.isArray(input.cameras) ? input.cameras.filter(value => ["F", "FH", "TQ"].includes(value)) : [];
+  const previewType = productType(String(input.productType || inspected[0]?.group || "sectionals").toLowerCase());
+  const cameras = Array.isArray(input.cameras) ? input.cameras.filter(value => previewType.cameras.includes(value)) : [];
   const layers = Array.isArray(input.layers) ? input.layers.filter(value => ["Fabric", "Shadow"].includes(value)) : [];
   checks.push(cameras.length ? { id: "cameras", level: "ok", label: "Cameras", detail: cameras.join(" · ") } : { id: "cameras", level: "error", label: "Cameras", detail: "Select at least one camera." });
   const shadowOnly = layers.includes("Shadow") && !layers.includes("Fabric");
   checks.push(layers.length ? { id: "layers", level: "ok", label: "Layers", detail: shadowOnly ? "Shadow · automatic 500×500 Fabric camera prefit" : layers.join(" → ") } : { id: "layers", level: "error", label: "Layers", detail: "Select at least one layer." });
   let cropCalibrations = 0;
+  const reusedCrops = [];
   if (String(input.cropMode || "full").toLowerCase() === "optimized" && inspected.length && cameras.length) {
     const cropStore = readCropProfiles(ROOT);
+    // Saying only how many pairs will be measured leaves the other half silent, so a camera
+    // that quietly reuses a crop measured days ago looks like a missing calibration render.
     for (const model of inspected) {
       const fingerprint = modelFingerprint(model.path);
-      cropCalibrations += cameras.filter(camera => !cropProfileFor(cropStore, fingerprint, camera)).length;
+      for (const camera of cameras) {
+        const profile = cropProfileFor(cropStore, fingerprint, camera);
+        if (profile) reusedCrops.push(profile); else cropCalibrations += 1;
+      }
     }
+    const dates = reusedCrops.map(profile => profile?.analyzedAt).filter(Boolean).sort();
+    const when = dates.length ? new Date(dates[0]).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" }) : "";
+    const reusedNote = reusedCrops.length
+      ? ` ${reusedCrops.length} pair${reusedCrops.length === 1 ? "" : "s"} reuse a crop saved earlier${when ? `, oldest ${when}` : ""} and render no probe.`
+      : "";
     checks.push(cropCalibrations
-      ? { id: "crop", level: "warning", label: "Optimized crop", detail: `${cropCalibrations} model/camera pair${cropCalibrations === 1 ? "" : "s"} will run one-time 500px Fabric + Shadow calibration before final renders.` }
-      : { id: "crop", level: "ok", label: "Optimized crop", detail: "Every selected model/camera pair has a saved safe crop profile." });
+      ? { id: "crop", level: "warning", label: "Optimized crop",
+          detail: `${cropCalibrations} model/camera pair${cropCalibrations === 1 ? "" : "s"} will run one-time 500px Fabric + Shadow calibration before final renders.${reusedNote}` }
+      : { id: "crop", level: "ok", label: "Optimized crop",
+          detail: `Every selected model/camera pair has a saved safe crop profile${when ? `, oldest ${when}` : ""}. No calibration will run.` });
   } else checks.push({ id: "crop", level: "ok", label: "Frame crop", detail: "Full frame · original resolution and sensor aspect." });
   const assets = unrealMaterials(), assetNames = new Map(assets.map(asset => [asset.name.toLowerCase(), asset]));
   const assigned = Array.isArray(input.materials) ? input.materials : [];
@@ -614,6 +628,19 @@ async function api(request, response, url) {
       .filter(Boolean);
     return json(response, 200, { checked: rows.length, reused: rows.length, fresh: 0, requested: rows.length,
       failing: rows.filter(row => row.errors).length, warning: rows.filter(row => row.warnings).length, models: rows });
+  }
+  if (request.method === "POST" && url.pathname === "/api/crops/forget") {
+    // A crop measured before a scene or a light moved is measuring the wrong thing. Dropping
+    // it is refused mid-render, since the run writes into this same store as it calibrates.
+    if (child || activeRun || postProcessPromise) return error(response, 409, "A render is running; its crops are still being written");
+    const input = await body(request);
+    const paths = Array.isArray(input.models) ? input.models : [];
+    const fingerprints = [];
+    for (const modelPath of paths) {
+      try { fingerprints.push(modelFingerprint((await models.inspect(modelPath)).path)); } catch { /* a model we cannot read has no crop to drop */ }
+    }
+    const dropped = forgetCropProfiles(ROOT, { fingerprints, cameras: input.cameras, all: Boolean(input.all) });
+    return json(response, 200, { dropped: dropped.length, entries: dropped });
   }
   if (request.method === "POST" && url.pathname === "/api/models/check") {
     // Checks every model on disk, or the ones asked for. Inspecting a model that has never

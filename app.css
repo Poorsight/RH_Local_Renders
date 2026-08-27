@@ -1060,6 +1060,9 @@ input[readonly]:hover,input[readonly]:focus{box-shadow:none}
    is a switch row of one -- without this it sat 8px above the Frame crop buttons it
    shares a line with. */
 legend+.frame-size-trigger{margin-top:8px}
+/* Sits under the crop switches, quieter than them: it throws work away rather than choosing
+   how the work is done. */
+#remeasureCrops{align-self:flex-start;margin-top:2px;padding:6px 12px;font-size:11.5px}
 
 /* Frame size opens a panel rather than switching a value, so it is a single
    button the width of its column -- the same face as a switch, deliberately not

@@ -97,10 +97,30 @@
     importYaw: +$("importYaw").value || 0,
     cameras: selected("camera"), layers: selected("layer"), materials: materialRows()
   });
+  // Only the optimized mode keeps saved crops, so only there is there anything to drop.
+  const syncCropActions = () => {
+    const optimized = (selected("cropMode")[0] || "full") === "optimized";
+    $("remeasureCrops").hidden = !optimized || !state.batch.length;
+  };
+  const remeasureCrops = async () => {
+    const button = $("remeasureCrops");
+    button.disabled = true; button.textContent = "Dropping…";
+    try {
+      const result = await api("/api/crops/forget", { method: "POST", body: JSON.stringify({
+        models: state.batch.map(model => model.path), cameras: selected("camera") }) });
+      toast(result.dropped
+        ? `${result.dropped} saved crop${result.dropped === 1 ? "" : "s"} dropped; the next run measures them again`
+        : "No saved crops for this batch — the next run measures everything anyway");
+      state.jobPath = null; $("jobResult").hidden = true;
+      await refreshPreflight(); validate(false);
+    } catch (error) { toast(error.message, true); }
+    finally { button.disabled = false; button.textContent = "Re-measure crops"; }
+  };
   const syncActionButtons = basicReady => {
     const ready = basicReady && state.preflight?.ok === true;
     $("generateJob").disabled = !ready;
     $("launchRender").disabled = !state.jobPath && !ready;
+    syncCropActions();
   };
   const renderPreflight = result => {
     const panel = $("preflight"), checks = result?.checks || [];
@@ -810,6 +830,7 @@
   $("deleteConfirm").addEventListener("toggle", event => { if (event.newState === "closed") closeDelete(); });
   $("category").addEventListener("change", applyProductType);
   $("checkModels").addEventListener("click", checkModels);
+  $("remeasureCrops").addEventListener("click", remeasureCrops);
   $("closeModelCheck").addEventListener("click", () => { state.modelCheck = null; renderModelCheck(); renderBatch(); });
   // Repeated clicks tour every model that needs attention, starting after the one in hand.
   $("checkJump").addEventListener("click", () => {

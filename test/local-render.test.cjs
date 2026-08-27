@@ -1443,6 +1443,55 @@ test("Launch render launches what is on screen, and only a resume says it is one
   assert.match(client, /batch\.renderCount \? "Run again" : "Run this job"/);
 });
 
+test("a saved crop can be dropped, and preflight counts every camera the type has", () => {
+  const crop = require("../lib/crop.cjs");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "rh-crops-"));
+  const store = path.join(dir, "crop-profiles.json");
+  const previous = process.env.RH_CROP_CACHE_FILE;
+  try {
+    process.env.RH_CROP_CACHE_FILE = store;
+    crop.writeCropProfiles(dir, [
+      { fingerprint: "aaa", camera: "F",   cropRatio: 0.4, modelName: "SOFA_A", analyzedAt: "2026-01-01T00:00:00.000Z" },
+      { fingerprint: "aaa", camera: "TQB", cropRatio: 0.5, modelName: "SOFA_A", analyzedAt: "2026-01-02T00:00:00.000Z" },
+      { fingerprint: "bbb", camera: "F",   cropRatio: 0.6, modelName: "SOFA_B", analyzedAt: "2026-01-03T00:00:00.000Z" }
+    ]);
+    assert.equal(Object.keys(crop.readCropProfiles(dir).profiles).length, 3);
+
+    // One camera of one model, named.
+    const one = crop.forgetCropProfiles(dir, { fingerprints: ["aaa"], cameras: ["f"] });
+    assert.deepEqual(one.map(entry => [entry.modelName, entry.camera]), [["SOFA_A", "F"]], "case in a camera name is not identity");
+    assert.equal(crop.readCropProfiles(dir).profiles["aaa:F"], undefined);
+    assert.ok(crop.readCropProfiles(dir).profiles["aaa:TQB"], "its other cameras are left alone");
+
+    // Every camera of a model, when no camera is named.
+    assert.equal(crop.forgetCropProfiles(dir, { fingerprints: ["aaa"] }).length, 1);
+    assert.ok(crop.readCropProfiles(dir).profiles["bbb:F"], "another model is left alone");
+
+    // Asking for a model with nothing saved drops nothing rather than everything.
+    assert.deepEqual(crop.forgetCropProfiles(dir, { fingerprints: ["ccc"] }), []);
+    assert.equal(Object.keys(crop.readCropProfiles(dir).profiles).length, 1);
+    assert.equal(crop.forgetCropProfiles(dir, { all: true }).length, 1);
+    assert.deepEqual(crop.readCropProfiles(dir).profiles, {});
+  } finally {
+    if (previous === undefined) delete process.env.RH_CROP_CACHE_FILE; else process.env.RH_CROP_CACHE_FILE = previous;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+
+  const service = fs.readFileSync(path.join(root, "server.cjs"), "utf8");
+  const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  // Preflight filtered the chosen cameras against a sectional's list, hardcoded, so a sofa job
+  // silently lost P and TQB: the Cameras check read "F - TQ" with four chosen and the expected
+  // render count came out at half.
+  assert.match(service, /previewType\.cameras\.includes\(value\)/);
+  assert.doesNotMatch(service, /input\.cameras\.filter\(value => \["F", "FH", "TQ"\]/);
+  // A reused crop renders no probe, so preflight has to say so or the missing probe file looks
+  // like a fault.
+  assert.match(service, /reuse a crop saved earlier/);
+  assert.match(service, /url\.pathname === "\/api\/crops\/forget"/);
+  assert.match(service, /A render is running; its crops are still being written/);
+  assert.match(client, /const remeasureCrops = async/);
+});
+
 test("legacy light-rig project files stay out of the unified project", () => {
   for (const legacy of ["handoff", "light-rig-reference.html", "comments.php", "ONBOARDING.md", ".claude"]) {
     assert.equal(fs.existsSync(path.join(root, legacy)), false, legacy);

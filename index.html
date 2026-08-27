@@ -174,12 +174,13 @@
               <label data-for-type="Sectionals,Sofas"><input type="checkbox" name="layer" value="Shadow"><span>Shadow <small id="shadowResolutionLabel">Lumen · 15K×5K</small></span></label>
             </div>
           </fieldset>
-          <fieldset>
+          <fieldset class="crop-field">
             <legend>Frame crop</legend>
             <div class="choice-row crop-mode segmented" role="radiogroup" aria-label="Frame crop mode">
               <label><input type="radio" name="cropMode" value="full" checked><span>Full frame <small>Original sensor</small></span></label>
               <label><input type="radio" name="cropMode" value="optimized"><span>Optimized <small>Safe cached crop</small></span></label>
             </div>
+            <button id="remeasureCrops" class="quiet-button" type="button" hidden>Re-measure crops</button>
           </fieldset>
           <fieldset class="frame-size-field">
             <legend>Frame size</legend>

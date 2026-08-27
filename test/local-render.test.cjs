@@ -1420,6 +1420,29 @@ test("the crop probe measures in the shape of the frame it will be applied to", 
   }
 });
 
+test("Launch render launches what is on screen, and only a resume says it is one", () => {
+  const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
+
+  // Loading a saved job for editing clears the generated path, so gating Launch on that path
+  // alone left the button dead until Generate was pressed -- while Run again would launch the
+  // file on disk and ignore the edits just made.
+  assert.match(client, /\$\("launchRender"\)\.disabled = !state\.jobPath && !ready;/);
+  assert.match(client, /if \(!state\.jobPath && !resuming\) \{/,
+    "with nothing generated, Launch generates on the way");
+
+  // The click listener used to hand launch() the event, which is truthy, so every manual
+  // launch told the server it was resuming -- and on a resume the server skips the
+  // before-snapshot and counts files already on disk as freshly produced.
+  assert.match(client, /addEventListener\("click", \(\) => launch\(\)\)/);
+  assert.doesNotMatch(client, /addEventListener\("click", launch\)/);
+  assert.match(client, /const resuming = resume === true;/, "a flag is read as a flag");
+  assert.match(client, /jobPath: state\.jobPath, resume: resuming/);
+  assert.doesNotMatch(client, /jobPath: state\.jobPath, resume \}/);
+
+  // And a job that has never run should not offer to run it "again".
+  assert.match(client, /batch\.renderCount \? "Run again" : "Run this job"/);
+});
+
 test("legacy light-rig project files stay out of the unified project", () => {
   for (const legacy of ["handoff", "light-rig-reference.html", "comments.php", "ONBOARDING.md", ".claude"]) {
     assert.equal(fs.existsSync(path.join(root, legacy)), false, legacy);

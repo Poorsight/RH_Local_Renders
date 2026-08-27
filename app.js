@@ -100,7 +100,7 @@
   const syncActionButtons = basicReady => {
     const ready = basicReady && state.preflight?.ok === true;
     $("generateJob").disabled = !ready;
-    $("launchRender").disabled = !state.jobPath;
+    $("launchRender").disabled = !state.jobPath && !ready;
   };
   const renderPreflight = result => {
     const panel = $("preflight"), checks = result?.checks || [];
@@ -443,9 +443,17 @@
     finally { $("generateJob").textContent = "Generate job"; validate(false); }
   };
   const launch = async (resume = false) => {
+    const resuming = resume === true;
+    const button = $("launchRender");
+    if (!state.jobPath && !resuming) {
+      button.disabled = true; button.textContent = "Preparing job…";
+      try { await generate(); } finally { button.textContent = "Launch render"; }
+      // generate() reports its own failure; without a job there is nothing to start.
+      if (!state.jobPath) return validate(false);
+    }
     try {
-      const result = await api("/api/renders", { method: "POST", body: JSON.stringify({ jobPath: state.jobPath, resume }) });
-      toast(resume ? "Resuming incomplete models in Unreal" : `Unreal started (PID ${result.pid})`); updateRender(result); startPolling();
+      const result = await api("/api/renders", { method: "POST", body: JSON.stringify({ jobPath: state.jobPath, resume: resuming }) });
+      toast(resuming ? "Resuming incomplete models in Unreal" : `Unreal started (PID ${result.pid})`); updateRender(result); startPolling();
     } catch (error) { toast(error.message, true); }
   };
   const formatDuration = seconds => {
@@ -593,7 +601,7 @@
     const selective = `<div class="selective-controls"><div><span>SELECTIVE RENDER</span><button type="button" data-history-action="selectAll">All</button><button type="button" data-history-action="selectNone">None</button></div><div class="selective-options">${pick("camera", batch.cameras?.length ? batch.cameras : ["F", "FH", "TQ"])}<i></i>${pick("layer", batch.layers?.length ? batch.layers : ["Fabric", "Shadow"])}</div></div>`;
     const needsPost = batch.renderCount > 0 && (batch.postProcessCount < batch.renderCount || !batch.readyToUpload?.complete);
     const openOutput = batch.readyToUpload?.files ? `<button class="secondary-button" type="button" data-history-action="openReady">Open POST</button>` : `<button class="secondary-button" type="button" data-history-action="openRenders"${batch.renderCount ? "" : " disabled"}>Open renders</button>`;
-    $("historyDetail").innerHTML = `<div class="history-detail-heading"><div><span>SAVED JOB</span><strong>${escapeHtml(batch.id)}</strong><small>${escapeHtml(formatDate(batch.generatedAt))}</small></div><i class="history-state" data-state="${escapeHtml(batch.state)}">${escapeHtml(historyStateLabel(batch.state))}</i></div><div class="history-summary"><div><span>MODELS</span><strong>${batch.modelCount}</strong></div><div><span>RENDERS</span><strong>${batch.renderCount}/${batch.expectedRenders}</strong></div><div><span>POST</span><strong>${batch.postProcessCount || 0}/${batch.renderCount}</strong></div>${timingTile(batch)}</div>${selective}${models}${batch.error ? `<p class="inline-warning">${escapeHtml(batch.error)}</p>` : ""}<code class="history-path" title="${escapeHtml(batch.jobPath)}">${escapeHtml(batch.jobPath)}</code><div class="history-actions"><button class="primary-button" type="button" data-history-action="selective"${batch.modelCount ? "" : " disabled"}>Edit selection</button><button class="secondary-button" type="button" data-history-action="rerun"${batch.state === "invalid" ? " disabled" : ""}>Run again</button>${needsPost ? `<button class="secondary-button" type="button" data-history-action="postprocess">Build POST</button>` : ""}${openOutput}<button class="quiet-button" type="button" data-history-action="viewJob">View JSON</button></div>`;
+    $("historyDetail").innerHTML = `<div class="history-detail-heading"><div><span>SAVED JOB</span><strong>${escapeHtml(batch.id)}</strong><small>${escapeHtml(formatDate(batch.generatedAt))}</small></div><i class="history-state" data-state="${escapeHtml(batch.state)}">${escapeHtml(historyStateLabel(batch.state))}</i></div><div class="history-summary"><div><span>MODELS</span><strong>${batch.modelCount}</strong></div><div><span>RENDERS</span><strong>${batch.renderCount}/${batch.expectedRenders}</strong></div><div><span>POST</span><strong>${batch.postProcessCount || 0}/${batch.renderCount}</strong></div>${timingTile(batch)}</div>${selective}${models}${batch.error ? `<p class="inline-warning">${escapeHtml(batch.error)}</p>` : ""}<code class="history-path" title="${escapeHtml(batch.jobPath)}">${escapeHtml(batch.jobPath)}</code><div class="history-actions"><button class="primary-button" type="button" data-history-action="selective"${batch.modelCount ? "" : " disabled"}>Edit selection</button><button class="secondary-button" type="button" data-history-action="rerun"${batch.state === "invalid" ? " disabled" : ""}>${batch.renderCount ? "Run again" : "Run this job"}</button>${needsPost ? `<button class="secondary-button" type="button" data-history-action="postprocess">Build POST</button>` : ""}${openOutput}<button class="quiet-button" type="button" data-history-action="viewJob">View JSON</button></div>`;
   };
   const renderGalleryModels = () => {
     const batch = state.galleryBatch, group = $("galleryModelGroup");
@@ -851,7 +859,7 @@
   });
   [["width", "width"], ["depth", "depth"], ["height", "height"]].forEach(([id, key]) => $(id).addEventListener("input", () => { if (state.model && +$(id).value > 0) { state.model.dimensions[key] = +$(id).value; renderBatch(); validate(); } }));
   $("importYaw").addEventListener("input", () => { if (state.model) { state.model.importYaw = +$("importYaw").value || 0; validate(); } });
-  $("generateJob").addEventListener("click", generate); $("launchRender").addEventListener("click", launch); $("refreshSheet").addEventListener("click", refreshSheet);
+  $("generateJob").addEventListener("click", generate); $("launchRender").addEventListener("click", () => launch()); $("refreshSheet").addEventListener("click", refreshSheet);
   $("retryRender").addEventListener("click", () => launch(true)); $("stopRender").addEventListener("click", stopRender);
   document.querySelectorAll('input[name="renderProfile"]').forEach(input => input.addEventListener("change", () => {
     fillFrameSize();

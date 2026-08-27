@@ -1241,6 +1241,8 @@ test("the page reads a job's own cameras, product type and check verdicts", () =
   // The close control is not a delete. Wearing that class subscribed it to the page's
   // delete interception, which consumed the click before the button ever saw it.
   assert.match(html, /id="closeModelCheck" class="panel-close"/);
+  assert.match(html, /id="closeModelCheck"[^>]*><svg /, "a drawn cross centres itself; the glyph did not");
+  assert.doesNotMatch(styles, /\.quiet-button\{background:transparent/, "a button invisible until hovered cannot be found");
   assert.doesNotMatch(html, /card-delete/, "delete controls are generated where they have a target to name");
 });
 

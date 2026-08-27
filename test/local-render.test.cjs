@@ -1293,7 +1293,10 @@ test("a checked model is not checked again until its file changes", () => {
 
   // And the page shows what is already known without asking for work.
   const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
-  assert.match(client, /cachedOnly: true/);
+  assert.match(client, /await api\("\/api\/models\/checks"\)/);
+  const service = fs.readFileSync(path.join(root, "server.cjs"), "utf8");
+  assert.match(service, /request\.method === "GET" && url\.pathname === "\/api\/models\/checks"/,
+    "a keyless reader has to be able to see verdicts already earned");
   assert.match(client, /const loadCachedChecks = async/);
   fs.rmSync(dir, { recursive: true, force: true });
 });

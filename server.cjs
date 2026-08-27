@@ -606,6 +606,15 @@ async function api(request, response, url) {
     }
     return json(response, 200, { repaired: repaired.filter(item => item.parts && !item.skipped).length, models: repaired });
   }
+  if (request.method === "GET" && url.pathname === "/api/models/checks") {
+    const stored = checkCache.read(ROOT);
+    if (checkCache.prune(stored) > 0) checkCache.write(ROOT, stored);
+    const rows = models.list()
+      .map(model => { const row = checkCache.lookup(stored, model.path); return row ? { ...row, name: model.name } : null; })
+      .filter(Boolean);
+    return json(response, 200, { checked: rows.length, reused: rows.length, fresh: 0, requested: rows.length,
+      failing: rows.filter(row => row.errors).length, warning: rows.filter(row => row.warnings).length, models: rows });
+  }
   if (request.method === "POST" && url.pathname === "/api/models/check") {
     // Checks every model on disk, or the ones asked for. Inspecting a model that has never
     // been analysed runs Blender, so this is a deliberate action rather than a page load.

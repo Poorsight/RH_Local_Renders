@@ -316,10 +316,13 @@
     cachedChecksFor = signature;
     if (!state.batch.length) return;
     try {
-      const report = await api("/api/models/check", { method: "POST",
-        body: JSON.stringify({ models: state.batch.map(model => model.name), cachedOnly: true }) });
+      const stored = await api("/api/models/checks");
       if (signature !== cachedChecksFor) return;   // the batch moved on while we were asking
-      if (!report.models?.length) return;
+      const names = new Set(state.batch.map(model => model.name));
+      const rows = (stored.models || []).filter(row => names.has(row.name));
+      if (!rows.length) return;
+      const report = { ...stored, models: rows, checked: rows.length, requested: state.batch.length,
+        failing: rows.filter(row => row.errors).length, warning: rows.filter(row => row.warnings).length };
       state.modelCheck = report;
       renderModelCheck(); renderBatch();
     } catch { /* a stored verdict is a convenience; failing to fetch one changes nothing */ }

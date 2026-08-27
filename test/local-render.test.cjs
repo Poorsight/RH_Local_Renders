@@ -487,7 +487,9 @@ test("missing optimized profiles prepend one-time Fabric and Shadow calibration 
   assert.deepEqual(phases.map(phase => phase.name), ["Crop calibration · Fabric", "Crop calibration · Shadow", "Fabric", "Shadow"]);
   assert.deepEqual(phases[0].job.tasks[0].sequence.cameras[0].LayerResolutions[0].Resolution, { X: 500, Y: 500 });
   assert.deepEqual(phases[1].job.tasks[0].sequence.cameras[0].LayerResolutions[0].Resolution, { X: 1500, Y: 500 });
-  assert.equal(phases[2].useCameraHandoff, true); assert.equal(phases[3].useCameraHandoff, true);
+  assert.notEqual(phases[2].useCameraHandoff, true,
+    "the final Fabric fits its own frame -- a probe's focal length reframed a sofa enough to cut its arms");
+  assert.equal(phases[3].useCameraHandoff, true, "Shadow must line up with the Fabric it is composited against");
 });
 
 test("cached optimized profiles crop both final layers without calibration", () => {
@@ -1490,6 +1492,42 @@ test("a saved crop can be dropped, and preflight counts every camera the type ha
   assert.match(service, /url\.pathname === "\/api\/crops\/forget"/);
   assert.match(service, /A render is running; its crops are still being written/);
   assert.match(client, /const remeasureCrops = async/);
+});
+
+test("a probe's camera never frames a final render", () => {
+  // Every sofa in a batch shares one sequence name, and the plugin applies a camera override
+  // per sequence rather than per task -- so one model's fitted focal length framed all of
+  // them. Measured on seven sofas: task one carried 182.5mm, and each other sofa came out
+  // showing own_focal / 182.5 of its width, 0.55 to 0.76, arms cut off. Sectionals hide the
+  // same fault because every one of them fits to 160-164mm, so the swap changes nothing.
+  const sofa = { name: "SOFA", path: "D:\m\sofas\s.obj", group: "sofas", offsetUniformScale: 0.1, materialIds: ["UPH", "Feet"] };
+  const job = buildJob({ productType: "sofas", cameras: ["F"], layers: ["Fabric", "Shadow"], renderProfile: "high",
+    cropMode: "optimized", dimensions: { width: 277, depth: 106, height: 85 }, modelFingerprint: "fp",
+    materials: [{ meshes: ["UPH"], material: "FAB" }, { meshes: ["Feet"], material: "WOOD" }] }, sofa, rig, "D:\out");
+  const phases = buildRenderPlan({ ...job, _rhLocal: { ...job._rhLocal, outputFolder: "D:\out\\" } });
+  const byName = Object.fromEntries(phases.map(phase => [phase.name, phase]));
+
+  assert.notEqual(byName.Fabric.useCameraHandoff, true, "the final Fabric fits the frame it will actually render");
+  assert.equal(byName.Shadow.useCameraHandoff, true, "Shadow still inherits, or it will not line up with Fabric");
+  assert.equal(byName["Crop calibration · Fabric"].useCameraHandoff, false, "the first probe has nothing to inherit");
+  assert.equal(byName["Crop calibration · Shadow"].useCameraHandoff, true);
+
+  // A fit is only valid for the frame it was measured on, so the frame is part of its identity:
+  // a focal length taken from a 500px probe must never be handed to a 5000px frame.
+  const { fitDescriptor } = require("../lib/camera-fit.cjs");
+  const task = job.tasks[0], camera = task.sequence.cameras[0];
+  const probe = JSON.parse(JSON.stringify(camera));
+  probe.LayerResolutions = [{ Name: "Fabric", Resolution: { X: 500, Y: 500 }, SensorSize: { X: 36, Y: 36 } }];
+  const options = { rendererToken: "token", projectPath: "D:\p\project.uproject" };
+  const full = fitDescriptor({ ...task, model: { ...task.model, objPath: __filename } }, camera, options);
+  const small = fitDescriptor({ ...task, model: { ...task.model, objPath: __filename } }, probe, options);
+  assert.ok(full && small, "a descriptor needs a model file that exists");
+  assert.notEqual(full.signature, small.signature, "two frames are two different fits");
+  assert.deepEqual(small.inputs.frame, [{ name: "Fabric", resolution: { X: 500, Y: 500 }, sensor: { X: 36, Y: 36 } }]);
+
+  // And only a probe may inherit a saved fit at all.
+  const service = fs.readFileSync(path.join(root, "server.cjs"), "utf8");
+  assert.match(service, /phase\.isCalibration && phase\.layerName === "Fabric" && activeRun\.cachedCameraStateKeys\.size > 0/);
 });
 
 test("legacy light-rig project files stay out of the unified project", () => {

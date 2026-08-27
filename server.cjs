@@ -297,7 +297,9 @@ function startRenderPhase() {
   }
   let phaseJob = remainingPhaseJob(activeRun, phase);
   if (!phaseJob.tasks.length) return advancePhaseOrFinish(`${phase.name} already complete`);
-  const canApplyPersistentFits = phase.layerName === "Fabric" && activeRun.cachedCameraStateKeys.size > 0;
+  // Only a probe may inherit a saved fit: the store keeps no record of the frame a fit was
+  // measured on, and a 500px fit on a 5000px frame is what cut the sofas.
+  const canApplyPersistentFits = phase.isCalibration && phase.layerName === "Fabric" && activeRun.cachedCameraStateKeys.size > 0;
   if (phase.useCameraHandoff || canApplyPersistentFits) {
     const handoff = applyCameraHandoff(phaseJob, activeRun.cameraStates);
     if (phase.useCameraHandoff && handoff.missing.length) return finishRun("failed", `Fabric camera handoff missing for ${handoff.missing.join(", ")}`);

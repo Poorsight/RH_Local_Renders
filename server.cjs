@@ -18,6 +18,7 @@ const { rendererToken, readCameraFitProfiles, cameraFitStatesForJob, writeCamera
 const { buildUnrealLaunch } = require("./lib/unreal.cjs");
 const { history, expectedRenders } = require("./lib/history.cjs");
 const runStats = require("./lib/run-stats.cjs");
+const checkCache = require("./lib/check-cache.cjs");
 const { availability: postProcessAvailability, isProcessedImage, originalFilesForJob, processJob, processedPathFor } = require("./lib/post-process.cjs");
 
 const ROOT = __dirname;
@@ -609,9 +610,22 @@ async function api(request, response, url) {
     // Checks every model on disk, or the ones asked for. Inspecting a model that has never
     // been analysed runs Blender, so this is a deliberate action rather than a page load.
     const input = await body(request);
-    const wanted = Array.isArray(input.models) && input.models.length ? input.models : models.list().map(model => model.name);
+    // A verdict is kept against the file's size and modification time, so a model already
+    // checked is answered from store and only a new or replaced file costs a Blender run.
+    // `refresh` re-checks everything; `cachedOnly` answers from store and runs nothing, which
+    // is what the page asks for when a batch is assembled.
+    const catalogue = new Map(models.list().map(model => [model.name, model]));
+    const wanted = Array.isArray(input.models) && input.models.length ? input.models : [...catalogue.keys()];
+    const stored = checkCache.read(ROOT);
+    let touched = checkCache.prune(stored) > 0;
+    const refresh = Boolean(input.refresh), cachedOnly = Boolean(input.cachedOnly);
     const results = [];
+    let reused = 0, fresh = 0;
     for (const name of wanted) {
+      const known = catalogue.get(name);
+      const remembered = refresh || !known ? null : checkCache.lookup(stored, known.path);
+      if (remembered) { results.push({ ...remembered, name }); reused += 1; continue; }
+      if (cachedOnly) continue;
       try {
         const record = await models.inspect(name);
         const findings = checkModel(record, record);
@@ -629,14 +643,21 @@ async function api(request, response, url) {
             findings.push({ level: "ok", code: "obj-parts", label: "OBJ parts", detail: `${parts.namedParts.join(", ")} named as objects with their own materials.` });
           }
         }
-        results.push({ name, path: record.path, group: record.group || "", format: record.format || "", findings, ...summarise(findings) });
+        const row = { name, path: record.path, group: record.group || "", format: record.format || "", findings, ...summarise(findings) };
+        results.push(row); fresh += 1;
+        if (row.path) { checkCache.remember(stored, row.path, row); touched = true; }
       } catch (checkError) {
+        // A model that cannot be inspected is not remembered: the next attempt should try
+        // again rather than repeat the failure from store.
         const findings = [{ level: "error", code: "inspect-failed", label: "Could not inspect", detail: checkError.message }];
         results.push({ name, path: "", group: "", format: "", findings, ...summarise(findings) });
+        fresh += 1;
       }
     }
+    if (touched) checkCache.write(ROOT, stored);
     const failing = results.filter(item => item.errors).length;
-    return json(response, 200, { checked: results.length, failing, warning: results.filter(item => item.warnings).length, models: results });
+    return json(response, 200, { checked: results.length, requested: wanted.length, reused, fresh, failing,
+      warning: results.filter(item => item.warnings).length, models: results });
   }
   if (request.method === "POST" && url.pathname === "/api/models/inspect") return json(response, 200, await models.inspect((await body(request)).modelPath));
   if (request.method === "GET" && url.pathname === "/api/materials") return json(response, 200, { materials: unrealMaterials() });

@@ -167,10 +167,15 @@
     chip.hidden = !report;
     if (!report) return;
     const failing = needsAttention();
-    chip.dataset.state = failing.some(row => row.errors) ? "error" : failing.length ? "warning" : "ok";
-    chip.textContent = failing.length ? `${failing.length} to look at` : "All sound";
+    // Verdicts come back for the models that have one, so some of the batch may carry none.
+    // Saying "All sound" then would be a claim about models nobody has looked at.
+    const seen = new Set((report.models || []).map(row => row.name));
+    const unchecked = state.batch.filter(model => !seen.has(model.name)).length;
+    chip.dataset.state = failing.some(row => row.errors) ? "error" : failing.length ? "warning" : unchecked ? "" : "ok";
+    chip.textContent = failing.length ? `${failing.length} to look at` : unchecked ? `${unchecked} not checked` : "All sound";
     chip.disabled = !failing.length;
-    chip.title = failing.length ? `Go to ${failing[0].name}` : `${report.checked} checked, nothing wrong`;
+    chip.title = failing.length ? `Go to ${failing[0].name}`
+      : unchecked ? `${seen.size} of ${state.batch.length} checked` : `${seen.size} checked, nothing wrong`;
   };
   // The report is shown for the model in hand. It used to list every model at once, which
   // ran past the bottom of its column and buried the one real problem in a wall of OK.
@@ -196,7 +201,8 @@
     try {
       const report = await api("/api/models/check", { method: "POST", body: JSON.stringify({ models: names }) });
       state.modelCheck = report; renderModelCheck(); renderBatch();
-      toast(report.failing ? `${report.failing} model${report.failing === 1 ? "" : "s"} need attention` : "All models look sound");
+      const kept = report.reused ? ` · ${report.reused} unchanged since the last check` : "";
+      toast(report.failing ? `${report.failing} model${report.failing === 1 ? "" : "s"} need attention${kept}` : `All models look sound${kept}`);
     } catch (error) { toast(error.message, true); }
     finally { button.disabled = false; button.textContent = "Check models"; }
   };
@@ -300,9 +306,28 @@
     }
     return out;
   };
+  // A verdict already earned is shown straight away. The request runs nothing on the server:
+  // it answers from store, so a batch of files checked yesterday lights up without a wait,
+  // and only a new or replaced file is left blank for "Check models" to deal with.
+  let cachedChecksFor = null;
+  const loadCachedChecks = async () => {
+    const signature = state.batch.map(model => model.path).sort().join("|");
+    if (signature === cachedChecksFor) return;
+    cachedChecksFor = signature;
+    if (!state.batch.length) return;
+    try {
+      const report = await api("/api/models/check", { method: "POST",
+        body: JSON.stringify({ models: state.batch.map(model => model.name), cachedOnly: true }) });
+      if (signature !== cachedChecksFor) return;   // the batch moved on while we were asking
+      if (!report.models?.length) return;
+      state.modelCheck = report;
+      renderModelCheck(); renderBatch();
+    } catch { /* a stored verdict is a convenience; failing to fetch one changes nothing */ }
+  };
   const renderBatch = () => {
     renderCheckSummary();
     $("modelBatch").hidden = !state.batch.length; $("batchCount").textContent = `${state.batch.length} model${state.batch.length === 1 ? "" : "s"}`;
+    loadCachedChecks();
     $("batchList").innerHTML = state.batch.map(model => `<div class="batch-model${state.model?.path === model.path ? " active" : ""}" data-model-path="${escapeHtml(model.path)}"${checkStateOf(model.name) ? ` data-check="${checkStateOf(model.name)}"` : ""}><button class="batch-model-select" type="button" title="Open ${escapeHtml(model.name)}"><span>${escapeHtml(model.name)}</span><small>${model.dimensions.width} × ${model.dimensions.depth} × ${model.dimensions.height} cm · ${escapeHtml(model.materialIds.length)} IDs</small></button><button class="batch-model-remove" type="button" title="Remove ${escapeHtml(model.name)}" aria-label="Remove ${escapeHtml(model.name)}">×</button></div>`).join("");
   };
   const selectModel = model => {
@@ -796,7 +821,7 @@
     const index = state.batch.findIndex(model => model.path === row.dataset.modelPath); if (index < 0) return;
     if (event.target.closest(".batch-model-remove")) {
       const [removed] = state.batch.splice(index, 1); state.jobPath = null;
-      state.modelCheck = null;
+      state.modelCheck = null; cachedChecksFor = null;
       if (state.model?.path === removed.path) state.model = state.batch[Math.min(index, state.batch.length - 1)] || null;
       renderMaterials(); renderBatch();
       if (state.model) selectModel(state.model); else { $("modelDetails").hidden = true; $("modelEmpty").hidden = false; $("modelPath").value = ""; }

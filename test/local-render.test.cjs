@@ -510,7 +510,7 @@ test("local render service completes Fabric before restarting for Substrate-off 
   fs.writeFileSync(jobPath, JSON.stringify(job));
   const service = spawn(process.execPath, [path.join(root, "server.cjs")], {
     cwd: root, windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, RH_LOCAL_RENDERS_PORT: String(port), RH_UNREAL_EDITOR: process.execPath, RH_UNREAL_PROJECT: path.join(root, "test", "fake-unreal.cjs"), RH_FAKE_UNREAL_LOG: fakeLog, RH_RUN_STATS_FILE: path.join(path.dirname(fakeLog), "run-stats.json") }
+    env: { ...process.env, RH_LOCAL_RENDERS_PORT: String(port), RH_UNREAL_EDITOR: process.execPath, RH_UNREAL_PROJECT: path.join(root, "test", "fake-unreal.cjs"), RH_FAKE_UNREAL_LOG: fakeLog, RH_RUN_STATS_FILE: path.join(path.dirname(fakeLog), "run-stats.json"), RH_CHECK_CACHE_FILE: path.join(path.dirname(fakeLog), "model-checks.json") }
   });
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   const statusUrl = `http://127.0.0.1:${port}/api/status`;
@@ -554,7 +554,7 @@ test("local render service calibrates, saves and applies an optimized crop befor
   fs.writeFileSync(jobPath, JSON.stringify(job));
   const service = spawn(process.execPath, [path.join(root, "server.cjs")], {
     cwd: root, windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, RH_LOCAL_RENDERS_PORT: String(port), RH_UNREAL_EDITOR: process.execPath, RH_UNREAL_PROJECT: path.join(root, "test", "fake-unreal.cjs"), RH_FAKE_UNREAL_LOG: fakeLog, RH_CROP_CACHE_FILE: cropCache, RH_RUN_STATS_FILE: path.join(path.dirname(fakeLog), "run-stats.json") }
+    env: { ...process.env, RH_LOCAL_RENDERS_PORT: String(port), RH_UNREAL_EDITOR: process.execPath, RH_UNREAL_PROJECT: path.join(root, "test", "fake-unreal.cjs"), RH_FAKE_UNREAL_LOG: fakeLog, RH_CROP_CACHE_FILE: cropCache, RH_RUN_STATS_FILE: path.join(path.dirname(fakeLog), "run-stats.json"), RH_CHECK_CACHE_FILE: path.join(path.dirname(fakeLog), "model-checks.json") }
   });
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   try {
@@ -603,7 +603,7 @@ test("local render service automatically resumes after an Unreal crash and skips
   fs.writeFileSync(jobPath, JSON.stringify(job));
   const service = spawn(process.execPath, [path.join(root, "server.cjs")], {
     cwd: root, windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, RH_LOCAL_RENDERS_PORT: String(port), RH_UNREAL_EDITOR: process.execPath, RH_UNREAL_PROJECT: path.join(root, "test", "fake-unreal.cjs"), RH_FAKE_UNREAL_LOG: fakeLog, RH_FAKE_UNREAL_CRASH_ONCE: crashMarker, RH_RUN_STATS_FILE: path.join(path.dirname(fakeLog), "run-stats.json") }
+    env: { ...process.env, RH_LOCAL_RENDERS_PORT: String(port), RH_UNREAL_EDITOR: process.execPath, RH_UNREAL_PROJECT: path.join(root, "test", "fake-unreal.cjs"), RH_FAKE_UNREAL_LOG: fakeLog, RH_FAKE_UNREAL_CRASH_ONCE: crashMarker, RH_RUN_STATS_FILE: path.join(path.dirname(fakeLog), "run-stats.json"), RH_CHECK_CACHE_FILE: path.join(path.dirname(fakeLog), "model-checks.json") }
   });
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   try {
@@ -640,7 +640,7 @@ test("a forced stop kills Unreal, disarms the automatic resume and leaves the se
   fs.writeFileSync(jobPath, JSON.stringify(job));
   const service = spawn(process.execPath, [path.join(root, "server.cjs")], {
     cwd: root, windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, RH_LOCAL_RENDERS_PORT: String(port), RH_UNREAL_EDITOR: process.execPath, RH_UNREAL_PROJECT: path.join(root, "test", "fake-unreal.cjs"), RH_FAKE_UNREAL_LOG: fakeLog, RH_FAKE_UNREAL_STALL: "9000", RH_RUN_STATS_FILE: path.join(path.dirname(fakeLog), "run-stats.json") }
+    env: { ...process.env, RH_LOCAL_RENDERS_PORT: String(port), RH_UNREAL_EDITOR: process.execPath, RH_UNREAL_PROJECT: path.join(root, "test", "fake-unreal.cjs"), RH_FAKE_UNREAL_LOG: fakeLog, RH_FAKE_UNREAL_STALL: "9000", RH_RUN_STATS_FILE: path.join(path.dirname(fakeLog), "run-stats.json"), RH_CHECK_CACHE_FILE: path.join(path.dirname(fakeLog), "model-checks.json") }
   });
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   const status = async () => (await fetch(`http://127.0.0.1:${port}/api/renders/status`)).json();
@@ -1244,6 +1244,58 @@ test("the page reads a job's own cameras, product type and check verdicts", () =
   assert.match(html, /id="closeModelCheck"[^>]*><svg /, "a drawn cross centres itself; the glyph did not");
   assert.doesNotMatch(styles, /\.quiet-button\{background:transparent/, "a button invisible until hovered cannot be found");
   assert.doesNotMatch(html, /card-delete/, "delete controls are generated where they have a target to name");
+});
+
+test("a checked model is not checked again until its file changes", () => {
+  const cache = require("../lib/check-cache.cjs");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "rh-check-"));
+  const file = path.join(dir, "model.obj");
+  fs.writeFileSync(file, ["g UPH", "v 0 0 0", ""].join(String.fromCharCode(10)), "utf8");
+
+  const row = { name: "model", path: file, format: "obj", errors: 0, warnings: 1, findings: [{ level: "warning", label: "Orientation", detail: "x" }] };
+  let entries = cache.remember({}, file, row, "2026-01-01T00:00:00.000Z");
+  const hit = cache.lookup(entries, file);
+  assert.equal(hit.warnings, 1);
+  assert.equal(hit.fromCache, true, "the page is told the verdict came from store");
+  assert.equal(hit.checkedAt, "2026-01-01T00:00:00.000Z");
+
+  // Case and separators must not decide whether a verdict is found again.
+  assert.ok(cache.lookup(entries, file.toUpperCase()) || cache.keyFor(file) === cache.keyFor(file.toUpperCase()));
+
+  // A replaced file is a different file, whatever its name. Size alone would miss a
+  // same-length re-export, so the mtime is part of the fingerprint.
+  const before = cache.fingerprint(file);
+  fs.writeFileSync(file, ["g UPH", "v 1 1 1", ""].join(String.fromCharCode(10)), "utf8");
+  fs.utimesSync(file, new Date(), new Date(Date.now() + 4000));
+  assert.notEqual(cache.fingerprint(file), before);
+  assert.equal(cache.lookup(entries, file), null, "a changed file has no verdict until it is checked again");
+
+  // A verdict for a file that has gone is dead weight.
+  entries = cache.remember(entries, file, row);
+  fs.rmSync(file);
+  assert.equal(cache.prune(entries), 1);
+  assert.deepEqual(entries, {});
+
+  // The store is redirectable, so the suite cannot write into the one a person reads.
+  const previous = process.env.RH_CHECK_CACHE_FILE;
+  try {
+    process.env.RH_CHECK_CACHE_FILE = path.join(dir, "checks.json");
+    assert.equal(cache.cacheFile(root), process.env.RH_CHECK_CACHE_FILE);
+    delete process.env.RH_CHECK_CACHE_FILE;
+    assert.equal(cache.cacheFile(root), path.join(root, "local", "cache", "model-checks.json"));
+  } finally {
+    if (previous === undefined) delete process.env.RH_CHECK_CACHE_FILE; else process.env.RH_CHECK_CACHE_FILE = previous;
+  }
+  const suite = fs.readFileSync(__filename, "utf8");
+  const spawns = "RH_FAKE_UNREAL" + "_LOG: fakeLog", guards = "RH_CHECK_CACHE" + "_FILE: path.join";
+  assert.equal(suite.split(spawns).length, suite.split(guards).length,
+               "every spawned service must point its check store somewhere disposable");
+
+  // And the page shows what is already known without asking for work.
+  const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  assert.match(client, /cachedOnly: true/);
+  assert.match(client, /const loadCachedChecks = async/);
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 test("legacy light-rig project files stay out of the unified project", () => {

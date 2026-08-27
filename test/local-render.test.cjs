@@ -1386,6 +1386,40 @@ test("a job carries the frame it was given, and reopens with it", () => {
   assert.match(styles, /\.render-preview-card\.render-warning>small\{color:var\(--danger\)/);
 });
 
+test("the crop probe measures in the shape of the frame it will be applied to", () => {
+  const sofa = { name: "SOFA", path: "D:\m\sofas\s.obj", group: "sofas", offsetUniformScale: 0.1, materialIds: ["UPH", "Feet"] };
+  const mats = [{ meshes: ["UPH"], material: "FAB" }, { meshes: ["Feet"], material: "WOOD" }];
+  const probesFor = resolutions => {
+    const job = buildJob({ productType: "sofas", cameras: ["F"], layers: ["Fabric", "Shadow"], renderProfile: "high",
+      cropMode: "optimized", dimensions: { width: 277, depth: 106, height: 85 }, resolutions, materials: mats },
+      sofa, rig, "D:\out");
+    const plan = buildRenderPlan({ ...job, _rhLocal: { ...job._rhLocal, outputFolder: "D:\out\\" } });
+    return Object.fromEntries(plan.filter(phase => phase.name.startsWith("Crop calibration"))
+      .map(phase => [phase.layerName || phase.name, phase.job.tasks[0].sequence.cameras[0].LayerResolutions[0]]));
+  };
+
+  // A square base is what the stock profile already was, so nothing moves.
+  const square = probesFor({ Fabric: { Resolution: { X: 3600, Y: 3600 }, SensorSize: { X: 36, Y: 36 } },
+                             Shadow: { Resolution: { X: 10800, Y: 3600 }, SensorSize: { X: 108, Y: 36 } } });
+  assert.deepEqual(square.Fabric.Resolution, { X: 500, Y: 500 });
+  assert.deepEqual(square.Fabric.SensorSize, { X: 36, Y: 36 });
+  assert.deepEqual(square.Shadow.Resolution, { X: 1500, Y: 500 });
+
+  // A frame that is not square used to be probed against a square field, so the ratio it
+  // derived belonged to no frame anyone asked for. The sensor is the field of view and
+  // carries over untouched; only the pixel count comes down to probe size.
+  const wide = probesFor({ Fabric: { Resolution: { X: 5000, Y: 2000 }, SensorSize: { X: 36, Y: 14.4 } },
+                           Shadow: { Resolution: { X: 15000, Y: 2000 }, SensorSize: { X: 108, Y: 14.4 } } });
+  assert.deepEqual(wide.Fabric.Resolution, { X: 500, Y: 200 }, "the probe keeps the frame's shape");
+  assert.deepEqual(wide.Fabric.SensorSize, { X: 36, Y: 14.4 }, "and its field of view");
+  assert.deepEqual(wide.Shadow.Resolution, { X: 1500, Y: 200 });
+  for (const frame of Object.values(wide)) {
+    assert.equal(frame.Resolution.Y % 2, 0, "an odd probe height would not halve cleanly");
+    assert.ok(Math.abs((frame.Resolution.X / frame.Resolution.Y) - (frame.SensorSize.X / frame.SensorSize.Y)) < 0.001,
+              "pixels and sensor stay in step, or the probe image stretches");
+  }
+});
+
 test("legacy light-rig project files stay out of the unified project", () => {
   for (const legacy of ["handoff", "light-rig-reference.html", "comments.php", "ONBOARDING.md", ".claude"]) {
     assert.equal(fs.existsSync(path.join(root, legacy)), false, legacy);

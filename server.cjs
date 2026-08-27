@@ -264,7 +264,7 @@ function advancePhaseOrFinish(message) {
   refreshRunProgress();
   const phase = activeRun.phases[activeRun.index], remaining = phaseTaskProgress(activeRun, phase).filter(item => !item.complete);
   if (remaining.length) return restartRenderPhase(`${message}; ${remaining.length} incomplete model${remaining.length === 1 ? "" : "s"}`);
-  if (phase.isCalibration && phase.layerName === "Shadow") {
+  if (phase.finalizesCrop) {
     try { finalizeCropCalibration(activeRun); }
     catch (calibrationError) { return finishRun("failed", calibrationError.message); }
   }

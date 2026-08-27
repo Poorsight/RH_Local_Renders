@@ -104,17 +104,17 @@
   };
   const remeasureCrops = async () => {
     const button = $("remeasureCrops");
-    button.disabled = true; button.textContent = "Dropping…";
+    button.disabled = true; button.textContent = "Clearing…";
     try {
       const result = await api("/api/crops/forget", { method: "POST", body: JSON.stringify({
-        models: state.batch.map(model => model.path), cameras: selected("camera") }) });
+        models: state.batch.map(model => model.path) }) });
       toast(result.dropped
-        ? `${result.dropped} saved crop${result.dropped === 1 ? "" : "s"} dropped; the next run measures them again`
-        : "No saved crops for this batch — the next run measures everything anyway");
+        ? `${result.dropped} saved crop${result.dropped === 1 ? "" : "s"} cleared for ${state.batch.length} model${state.batch.length === 1 ? "" : "s"}; the next run measures them again`
+        : "Nothing saved for these models — the next run measures everything anyway");
       state.jobPath = null; $("jobResult").hidden = true;
       await refreshPreflight(); validate(false);
     } catch (error) { toast(error.message, true); }
-    finally { button.disabled = false; button.textContent = "Re-measure crops"; }
+    finally { button.disabled = false; button.textContent = "Clear saved crops"; }
   };
   const syncActionButtons = basicReady => {
     const ready = basicReady && state.preflight?.ok === true;
@@ -138,9 +138,23 @@
     catch (error) { state.preflight = { ok: false, checks: [{ level: "error", label: "Local service", detail: error.message }], counts: { expectedRenders: 0 } }; }
     renderPreflight(state.preflight); syncActionButtons(basicReady); return state.preflight.ok;
   };
+  // "Add models and material assignments" is no help once the models are added: it does not say
+  // which half is missing. This lists what is actually outstanding.
+  const outstanding = () => {
+    const missing = [];
+    if (!canReachLocalService) missing.push({ label: "Local service", detail: "The service is not answering, so nothing can be checked." });
+    if (!state.batch.length) missing.push({ label: "Models", detail: "Drop an FBX or OBJ here, or pick one with Choose model." });
+    const fields = [...document.querySelectorAll("[data-material-key]")];
+    const blank = fields.filter(node => !node.value.trim()).map(node => String(node.dataset.materialKey || "").toUpperCase());
+    if (!fields.length) missing.push({ label: "Materials", detail: "Inspect a model to read its component IDs." });
+    else if (blank.length) missing.push({ label: "Materials", detail: `Assign a material to ${blank.join(", ")}.` });
+    if (!selected("camera").length) missing.push({ label: "Cameras", detail: "Pick at least one camera." });
+    if (!selected("layer").length) missing.push({ label: "Layers", detail: "Pick at least one layer." });
+    return missing.map(item => ({ level: "info", ...item }));
+  };
   const validate = (runCheck = true) => {
     const ready = canReachLocalService && state.batch.length > 0 && materialRows().length > 0 && materialRows().every(row => row.material) && selected("camera").length && selected("layer").length;
-    if (!ready) { state.preflight = null; renderPreflight({ waiting: true, ok: false, checks: [], counts: { expectedRenders: 0 } }); }
+    if (!ready) { state.preflight = null; renderPreflight({ waiting: true, ok: false, checks: outstanding(), counts: { expectedRenders: 0 } }); }
     else if (runCheck) {
       state.preflight = null; renderPreflight(null); clearTimeout(state.preflightTimer);
       state.preflightTimer = setTimeout(refreshPreflight, 260);
@@ -382,6 +396,11 @@
     state.jobPath = null;
     const index = state.batch.findIndex(item => item.path.toLowerCase() === model.path.toLowerCase());
     if (index >= 0) state.batch[index] = model; else state.batch.push(model);
+    const groups = new Set(state.batch.map(item => String(item.group || "").toLowerCase()).filter(Boolean));
+    if (groups.size === 1) {
+      const implied = [...groups][0] === "sofas" ? "Sofas" : "Sectionals";
+      if ($("category").value !== implied) { $("category").value = implied; applyProductType(); }
+    }
     if (!state.models.some(item => item.path.toLowerCase() === model.path.toLowerCase())) {
       state.models.push({ name: model.name, path: model.path });
       $("modelCount").textContent = state.models.length;

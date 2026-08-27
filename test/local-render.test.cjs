@@ -1495,6 +1495,13 @@ test("a saved crop can be dropped, and preflight counts every camera the type ha
   assert.match(service, /url\.pathname === "\/api\/crops\/forget"/);
   assert.match(service, /A render is running; its crops are still being written/);
   assert.match(client, /const remeasureCrops = async/);
+  // Every camera of the models in hand, never only the ticked ones: leaving one camera's crop
+  // behind is a trap, since ticking that camera later would still measure from the old one.
+  assert.match(client, /models: state\.batch\.map\(model => model\.path\) \}\) \}\);/);
+  assert.doesNotMatch(client, /models: state\.batch\.map\(model => model\.path\), cameras:/);
+  // And the waiting panel says what is outstanding rather than repeating "add models".
+  assert.match(client, /const outstanding = \(\) =>/);
+  assert.match(client, /Assign a material to \$\{blank\.join\(", "\)\}/);
 });
 
 test("a probe's camera never frames a final render", () => {

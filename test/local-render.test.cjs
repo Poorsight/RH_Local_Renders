@@ -510,7 +510,7 @@ test("local render service completes Fabric before restarting for Substrate-off 
   fs.writeFileSync(jobPath, JSON.stringify(job));
   const service = spawn(process.execPath, [path.join(root, "server.cjs")], {
     cwd: root, windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, RH_LOCAL_RENDERS_PORT: String(port), RH_UNREAL_EDITOR: process.execPath, RH_UNREAL_PROJECT: path.join(root, "test", "fake-unreal.cjs"), RH_FAKE_UNREAL_LOG: fakeLog }
+    env: { ...process.env, RH_LOCAL_RENDERS_PORT: String(port), RH_UNREAL_EDITOR: process.execPath, RH_UNREAL_PROJECT: path.join(root, "test", "fake-unreal.cjs"), RH_FAKE_UNREAL_LOG: fakeLog, RH_RUN_STATS_FILE: path.join(path.dirname(fakeLog), "run-stats.json") }
   });
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   const statusUrl = `http://127.0.0.1:${port}/api/status`;
@@ -554,7 +554,7 @@ test("local render service calibrates, saves and applies an optimized crop befor
   fs.writeFileSync(jobPath, JSON.stringify(job));
   const service = spawn(process.execPath, [path.join(root, "server.cjs")], {
     cwd: root, windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, RH_LOCAL_RENDERS_PORT: String(port), RH_UNREAL_EDITOR: process.execPath, RH_UNREAL_PROJECT: path.join(root, "test", "fake-unreal.cjs"), RH_FAKE_UNREAL_LOG: fakeLog, RH_CROP_CACHE_FILE: cropCache }
+    env: { ...process.env, RH_LOCAL_RENDERS_PORT: String(port), RH_UNREAL_EDITOR: process.execPath, RH_UNREAL_PROJECT: path.join(root, "test", "fake-unreal.cjs"), RH_FAKE_UNREAL_LOG: fakeLog, RH_CROP_CACHE_FILE: cropCache, RH_RUN_STATS_FILE: path.join(path.dirname(fakeLog), "run-stats.json") }
   });
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   try {
@@ -603,7 +603,7 @@ test("local render service automatically resumes after an Unreal crash and skips
   fs.writeFileSync(jobPath, JSON.stringify(job));
   const service = spawn(process.execPath, [path.join(root, "server.cjs")], {
     cwd: root, windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, RH_LOCAL_RENDERS_PORT: String(port), RH_UNREAL_EDITOR: process.execPath, RH_UNREAL_PROJECT: path.join(root, "test", "fake-unreal.cjs"), RH_FAKE_UNREAL_LOG: fakeLog, RH_FAKE_UNREAL_CRASH_ONCE: crashMarker }
+    env: { ...process.env, RH_LOCAL_RENDERS_PORT: String(port), RH_UNREAL_EDITOR: process.execPath, RH_UNREAL_PROJECT: path.join(root, "test", "fake-unreal.cjs"), RH_FAKE_UNREAL_LOG: fakeLog, RH_FAKE_UNREAL_CRASH_ONCE: crashMarker, RH_RUN_STATS_FILE: path.join(path.dirname(fakeLog), "run-stats.json") }
   });
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   try {
@@ -640,7 +640,7 @@ test("a forced stop kills Unreal, disarms the automatic resume and leaves the se
   fs.writeFileSync(jobPath, JSON.stringify(job));
   const service = spawn(process.execPath, [path.join(root, "server.cjs")], {
     cwd: root, windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, RH_LOCAL_RENDERS_PORT: String(port), RH_UNREAL_EDITOR: process.execPath, RH_UNREAL_PROJECT: path.join(root, "test", "fake-unreal.cjs"), RH_FAKE_UNREAL_LOG: fakeLog, RH_FAKE_UNREAL_STALL: "9000" }
+    env: { ...process.env, RH_LOCAL_RENDERS_PORT: String(port), RH_UNREAL_EDITOR: process.execPath, RH_UNREAL_PROJECT: path.join(root, "test", "fake-unreal.cjs"), RH_FAKE_UNREAL_LOG: fakeLog, RH_FAKE_UNREAL_STALL: "9000", RH_RUN_STATS_FILE: path.join(path.dirname(fakeLog), "run-stats.json") }
   });
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   const status = async () => (await fetch(`http://127.0.0.1:${port}/api/renders/status`)).json();
@@ -1194,6 +1194,23 @@ test("run timing is kept per phase, and prices a job that has never run", () => 
   const partial = stats.summarise([{ phases: [{ layer: "Fabric", calibration: false, frames: 2, seconds: 100 }] }]);
   assert.deepEqual(stats.estimateFor(job, partial).unmeasuredLayers, ["Shadow"]);
   assert.equal(stats.estimateFor(job, { perFrame: {} }), null, "with nothing measured there is no estimate to give");
+
+  // The suite drives the real server against the real tree, and its stubbed renders finish
+  // in milliseconds. Folded into the averages they priced an hours-long job at seconds, so
+  // the file has to be redirectable and every spawn here has to redirect it.
+  const previous = process.env.RH_RUN_STATS_FILE;
+  try {
+    process.env.RH_RUN_STATS_FILE = path.join(root, "test", "unused-run-stats.json");
+    assert.equal(stats.statsFile(root), process.env.RH_RUN_STATS_FILE);
+    delete process.env.RH_RUN_STATS_FILE;
+    assert.equal(stats.statsFile(root), path.join(root, "local", "cache", "run-stats.json"));
+  } finally {
+    if (previous === undefined) delete process.env.RH_RUN_STATS_FILE; else process.env.RH_RUN_STATS_FILE = previous;
+  }
+  const suite = fs.readFileSync(__filename, "utf8");
+  const spawns = "RH_FAKE_UNREAL" + "_LOG: fakeLog", guards = "RH_RUN_STATS" + "_FILE: path.join";
+  assert.equal(suite.split(spawns).length, suite.split(guards).length,
+               "every spawned service must point its run log somewhere disposable");
 });
 
 test("the page reads a job's own cameras, product type and check verdicts", () => {

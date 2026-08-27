@@ -624,7 +624,10 @@ test("local render service automatically resumes after an Unreal crash and skips
     assert.equal(status.autoRestarts, 1);
     assert.ok(status.queue.every(item => item.state === "complete" && item.rendered === item.expected));
     const launches = fs.readFileSync(fakeLog, "utf8").trim().split(/\r?\n/).map(line => JSON.parse(line));
-    assert.deepEqual(launches.map(item => item.phase), ["Fabric", "Fabric", "Shadow"]);
+    assert.deepEqual(launches.map(item => item.phase), ["Fabric", "Fabric", "Shadow", "Shadow"],
+      "Shadow inherits a camera, so it runs one model per launch; Fabric twice is the crash and its resume");
+    assert.deepEqual(launches.slice(2).map(item => item.taskIds), [[model.name], [second.name]],
+      "each Shadow launch carries exactly one model, in job order");
     assert.deepEqual(launches[1].taskIds, [second.name]);
     assert.match(status.log, /Automatic Fabric resume 1\/3; completed models stay skipped/);
   } finally {
@@ -1528,6 +1531,53 @@ test("a probe's camera never frames a final render", () => {
   // And only a probe may inherit a saved fit at all.
   const service = fs.readFileSync(path.join(root, "server.cjs"), "utf8");
   assert.match(service, /phase\.isCalibration && phase\.layerName === "Fabric" && activeRun\.cachedCameraStateKeys\.size > 0/);
+});
+
+test("a phase that inherits a camera renders one model at a time, whatever the product", () => {
+  // The renderer applies a camera override per sequence, not per task, and every model of one
+  // product shares a sequence name. So a phase that inherits a camera has to be given a single
+  // model, or one model's framing frames them all. The rule is not product-specific: sectionals
+  // hid it only because every one of them fits to between 160 and 164mm.
+  const mats = [{ meshes: ["UPH"], material: "FAB" }, { meshes: ["Feet"], material: "WOOD" }];
+  const planFor = (group, count, layers, cropMode) => {
+    const entries = Array.from({ length: count }, (unused, index) => ({
+      model: { name: `${group}_${index}`, path: `D:\m\${group}\${index}.obj`, group,
+               offsetUniformScale: 1, materialIds: ["UPH", "Stitches", "Feet"] },
+      input: { productType: group, side: "R", cameras: ["F"], layers, renderProfile: "high",
+               cropMode, dimensions: { width: 300, depth: 120, height: 85 }, materials: mats,
+               modelFingerprint: `fp${index}` }
+    }));
+    const job = buildBatchJob(entries, rig, "D:\out", "batch");
+    job._rhLocal.outputFolder = "D:\out\\";
+    return buildRenderPlan(job);
+  };
+
+  for (const group of ["sofas", "sectionals"]) {
+    const plan = planFor(group, 3, ["Fabric", "Shadow"], "optimized");
+    for (const phase of plan) {
+      if (phase.useCameraHandoff) {
+        assert.equal(phase.job.tasks.length, 1, `${group}: ${phase.name} inherits a camera, so it takes one model`);
+      } else {
+        assert.equal(phase.job.tasks.length, 3, `${group}: ${phase.name} fits its own frame, so all models ride together`);
+      }
+    }
+    // Three models: one Fabric probe, three Shadow probes, one Fabric, three Shadow.
+    assert.equal(plan.length, 8, `${group}: eight phases`);
+    assert.deepEqual(plan.map(phase => phase.job._rhLocal.phaseIndex), [1, 2, 3, 4, 5, 6, 7, 8], "numbering follows the split");
+    assert.ok(plan.every(phase => phase.job._rhLocal.phaseCount === 8));
+    // Each model appears exactly once per layer, so the work does not grow, only the launches.
+    for (const layer of ["Fabric", "Shadow"]) {
+      const taskIds = plan.filter(phase => phase.name === layer).flatMap(phase => phase.job.tasks.map(task => task.taskId));
+      assert.equal(new Set(taskIds).size, 3, `${group}: every model renders ${layer} once`);
+      assert.equal(taskIds.length, 3);
+    }
+  }
+
+  // Full frame has no probes, and only Shadow inherits.
+  const full = planFor("sofas", 3, ["Fabric", "Shadow"], "full");
+  assert.deepEqual(full.map(phase => phase.name), ["Fabric", "Shadow", "Shadow", "Shadow"]);
+  // A single model needs no splitting at all.
+  assert.equal(planFor("sofas", 1, ["Fabric", "Shadow"], "optimized").length, 4);
 });
 
 test("legacy light-rig project files stay out of the unified project", () => {

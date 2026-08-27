@@ -91,7 +91,7 @@
 
         <label class="wide-field">Model name or file path
           <div id="modelDropTarget" class="input-action model-drop-target">
-            <input id="modelPath" list="modelOptions" data-suggest-primary="label" autocomplete="off" placeholder="prod9690053 or D:\…\model.fbx / .obj">
+            <input id="modelPath" data-suggest="modelOptions" data-suggest-primary="label" autocomplete="off" placeholder="prod9690053 or D:\…\model.fbx / .obj">
             <datalist id="modelOptions"></datalist>
             <div class="model-path-actions">
               <button id="chooseModel" class="secondary-button" type="button">Choose model</button>
@@ -104,12 +104,8 @@
         </label>
 
         <div id="modelBatch" class="model-batch" hidden>
-          <div class="model-batch-heading"><span>MODEL BATCH</span><div class="model-batch-tools"><button id="checkModels" class="quiet-button" type="button">Check models</button><strong id="batchCount">0 models</strong></div></div>
+          <div class="model-batch-heading"><span>MODEL BATCH</span><div class="model-batch-tools"><button id="checkModels" class="quiet-button" type="button">Check models</button><button id="checkJump" class="check-chip" type="button" hidden></button><strong id="batchCount">0 models</strong></div></div>
           <div id="batchList" class="model-batch-list"></div>
-          <div id="modelCheck" class="model-check" hidden>
-            <div class="model-check-heading"><strong id="modelCheckSummary"></strong><div class="model-check-actions"><button id="repairModels" class="quiet-button danger-button" type="button" hidden>Repair OBJ parts</button><button id="closeModelCheck" class="card-delete" type="button" aria-label="Close the report" title="Close">×</button></div></div>
-            <div id="modelCheckList" class="model-check-list"></div>
-          </div>
         </div>
 
         <div id="modelEmpty" class="empty-state">Choose a model to read its dimensions and Material IDs.</div>
@@ -122,6 +118,10 @@
             <label>Import yaw <span>°</span><input id="importYaw" type="number" step="90"></label>
           </div>
           <p id="modelWarning" class="inline-warning" hidden></p>
+          <div id="modelCheck" class="model-check" hidden>
+            <div class="model-check-heading"><strong id="modelCheckSummary"></strong><div class="model-check-actions"><button id="repairModels" class="quiet-button danger-button" type="button" hidden>Repair OBJ parts</button><button id="closeModelCheck" class="panel-close" type="button" aria-label="Close the report" title="Close">×</button></div></div>
+            <div id="modelCheckList" class="model-check-list"></div>
+          </div>
         </div>
       </section>
 

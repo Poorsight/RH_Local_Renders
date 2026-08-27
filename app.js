@@ -146,28 +146,47 @@
     $("materialsEmpty").hidden = !!ids.length;
     $("materialsList").innerHTML = ids.map(item => {
       const sourceIds = [...item.ids], modelCount = item.models.size;
-      return `<label class="material-row"><span class="material-id"><b>${escapeHtml(item.label)}</b><small>${modelCount} model${modelCount === 1 ? "" : "s"} · ${sourceIds.length} component ID${sourceIds.length === 1 ? "" : "s"}</small></span><span class="material-input-wrap"><input list="materialOptions" data-material-key="${escapeHtml(item.key)}" data-material-ids="${escapeHtml(JSON.stringify(sourceIds))}" value="${escapeHtml(previous.get(item.key) || "")}" placeholder="Search Unreal materials" autocomplete="off"><em data-material-status>Enter material</em></span></label>`;
+      return `<label class="material-row"><span class="material-id"><b>${escapeHtml(item.label)}</b><small>${modelCount} model${modelCount === 1 ? "" : "s"} · ${sourceIds.length} component ID${sourceIds.length === 1 ? "" : "s"}</small></span><span class="material-input-wrap"><span class="suggest-field"><input data-suggest="materialOptions" data-material-key="${escapeHtml(item.key)}" data-material-ids="${escapeHtml(JSON.stringify(sourceIds))}" value="${escapeHtml(previous.get(item.key) || "")}" placeholder="Search Unreal materials" autocomplete="off"></span><em data-material-status>Enter material</em></span></label>`;
     }).join("");
     document.querySelectorAll("[data-material-key]").forEach(input => { updateMaterialStatus(input); input.addEventListener("input", () => { updateMaterialStatus(input); validate(); }); });
   };
   // Checks the models about to be rendered, not the whole library: what matters is whether
   // this batch will come out right.
   const LEVEL_ORDER = { error: 0, warning: 1, info: 2, ok: 3 };
-  const renderModelCheck = report => {
-    const panel = $("modelCheck");
-    panel.hidden = !report;
+  const checkRowFor = name => (state.modelCheck?.models || []).find(row => row.name === name);
+  // A model is as bad as its worst finding, and that is what the batch row shows.
+  const checkStateOf = name => {
+    const row = checkRowFor(name);
+    return !row ? "" : row.errors ? "error" : row.warnings ? "warning" : "ok";
+  };
+  const needsAttention = () => (state.modelCheck?.models || []).filter(row => row.errors || row.warnings);
+  // The batch heading carries the verdict for the whole batch and walks to the next model
+  // that wants looking at. Without it a problem far down a long list is invisible.
+  const renderCheckSummary = () => {
+    const chip = $("checkJump"), report = state.modelCheck;
+    chip.hidden = !report;
     if (!report) return;
-    const rows = (report.models || []).slice().sort((a, b) => (b.errors - a.errors) || (b.warnings - a.warnings) || a.name.localeCompare(b.name));
-    $("modelCheckSummary").textContent = report.failing
-      ? `${report.failing} of ${report.checked} need attention`
-      : report.warning ? `${report.checked} checked · ${report.warning} with warnings` : `${report.checked} checked · all sound`;
-    const repairable = rows.some(row => (row.findings || []).some(finding => finding.repairable));
-    $("repairModels").hidden = !repairable;
-    $("modelCheckList").innerHTML = rows.map(row => {
-      const findings = (row.findings || []).slice().sort((a, b) => LEVEL_ORDER[a.level] - LEVEL_ORDER[b.level]);
-      const worst = findings[0]?.level || "ok";
-      return `<div class="model-check-row" data-worst="${escapeHtml(worst)}"><strong>${escapeHtml(row.name)}${row.format ? `<small>${escapeHtml(row.format)}${row.group ? ` · ${escapeHtml(row.group)}` : ""}</small>` : ""}</strong>${findings.map(finding => `<div class="model-check-finding" data-level="${escapeHtml(finding.level)}"><i>${escapeHtml(finding.level)}</i><span>${escapeHtml(finding.label)}: ${escapeHtml(finding.detail)}</span></div>`).join("")}</div>`;
-    }).join("");
+    const failing = needsAttention();
+    chip.dataset.state = failing.some(row => row.errors) ? "error" : failing.length ? "warning" : "ok";
+    chip.textContent = failing.length ? `${failing.length} to look at` : "All sound";
+    chip.disabled = !failing.length;
+    chip.title = failing.length ? `Go to ${failing[0].name}` : `${report.checked} checked, nothing wrong`;
+  };
+  // The report is shown for the model in hand. It used to list every model at once, which
+  // ran past the bottom of its column and buried the one real problem in a wall of OK.
+  const renderModelCheck = () => {
+    const panel = $("modelCheck"), report = state.modelCheck;
+    const row = report && state.model ? checkRowFor(state.model.name) : null;
+    panel.hidden = !row;
+    renderCheckSummary();
+    $("repairModels").hidden = !(report?.models || []).some(item => (item.findings || []).some(finding => finding.repairable));
+    if (!row) return;
+    const findings = (row.findings || []).slice().sort((a, b) => LEVEL_ORDER[a.level] - LEVEL_ORDER[b.level]);
+    const worst = findings[0]?.level || "ok";
+    panel.dataset.worst = worst;
+    $("modelCheckSummary").textContent = row.errors ? "Needs attention" : row.warnings ? "Worth a look" : "Checks out";
+    $("modelCheckList").innerHTML = findings.map(finding =>
+      `<div class="model-check-finding" data-level="${escapeHtml(finding.level)}"><i>${escapeHtml(finding.level)}</i><span>${escapeHtml(finding.label)}: ${escapeHtml(finding.detail)}</span></div>`).join("");
   };
   const checkModels = async () => {
     const names = state.batch.map(model => model.name);
@@ -176,7 +195,7 @@
     button.disabled = true; button.textContent = "Checking…";
     try {
       const report = await api("/api/models/check", { method: "POST", body: JSON.stringify({ models: names }) });
-      state.modelCheck = report; renderModelCheck(report);
+      state.modelCheck = report; renderModelCheck(); renderBatch();
       toast(report.failing ? `${report.failing} model${report.failing === 1 ? "" : "s"} need attention` : "All models look sound");
     } catch (error) { toast(error.message, true); }
     finally { button.disabled = false; button.textContent = "Check models"; }
@@ -282,9 +301,9 @@
     return out;
   };
   const renderBatch = () => {
-    if (state.modelCheck) { state.modelCheck = null; renderModelCheck(null); }
+    renderCheckSummary();
     $("modelBatch").hidden = !state.batch.length; $("batchCount").textContent = `${state.batch.length} model${state.batch.length === 1 ? "" : "s"}`;
-    $("batchList").innerHTML = state.batch.map(model => `<div class="batch-model${state.model?.path === model.path ? " active" : ""}" data-model-path="${escapeHtml(model.path)}"><button class="batch-model-select" type="button" title="Open ${escapeHtml(model.name)}"><span>${escapeHtml(model.name)}</span><small>${model.dimensions.width} × ${model.dimensions.depth} × ${model.dimensions.height} cm · ${escapeHtml(model.materialIds.length)} IDs</small></button><button class="batch-model-remove" type="button" title="Remove ${escapeHtml(model.name)}" aria-label="Remove ${escapeHtml(model.name)}">×</button></div>`).join("");
+    $("batchList").innerHTML = state.batch.map(model => `<div class="batch-model${state.model?.path === model.path ? " active" : ""}" data-model-path="${escapeHtml(model.path)}"${checkStateOf(model.name) ? ` data-check="${checkStateOf(model.name)}"` : ""}><button class="batch-model-select" type="button" title="Open ${escapeHtml(model.name)}"><span>${escapeHtml(model.name)}</span><small>${model.dimensions.width} × ${model.dimensions.depth} × ${model.dimensions.height} cm · ${escapeHtml(model.materialIds.length)} IDs</small></button><button class="batch-model-remove" type="button" title="Remove ${escapeHtml(model.name)}" aria-label="Remove ${escapeHtml(model.name)}">×</button></div>`).join("");
   };
   const selectModel = model => {
     state.model = model; state.historyModel = null;
@@ -293,7 +312,7 @@
     $("width").value = model.dimensions.width; $("depth").value = model.dimensions.depth; $("height").value = model.dimensions.height; $("importYaw").value = model.importYaw;
     $("modelPath").value = model.path;
     $("modelWarning").hidden = !model.warning; $("modelWarning").textContent = model.warning || "";
-    
+    renderModelCheck();
     renderBatch(); validate();
   };
   const applyModel = (model, quiet = false) => {
@@ -496,14 +515,42 @@
     $("historyCount").textContent = batches.length === state.history.length ? `${state.history.length} job${state.history.length === 1 ? "" : "s"}` : `${batches.length} of ${state.history.length}`;
     $("historyList").innerHTML = batches.length ? batches.map(batch => `<div class="card-shell"><button class="history-card${state.historyBatch?.id === batch.id ? " active" : ""}" type="button" data-history-id="${escapeHtml(batch.id)}"><span class="history-card-top"><strong>${escapeHtml(batch.id)}</strong><i class="history-state" data-state="${escapeHtml(batch.state)}">${escapeHtml(historyStateLabel(batch.state))}</i></span><span class="history-card-meta"><b>${batch.modelCount} model${batch.modelCount === 1 ? "" : "s"}</b><b>${batch.renderCount}/${batch.expectedRenders} renders · ${batch.postProcessCount || 0} POST</b></span><small>${escapeHtml(formatDate(batch.updatedAt || batch.generatedAt))}</small></button><button class="card-delete" type="button" aria-expanded="false" aria-label="Delete this batch" title="Delete batch" data-delete-batch="${escapeHtml(batch.id)}">${TRASH_ICON}</button></div>`).join("") : '<div class="empty-state">No jobs match this filter.</div>';
   };
+  const humanDuration = totalSeconds => {
+    const value = Math.max(0, Math.round(Number(totalSeconds) || 0));
+    const hours = Math.floor(value / 3600), minutes = Math.floor((value % 3600) / 60), rest = value % 60;
+    if (hours) return `${hours}h ${String(minutes).padStart(2, "0")}m`;
+    if (minutes) return `${minutes}m ${String(rest).padStart(2, "0")}s`;
+    return `${rest}s`;
+  };
+  // Per-frame costs read from whichever source knows them: a job that ran carries its own
+  // phases, one that has not is priced from every run so far.
+  const perFrameNote = batch => {
+    const measured = (batch.timing?.phases || [])
+      .filter(phase => !phase.calibration && phase.layer && phase.frames)
+      .map(phase => `${phase.layer} ${humanDuration(phase.seconds / phase.frames)}/frame`);
+    if (measured.length) return measured.join(" · ");
+    const rates = Object.entries(state.timing?.perFrame || {})
+      .map(([layer, rate]) => `${layer} ${humanDuration(rate.seconds)}/frame`);
+    return rates.length ? `From ${state.timing.runs} run${state.timing.runs === 1 ? "" : "s"}: ${rates.join(" · ")}` : "";
+  };
+  const timingTile = batch => {
+    if (batch.timing) return `<div title="${escapeHtml(perFrameNote(batch))}"><span>TOOK</span><strong>${escapeHtml(humanDuration(batch.timing.seconds))}</strong></div>`;
+    if (batch.estimate) return `<div title="${escapeHtml(perFrameNote(batch))}"><span>ESTIMATE</span><strong>~${escapeHtml(humanDuration(batch.estimate.seconds))}</strong></div>`;
+    return `<div title="No run has been timed yet"><span>TOOK</span><strong>—</strong></div>`;
+  };
   const renderHistoryDetail = () => {
     const batch = state.historyBatch;
     if (!batch) { $("historyDetail").innerHTML = '<div class="empty-state">Choose a saved job to inspect its models, JSON, and render output.</div>'; return; }
     const models = batch.models?.length ? `<div class="history-model-list" aria-label="Models in ${escapeHtml(batch.id)}">${batch.models.map((model, index) => `<div class="history-model-row"><label><input type="checkbox" data-history-model-select="${escapeHtml(model.name)}"${state.historySelection.has(model.name) ? " checked" : ""}><span>${String(index + 1).padStart(2, "0")}</span><strong>${escapeHtml(model.name)}</strong><small>${escapeHtml(model.side || "UNKNOWN")} · ${model.dimensions ? `${model.dimensions.width} × ${model.dimensions.depth} × ${model.dimensions.height} cm` : "No dimensions"} · ${model.renders.length}/${model.expectedRenders}</small></label></div>`).join("")}</div>` : '<div class="empty-state history-model-empty">No models stored in this job.</div>';
-    const selective = `<div class="selective-controls"><div><span>SELECTIVE RENDER</span><button type="button" data-history-action="selectAll">All</button><button type="button" data-history-action="selectNone">None</button></div><div class="selective-options"><label><input type="checkbox" data-select-camera value="F" checked><span>F</span></label><label><input type="checkbox" data-select-camera value="FH" checked><span>FH</span></label><label><input type="checkbox" data-select-camera value="TQ" checked><span>TQ</span></label><i></i><label><input type="checkbox" data-select-layer value="Fabric" checked><span>Fabric</span></label><label><input type="checkbox" data-select-layer value="Shadow" checked><span>Shadow</span></label></div></div>`;
+    // The cameras and layers a job was built with, not a list written for sectionals and
+    // shown for every product -- a sofa job was offering F, FH, TQ, and "Edit selection"
+    // then restored those.
+    const pick = (kind, values) => values.map(value =>
+      `<label><input type="checkbox" data-select-${kind} value="${escapeHtml(value)}" checked><span>${escapeHtml(value)}</span></label>`).join("");
+    const selective = `<div class="selective-controls"><div><span>SELECTIVE RENDER</span><button type="button" data-history-action="selectAll">All</button><button type="button" data-history-action="selectNone">None</button></div><div class="selective-options">${pick("camera", batch.cameras?.length ? batch.cameras : ["F", "FH", "TQ"])}<i></i>${pick("layer", batch.layers?.length ? batch.layers : ["Fabric", "Shadow"])}</div></div>`;
     const needsPost = batch.renderCount > 0 && (batch.postProcessCount < batch.renderCount || !batch.readyToUpload?.complete);
     const openOutput = batch.readyToUpload?.files ? `<button class="secondary-button" type="button" data-history-action="openReady">Open POST</button>` : `<button class="secondary-button" type="button" data-history-action="openRenders"${batch.renderCount ? "" : " disabled"}>Open renders</button>`;
-    $("historyDetail").innerHTML = `<div class="history-detail-heading"><div><span>SAVED JOB</span><strong>${escapeHtml(batch.id)}</strong><small>${escapeHtml(formatDate(batch.generatedAt))}</small></div><i class="history-state" data-state="${escapeHtml(batch.state)}">${escapeHtml(historyStateLabel(batch.state))}</i></div><div class="history-summary"><div><span>MODELS</span><strong>${batch.modelCount}</strong></div><div><span>RENDERS</span><strong>${batch.renderCount}/${batch.expectedRenders}</strong></div><div><span>POST</span><strong>${batch.postProcessCount || 0}/${batch.renderCount}</strong></div></div>${selective}${models}${batch.error ? `<p class="inline-warning">${escapeHtml(batch.error)}</p>` : ""}<code class="history-path" title="${escapeHtml(batch.jobPath)}">${escapeHtml(batch.jobPath)}</code><div class="history-actions"><button class="primary-button" type="button" data-history-action="selective"${batch.modelCount ? "" : " disabled"}>Edit selection</button><button class="secondary-button" type="button" data-history-action="rerun"${batch.state === "invalid" ? " disabled" : ""}>Run again</button>${needsPost ? `<button class="secondary-button" type="button" data-history-action="postprocess">Build POST</button>` : ""}${openOutput}<button class="quiet-button" type="button" data-history-action="viewJob">View JSON</button></div>`;
+    $("historyDetail").innerHTML = `<div class="history-detail-heading"><div><span>SAVED JOB</span><strong>${escapeHtml(batch.id)}</strong><small>${escapeHtml(formatDate(batch.generatedAt))}</small></div><i class="history-state" data-state="${escapeHtml(batch.state)}">${escapeHtml(historyStateLabel(batch.state))}</i></div><div class="history-summary"><div><span>MODELS</span><strong>${batch.modelCount}</strong></div><div><span>RENDERS</span><strong>${batch.renderCount}/${batch.expectedRenders}</strong></div><div><span>POST</span><strong>${batch.postProcessCount || 0}/${batch.renderCount}</strong></div>${timingTile(batch)}</div>${selective}${models}${batch.error ? `<p class="inline-warning">${escapeHtml(batch.error)}</p>` : ""}<code class="history-path" title="${escapeHtml(batch.jobPath)}">${escapeHtml(batch.jobPath)}</code><div class="history-actions"><button class="primary-button" type="button" data-history-action="selective"${batch.modelCount ? "" : " disabled"}>Edit selection</button><button class="secondary-button" type="button" data-history-action="rerun"${batch.state === "invalid" ? " disabled" : ""}>Run again</button>${needsPost ? `<button class="secondary-button" type="button" data-history-action="postprocess">Build POST</button>` : ""}${openOutput}<button class="quiet-button" type="button" data-history-action="viewJob">View JSON</button></div>`;
   };
   const renderGalleryModels = () => {
     const batch = state.galleryBatch, group = $("galleryModelGroup");
@@ -559,6 +606,15 @@
     if (rawJsonTab) { rawJsonTab.opener = null; return; }
     const job = await api(batch.jobUrl); $("jobDialogTitle").textContent = batch.id; $("jobJson").textContent = JSON.stringify(job, null, 2); $("jobDialog").showModal();
   };
+  // Jobs generated from now on record their product type. Older ones do not, but every
+  // camera in them is shot in a scene that names it: Sofa_Indoor, Sectional_Indoor_<side>.
+  const productTypeOfJob = (job, tasks) => {
+    const recorded = job._rhLocal?.productType || (job._rhLocal?.models || [])[0]?.productType;
+    if (recorded) return /sofa/i.test(recorded) ? "Sofas" : "Sectionals";
+    const scene = [...tasks.flatMap(task => (task.sequence?.cameras || []).map(camera => camera.sequenceName)),
+                   ...tasks.flatMap(task => (task.layers || []).flatMap(layer => layer.SubLevels || []))].find(Boolean) || "";
+    return /^sofa/i.test(scene) ? "Sofas" : /^sectional/i.test(scene) ? "Sectionals" : "";
+  };
   const editHistoryJob = async (batch, options = {}) => {
     const job = await api(batch.jobUrl), sourceTasks = job.tasks || [];
     const names = options.modelNames?.length ? new Set(options.modelNames) : null;
@@ -594,6 +650,8 @@
     document.querySelectorAll("[data-material-key]").forEach(input => {
       const values = materialValues.get(input.dataset.materialKey); input.value = values?.size === 1 ? [...values][0] : ""; updateMaterialStatus(input);
     });
+    const jobProductType = productTypeOfJob(job, tasks);
+    if (jobProductType && $("category").value !== jobProductType) { $("category").value = jobProductType; applyProductType(); }
     document.querySelectorAll('input[name="camera"]').forEach(input => input.checked = cameras.has(input.value));
     document.querySelectorAll('input[name="layer"]').forEach(input => input.checked = layers.has(input.value));
     const profile = String(job._rhLocal?.renderProfile || metadataRows[0]?.renderProfile || "").toLowerCase() || ((tasks[0]?.sequence?.cameras?.[0]?.LayerResolutions || []).some(layer => Number(layer.Resolution?.Y) <= 500) ? "low" : "high");
@@ -611,7 +669,8 @@
   const openLocal = (action, path) => api("/api/local/open", { method: "POST", body: JSON.stringify({ action, path }) });
   const loadHistory = async () => {
     try {
-      const selectedId = state.historyBatch?.id, { batches } = await api("/api/history");
+      const selectedId = state.historyBatch?.id, { batches, timing } = await api("/api/history");
+      state.timing = timing || null;
       for (const batch of batches) {
         batch.jobUrl = apiUrl(batch.jobUrl);
         for (const item of batch.models || []) for (const render of item.renders || []) {
@@ -698,7 +757,17 @@
   $("deleteConfirm").addEventListener("toggle", event => { if (event.newState === "closed") closeDelete(); });
   $("category").addEventListener("change", applyProductType);
   $("checkModels").addEventListener("click", checkModels);
-  $("closeModelCheck").addEventListener("click", () => { state.modelCheck = null; renderModelCheck(null); });
+  $("closeModelCheck").addEventListener("click", () => { state.modelCheck = null; renderModelCheck(); renderBatch(); });
+  // Repeated clicks tour every model that needs attention, starting after the one in hand.
+  $("checkJump").addEventListener("click", () => {
+    const failing = needsAttention();
+    if (!failing.length) return;
+    const at = failing.findIndex(row => row.name === state.model?.name);
+    const next = state.batch.find(model => model.name === failing[(at + 1) % failing.length].name);
+    if (!next) return;
+    selectModel(next);
+    $("batchList").querySelector(`[data-model-path="${CSS.escape(next.path)}"]`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  });
   $("repairModels").addEventListener("click", repairModels);
   $("settingsToggle").addEventListener("click", () => {
     $("settingsAccessKey").value = ACCESS_KEY;
@@ -727,6 +796,7 @@
     const index = state.batch.findIndex(model => model.path === row.dataset.modelPath); if (index < 0) return;
     if (event.target.closest(".batch-model-remove")) {
       const [removed] = state.batch.splice(index, 1); state.jobPath = null;
+      state.modelCheck = null;
       if (state.model?.path === removed.path) state.model = state.batch[Math.min(index, state.batch.length - 1)] || null;
       renderMaterials(); renderBatch();
       if (state.model) selectModel(state.model); else { $("modelDetails").hidden = true; $("modelEmpty").hidden = false; $("modelPath").value = ""; }
@@ -801,7 +871,7 @@
      listbox on first focus: the datalist stays as the data source, the popup is ours.
      It lives in the top layer as a popover, so a row inside a scrolling list can open
      it without being clipped. */
-  const suggest = { input: null, items: [], index: -1, pop: null, committing: false };
+  const suggest = { input: null, items: [], index: -1, pop: null, anchored: null, committing: false };
   const suggestPop = () => {
     if (suggest.pop) return suggest.pop;
     const pop = document.createElement("div");
@@ -817,6 +887,13 @@
     });
     document.body.append(pop); suggest.pop = pop; return pop;
   };
+  // The datalist stays the data source either way; `list` would also make the browser
+  // open its own popup over ours, so it is traded for data-suggest on sight.
+  const adoptSuggestInput = target => {
+    const input = target?.closest?.("input[list],input[data-suggest]");
+    if (input?.hasAttribute("list")) { input.dataset.suggest = input.getAttribute("list"); input.removeAttribute("list"); }
+    return input || null;
+  };
   const suggestSource = input => {
     const list = input.dataset.suggest && $(input.dataset.suggest);
     return list ? [...list.options].map(option => ({ value: option.value, label: option.textContent })) : [];
@@ -826,6 +903,7 @@
     if (!input) return;
     suggest.input = null; suggest.items = []; suggest.index = -1;
     input.setAttribute("aria-expanded", "false"); input.removeAttribute("aria-activedescendant");
+    anchorSuggestions(null);
     if (suggest.pop?.matches(":popover-open")) suggest.pop.hidePopover();
   };
   const setSuggestIndex = (index, scroll = true) => {
@@ -840,17 +918,13 @@
       if (scroll) node.scrollIntoView({ block: "nearest" });
     });
   };
-  const placeSuggestions = () => {
-    const input = suggest.input, pop = suggest.pop;
-    if (!input || !pop) return;
-    const rect = input.getBoundingClientRect(), width = Math.min(Math.max(rect.width, 300), window.innerWidth - 24);
-    const below = window.innerHeight - rect.bottom - 16, above = rect.top - 16, up = below < 190 && above > below;
-    pop.style.width = `${Math.round(width)}px`;
-    pop.style.left = `${Math.round(Math.max(12, Math.min(rect.left, window.innerWidth - width - 12)))}px`;
-    pop.style.maxHeight = `${Math.round(Math.max(150, Math.min(326, up ? above : below)))}px`;
-    pop.dataset.flip = up ? "up" : "down";
-    if (up) { pop.style.top = "auto"; pop.style.bottom = `${Math.round(window.innerHeight - rect.top + 7)}px`; }
-    else { pop.style.bottom = "auto"; pop.style.top = `${Math.round(rect.bottom + 7)}px`; }
+  // The list is anchored to the input in CSS, so all this has to do is say which input
+  // is the anchor. Only one element may carry the name, or the browser has two to choose
+  // between.
+  const anchorSuggestions = input => {
+    if (suggest.anchored && suggest.anchored !== input) suggest.anchored.style.anchorName = "";
+    if (input) input.style.anchorName = "--suggest-anchor";
+    suggest.anchored = input || null;
   };
   const renderSuggestions = input => {
     const query = input.value.trim().toLowerCase(), nameFirst = input.dataset.suggestPrimary === "label";
@@ -864,8 +938,8 @@
     suggest.input = input; suggest.items = shown; suggest.index = -1;
     input.setAttribute("role", "combobox"); input.setAttribute("aria-controls", "suggestPop");
     input.setAttribute("aria-autocomplete", "list"); input.setAttribute("aria-expanded", "true");
+    anchorSuggestions(input);
     if (!pop.matches(":popover-open")) pop.showPopover();
-    placeSuggestions();
   };
   const commitSuggestion = value => {
     const input = suggest.input;
@@ -876,8 +950,7 @@
     suggest.committing = false; input.focus();
   };
   document.addEventListener("focusin", event => {
-    const input = event.target.closest?.("input[list]");
-    if (input) { input.dataset.suggest = input.getAttribute("list"); input.removeAttribute("list"); }
+    adoptSuggestInput(event.target);
     if (suggest.input && event.target !== suggest.input && !event.target.closest?.(".suggest-pop")) closeSuggestions();
   });
   document.addEventListener("input", event => {
@@ -886,7 +959,7 @@
     if (input) renderSuggestions(input);
   });
   document.addEventListener("pointerdown", event => {
-    const input = event.target.closest?.("input[data-suggest]");
+    const input = adoptSuggestInput(event.target);
     if (input) { if (suggest.input !== input) requestAnimationFrame(() => renderSuggestions(input)); return; }
     if (!event.target.closest?.(".suggest-pop")) closeSuggestions();
   });
@@ -903,8 +976,6 @@
     } else if (event.key === "Escape" && suggest.input === input) { event.preventDefault(); closeSuggestions(); }
     else if (event.key === "Tab") closeSuggestions();
   });
-  window.addEventListener("resize", () => placeSuggestions());
-  document.addEventListener("scroll", () => placeSuggestions(), true);
   document.querySelectorAll("input,select").forEach(node => node.addEventListener("change", validate));
   init();
 })();

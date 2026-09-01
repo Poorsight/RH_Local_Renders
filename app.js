@@ -1,5 +1,6 @@
 (() => {
   const $ = (id) => document.getElementById(id);
+  const CLOSE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17"/></svg>';
   const state = { status: null, models: [], metadata: null, materialAssets: [], renderEnvironment: "ue56", renderEnvironments: [], preflight: null, preflightTimer: null, batch: [], model: null, jobPath: null, poll: null, history: [], historyBatch: null, historySelection: new Set(), historyModel: null, galleryBatch: null, galleryMaterialIndex: 0, queueFocus: null };
   const LOCAL_MODELS_ROOT = "D:\\GitHub\\RH_Local_Renders\\local\\models";
   const THEME_KEY = "rh-local-renders-theme";
@@ -197,7 +198,7 @@
     input.dataset.assetState = !input.value.trim() ? "empty" : asset ? "found" : "missing";
     if (status) { status.dataset.state = input.dataset.assetState; status.textContent = !input.value.trim() ? "Enter material" : asset ? "Found" : "Missing"; status.title = asset?.path || "No matching .uasset in the Unreal project"; }
   };
-  const materialVariantMarkup = (item, value = "") => `<div class="material-variant"><span class="suggest-field"><input data-suggest="materialOptions" data-material-key="${escapeHtml(item.key)}" value="${escapeHtml(value)}" placeholder="Search Unreal materials" autocomplete="off"></span><em data-material-status>Enter material</em><button class="material-remove" type="button" data-remove-material aria-label="Remove material variant" title="Remove material variant">×</button></div>`;
+  const materialVariantMarkup = (item, value = "") => `<div class="material-variant"><span class="suggest-field"><input data-suggest="materialOptions" data-material-key="${escapeHtml(item.key)}" value="${escapeHtml(value)}" placeholder="Search Unreal materials" autocomplete="off"></span><em data-material-status>Enter material</em><button class="material-remove" type="button" data-remove-material aria-label="Remove material variant" title="Remove material variant">${CLOSE_ICON}</button></div>`;
   const bindMaterialInput = input => { updateMaterialStatus(input); input.addEventListener("input", () => { updateMaterialStatus(input); state.jobPath = null; validate(); }); };
   const syncMaterialGroup = group => {
     const variants = [...group.querySelectorAll(".material-variant")], count = group.querySelector("[data-material-count]");
@@ -434,7 +435,7 @@
     renderCheckSummary();
     $("modelBatch").hidden = !state.batch.length; $("batchCount").textContent = `${state.batch.length} model${state.batch.length === 1 ? "" : "s"}`;
     loadCachedChecks();
-    $("batchList").innerHTML = state.batch.map(model => `<div class="batch-model${state.model?.path === model.path ? " active" : ""}" data-model-path="${escapeHtml(model.path)}"${checkStateOf(model.name) ? ` data-check="${checkStateOf(model.name)}"` : ""}><button class="batch-model-select" type="button" title="Select ${escapeHtml(model.name)}"><span>${escapeHtml(model.name)}</span><small>${model.dimensions.width} × ${model.dimensions.depth} × ${model.dimensions.height} cm · ${escapeHtml(model.materialIds.length)} IDs</small></button><button class="batch-model-info" type="button" data-focus-source="#modelDetails" data-focus-title="${escapeHtml(model.name)}" data-focus-kind="model" data-focus-move="self" aria-label="Open information for ${escapeHtml(model.name)}" title="Model information"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 10.5v6M12 7.5h.01"/></svg></button><button class="batch-model-remove" type="button" title="Remove ${escapeHtml(model.name)}" aria-label="Remove ${escapeHtml(model.name)}">×</button></div>`).join("");
+    $("batchList").innerHTML = state.batch.map(model => `<div class="batch-model${state.model?.path === model.path ? " active" : ""}" data-model-path="${escapeHtml(model.path)}"${checkStateOf(model.name) ? ` data-check="${checkStateOf(model.name)}"` : ""}><button class="batch-model-select" type="button" title="Select ${escapeHtml(model.name)}"><span>${escapeHtml(model.name)}</span><small>${model.dimensions.width} × ${model.dimensions.depth} × ${model.dimensions.height} cm · ${escapeHtml(model.materialIds.length)} IDs</small></button><button class="batch-model-info" type="button" data-focus-source="#modelDetails" data-focus-title="${escapeHtml(model.name)}" data-focus-kind="model" data-focus-move="self" aria-label="Open information for ${escapeHtml(model.name)}" title="Model information"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 10.5v6M12 7.5h.01"/></svg></button><button class="batch-model-remove" type="button" title="Remove ${escapeHtml(model.name)}" aria-label="Remove ${escapeHtml(model.name)}">${CLOSE_ICON}</button></div>`).join("");
   };
   const selectModel = model => {
     state.model = model; state.historyModel = null;

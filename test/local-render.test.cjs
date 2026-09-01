@@ -2020,7 +2020,10 @@ test("main page renders the workspace, previews and dropdowns", () => {
   assert.match(client, /\/api\/materials\?environment=/);
   assert.match(client, /chooseRenderEnvironment\(batch\.renderEnvironment/);
   assert.match(styles, /\.render-environment-switcher/);
-  assert.match(styles, /\.material-remove:before,\.material-remove:after\{[^}]*left:50%;top:50%/);
+  assert.match(client, /const CLOSE_ICON = '<svg viewBox="0 0 24 24"/);
+  assert.doesNotMatch(client, />×<\/button>/, "icon-only close controls must not rely on a font glyph");
+  assert.match(styles, /\.material-remove\{[^}]*display:grid;place-items:center/);
+  assert.match(styles, /\.material-remove svg\{display:block;width:12px;height:12px/);
   assert.match(html, /id="modelFileInput" type="file" accept="\.fbx,\.obj" multiple/);
   assert.match(client, /droppedFilePath/);
   assert.match(client, /dropTarget\.addEventListener\("drop"/);

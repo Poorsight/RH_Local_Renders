@@ -5,9 +5,10 @@ const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
 const { spawn, spawnSync } = require("node:child_process");
+const { Worker } = require("node:worker_threads");
 const { SheetStore } = require("./lib/rig.cjs");
 const { ModelStore } = require("./lib/models.cjs");
-const { productType, writeBatchJob } = require("./lib/jobs.cjs");
+const { productType, writeBatchJob, groupedMaterials, materialCombinationCount } = require("./lib/jobs.cjs");
 const { buildRenderPlan, cameraStateKey, applyCameraHandoff } = require("./lib/render-plan.cjs");
 const { siblingBranch, isInBranch } = require("./lib/output-layout.cjs");
 const { publishPreviews, previewFileFor } = require("./lib/preview.cjs");
@@ -16,21 +17,22 @@ const { inspectObjParts, normalizeObjParts, writeMaterialLibrary } = require("./
 const { modelFingerprint, readCropProfiles, writeCropProfiles, cropProfileFor, forgetCropProfiles, analyzeCalibrationPair, applyCropProfileToCamera, calibrationFiles } = require("./lib/crop.cjs");
 const { rendererToken, readCameraFitProfiles, cameraFitStatesForJob, writeCameraFitState } = require("./lib/camera-fit.cjs");
 const { buildUnrealLaunch } = require("./lib/unreal.cjs");
+const { DEFAULT_ENVIRONMENT, renderEnvironments, resolveRenderEnvironment, environmentForJob, publicRenderEnvironment } = require("./lib/render-environments.cjs");
 const { history, expectedRenders } = require("./lib/history.cjs");
 const runStats = require("./lib/run-stats.cjs");
 const checkCache = require("./lib/check-cache.cjs");
-const { availability: postProcessAvailability, isProcessedImage, originalFilesForJob, processJob, processedPathFor } = require("./lib/post-process.cjs");
+const { availability: postProcessAvailability, isProcessedImage, loadConfig: loadPostProcessConfig, originalFilesForJob, processJob, processedPathFor } = require("./lib/post-process.cjs");
 
 const ROOT = __dirname;
 const HOST = "127.0.0.1";
 const PORT = Number(process.env.RH_LOCAL_RENDERS_PORT || 5500);
-const UNREAL_EDITOR = process.env.RH_UNREAL_EDITOR || "D:\\Unreal_Engine\\UE_5.6\\Engine\\Binaries\\Win64\\UnrealEditor.exe";
-const UNREAL_PROJECT = process.env.RH_UNREAL_PROJECT || "D:\\GitHub\\rh_unreal_2\\rh_unreal_2.uproject";
-const CAMERA_FIT_RENDERER_TOKEN = rendererToken(UNREAL_PROJECT);
+const RENDER_ENVIRONMENTS = renderEnvironments();
+const renderEnvironment = value => resolveRenderEnvironment(value, RENDER_ENVIRONMENTS);
+const cameraFitRendererToken = environment => rendererToken(environment.project);
 const sheet = new SheetStore(ROOT), models = new ModelStore(ROOT);
 const RUNTIME_FILES = [
-  "server.cjs", "package.json", "data/postprocess.json", "assets/AdobeRGB1998.icc", "lib/camera-fit.cjs", "lib/crop.cjs", "lib/csv.cjs", "lib/history.cjs", "lib/jobs.cjs", "lib/models.cjs", "lib/post-process.cjs", "lib/render-plan.cjs",
-  "lib/rig.cjs", "lib/unreal.cjs", "scripts/inspect_fbx.py"
+  "server.cjs", "package.json", "data/postprocess.json", "data/sofa-shadow-lut.json", "assets/AdobeRGB1998.icc", "lib/camera-fit.cjs", "lib/crop.cjs", "lib/csv.cjs", "lib/history.cjs", "lib/jobs.cjs", "lib/models.cjs", "lib/post-process.cjs", "lib/render-plan.cjs", "lib/shadow-alpha-worker.cjs",
+  "lib/render-environments.cjs", "lib/rig.cjs", "lib/unreal.cjs", "scripts/calibrate-shadow-lut.cjs", "scripts/inspect_fbx.py", "scripts/reprocess-shadow-from-source.cjs"
 ];
 const runtimeSourceToken = () => {
   const hash = crypto.createHash("sha256");
@@ -43,11 +45,18 @@ const runtimeSourceToken = () => {
 };
 const RUNTIME_STARTED_AT = new Date().toISOString();
 const RUNTIME_SOURCE_TOKEN = runtimeSourceToken();
+const CROP_CONTEXT_VERSION = 2;
+const cropContextTokenFor = ({ input, selection, model, side, fingerprint, camera, rig, shadowConfig }) => crypto.createHash("sha256").update(JSON.stringify({
+  version: CROP_CONTEXT_VERSION, fingerprint, camera,
+  productType: productType(input.productType || model.group).key, side, dimensions: selection.dimensions || model.dimensions,
+  importYaw: selection.importYaw ?? model.importYaw, renderProfile: input.renderProfile || "high", resolutions: input.resolutions || null,
+  renderer: cameraFitRendererToken(renderEnvironment(input.renderEnvironment)), rig, shadowAlpha: shadowConfig.shadow?.substrateAlpha || null
+})).digest("hex").slice(0, 20);
 const MAX_PHASE_RESTARTS = 3;
 let render = { state: "idle", pid: null, jobPath: null, startedAt: null, finishedAt: null, exitCode: null, log: "" };
 let child = null, bridge = null, activeRun = null, lastUnrealContactAt = null;
 let postProcessPromise = null;
-let unrealMaterialCache = null;
+const unrealMaterialCache = new Map();
 
 const ACCESS_KEY = String(process.env.RH_ACCESS_KEY || "").trim();
 const timingEqual = (left, right) => {
@@ -108,7 +117,7 @@ const taskLayerExpected = (task, layerName) => {
   if (!layer) return 0;
   const cameras = task.sequence?.cameras?.length || 0;
   const variants = layerName === "Fabric" && !layer._rhLocalPrefit && !layer._rhLocalCropCalibration
-    ? (task.materials || []).reduce((product, group) => product * Math.max(group.list?.length || 0, 1), 1)
+    ? materialCombinationCount(task.materials)
     : 1;
   return cameras * variants;
 };
@@ -117,12 +126,59 @@ const runProducedImages = (run, folder, layerName, calibration = false) => scanI
   const isCalibration = isInBranch(file, "calibration");
   return isCalibration === calibration && imageLayer(file) === layerName && run.before.get(file) !== `${fs.statSync(file).size}:${fs.statSync(file).mtimeMs}`;
 });
+const phaseUsesCalibrationBranch = phase => Boolean(phase?.isCalibration || (phase?.job?.tasks || []).some(task =>
+  (task.layers || []).some(layer => layer._rhLocalPrefit)
+));
+
+const yieldToStatusRequests = () => new Promise(resolve => setImmediate(resolve));
+const prepareSubstrateShadowAsync = (file, config, productType) => new Promise((resolve, reject) => {
+  const worker = new Worker(path.join(ROOT, "lib", "shadow-alpha-worker.cjs"), { workerData: { file, config, productType } });
+  let settled = false;
+  worker.on("message", message => {
+    settled = true;
+    if (message?.ok) resolve(message.result); else reject(new Error(message?.error || `Shadow worker failed for ${path.basename(file)}`));
+  });
+  worker.on("error", error => { if (!settled) reject(error); });
+  worker.on("exit", code => { if (!settled && code !== 0) reject(new Error(`Shadow worker exited with code ${code} for ${path.basename(file)}`)); });
+});
+
+async function prepareShadowPhase(run, phase) {
+  if (String(phase?.layerName || "").toLowerCase() !== "shadow") return;
+  const modelTypes = new Map((run.job?._rhLocal?.models || []).map(model => [String(model.name || "").toLowerCase(), model.productType]));
+  const records = (phase.job?.tasks || []).flatMap(task => {
+    const folder = taskOutputFolder(task, "Shadow");
+    const productType = String(modelTypes.get(String(task.taskId || "").toLowerCase()) || "").toLowerCase();
+    return folder && fs.existsSync(folder) ? runProducedImages(run, folder, "Shadow", Boolean(phase.isCalibration)).map(file => ({ file, productType, taskId: task.taskId })) : [];
+  });
+  const files = [...new Map(records.map(record => [record.file, record])).values()];
+  if (!files.length) return;
+
+  const config = loadPostProcessConfig(ROOT), startedAt = new Date().toISOString();
+  render.phase = "Shadow processing"; render.substrate = null; render.currentTask = null; render.currentCamera = null;
+  render.message = `Recovering visible alpha for ${files.length} Shadow image${files.length === 1 ? "" : "s"}`;
+  render.shadowProcess = { state: "running", completed: 0, total: files.length, startedAt, calibration: Boolean(phase.isCalibration) };
+  appendRenderLog(`Starting Shadow alpha recovery for ${files.length} ${phase.isCalibration ? "calibration " : ""}image${files.length === 1 ? "" : "s"}; crop and previews wait for this stage.\n`);
+  let converted = 0, skipped = 0;
+  await yieldToStatusRequests();
+  for (let index = 0; index < files.length; index += 1) {
+    const { file, productType, taskId } = files[index], result = await prepareSubstrateShadowAsync(file, config, productType);
+    if (result.skipped) skipped += 1; else converted += 1;
+    render.currentTask = taskId || path.basename(path.dirname(path.dirname(file)));
+    render.currentCamera = path.basename(file).match(/_(TQB|TQ|FH|F|P)_/i)?.[1]?.toUpperCase() || null;
+    render.shadowProcess.completed = index + 1;
+    render.message = index + 1 >= files.length ? "Finalizing visible Shadow alpha" : `Shadow processing ${index + 1} of ${files.length}`;
+    await yieldToStatusRequests();
+  }
+  render.currentTask = null; render.currentCamera = null;
+  render.shadowProcess = { ...render.shadowProcess, state: "success", completed: files.length, converted, skipped, finishedAt: new Date().toISOString() };
+  appendRenderLog(`Shadow alpha recovery complete: ${converted} converted, ${skipped} already carried alpha.\n`);
+}
 
 function phaseTaskProgress(run, phase) {
   const layerName = phase.layerName || phase.name;
   return (phase?.job?.tasks || []).map(task => {
     const expected = taskLayerExpected(task, layerName), folder = taskOutputFolder(task, layerName);
-    const rendered = folder && fs.existsSync(folder) ? runProducedImages(run, folder, layerName, Boolean(phase.isCalibration)).length : 0;
+    const rendered = folder && fs.existsSync(folder) ? runProducedImages(run, folder, layerName, phaseUsesCalibrationBranch(phase)).length : 0;
     const cameraReady = layerName !== "Fabric" || (task.sequence?.cameras || []).every(camera => run.cameraStates.has(cameraStateKey(task.taskId, camera.sequenceName || camera.name)));
     return { name: task.taskId, expected, rendered: Math.min(rendered, expected), complete: expected > 0 && rendered >= expected && cameraReady };
   });
@@ -184,26 +240,30 @@ function finishRun(state, message) {
     return;
   }
   if (run.cameraStates.size) {
-    run.job._rhLocal = { ...(run.job._rhLocal || {}), cameraStates: Object.fromEntries(run.cameraStates), cameraFitRendererToken: CAMERA_FIT_RENDERER_TOKEN };
+    run.job._rhLocal = { ...(run.job._rhLocal || {}), cameraStates: Object.fromEntries(run.cameraStates), cameraFitRendererToken: cameraFitRendererToken(run.environment) };
     fs.writeFileSync(run.jobPath, `${JSON.stringify(run.job, null, 2)}\n`, "utf8");
   }
   updateCatalog(run.jobPath);
-  startPostProcessing(run.job, run.jobPath, deliverables, { automatic: true, cameraStates: run.cameraStates });
+  startPostProcessing(run.job, run.jobPath, deliverables, { automatic: true, cameraStates: run.cameraStates, environment: run.environment });
 }
 
 function startPostProcessing(job, jobPath, files, options = {}) {
   if (postProcessPromise) throw new Error("Post-processing is already running");
   if (!files.length) throw new Error("No original PNG files were found for post-processing");
+  const environment = options.environment || environmentForJob(job, RENDER_ENVIRONMENTS);
   const startedAt = new Date().toISOString(), phaseCount = Math.max(Number(render.phaseCount) || 0, 1) + (options.automatic ? 1 : 0);
   render.state = "running"; render.pid = null; render.jobPath = jobPath; render.finishedAt = null; render.phase = "Post-processing";
   render.phaseIndex = phaseCount; render.phaseCount = phaseCount; render.substrate = null; render.currentTask = null; render.currentCamera = null;
   render.message = `Preparing ${files.length} delivery image${files.length === 1 ? "" : "s"}`;
-  render.postProcess = { state: "running", completed: 0, total: files.length, startedAt, automatic: Boolean(options.automatic) };
-  appendRenderLog(`Starting post-process for ${files.length} original PNG${files.length === 1 ? "" : "s"}: transparent 15000x5000 canvas, AdobeRGB1998, 300 DPI, and Shadow delivery treatment. Originals stay unchanged.\n`);
+  const proxies = publishPreviews(files);
+  render.postProcess = { state: "running", completed: 0, total: files.length, startedAt, automatic: Boolean(options.automatic), previews: proxies };
+  appendRenderLog(`Starting post-process for ${files.length} normalized RAW PNG${files.length === 1 ? "" : "s"}: transparent 15000x5000 canvas, AdobeRGB1998, 300 DPI, and Shadow delivery treatment.\n`);
+  appendRenderLog(`Previews from normalized RAW: ${proxies.created} created, ${proxies.skipped} already current${proxies.failed.length ? `, ${proxies.failed.length} failed` : ""}.\n`);
   let readyToUpload = null;
   postProcessPromise = processJob(ROOT, job, {
     files,
     cameraStates: options.cameraStates,
+    prepareShadow: environment.recoverLegacyShadow,
     onDelivery: delivery => { readyToUpload = delivery; },
     onProgress: progress => {
       render.currentTask = progress.task; render.currentCamera = path.basename(progress.file).match(/_(F|FH|TQ)_/)?.[1] || null;
@@ -215,12 +275,7 @@ function startPostProcessing(job, jobPath, files, options = {}) {
     render.state = "success"; render.finishedAt = new Date().toISOString(); render.currentTask = null; render.currentCamera = null;
     render.message = `${created} processed image${created === 1 ? "" : "s"} ready${skipped ? ` · ${skipped} already current` : ""} · POST folder ready`;
     render.postProcess = { ...render.postProcess, state: "success", completed: results.length, created, skipped, readyToUpload, finishedAt: render.finishedAt };
-    appendRenderLog(`Post-process complete: ${created} created, ${skipped} already current. RAW originals stay untouched; processed files are isolated in ${readyToUpload?.folder || "POST"} (${readyToUpload?.files || 0} files).\n`);
-    // Proxies for the gallery: small enough to serve over the web, generated from the raw
-    // frames the gallery already shows rather than from the 75 Mpx delivery canvases.
-    const proxies = publishPreviews(files);
-    render.postProcess = { ...render.postProcess, previews: proxies };
-    appendRenderLog(`Previews: ${proxies.created} created, ${proxies.skipped} already current${proxies.failed.length ? `, ${proxies.failed.length} failed` : ""}.\n`);
+    appendRenderLog(`Post-process complete: ${created} created, ${skipped} already current. Delivery files are isolated in ${readyToUpload?.folder || "POST"} (${readyToUpload?.files || 0} files).\n`);
     updateCatalog(jobPath);
   }).catch(postError => {
     render.state = options.automatic ? "success" : "failed"; render.finishedAt = new Date().toISOString(); render.currentTask = null; render.currentCamera = null;
@@ -240,7 +295,7 @@ function finalizeCropCalibration(run) {
       if (camera._rhLocalCrop?.status !== "pending") continue;
       const files = calibrationFiles(folder, camera.name), fingerprint = camera._rhLocalCrop.fingerprint;
       if (!files.fabric || !files.shadow) throw new Error(`Crop calibration pair is incomplete for ${task.taskId}/${camera.name}`);
-      const profile = { ...analyzeCalibrationPair(files.fabric, files.shadow), fingerprint, camera: camera.name, modelName: task.taskId, modelPath: task.model?.objPath || "" };
+      const profile = { ...analyzeCalibrationPair(files.fabric, files.shadow), fingerprint, camera: camera.name, contextToken: camera._rhLocalCrop.contextToken || null, modelName: task.taskId, modelPath: task.model?.objPath || "" };
       records.push(profile); profiles.set(`${task.taskId}::${camera.name}`, profile);
     }
   }
@@ -259,11 +314,17 @@ function finalizeCropCalibration(run) {
   fs.writeFileSync(run.jobPath, `${JSON.stringify(run.job, null, 2)}\n`, "utf8");
 }
 
-function advancePhaseOrFinish(message) {
+async function advancePhaseOrFinish(message) {
   if (!activeRun) return;
+  const run = activeRun, phase = run.phases[run.index], remaining = phaseTaskProgress(run, phase).filter(item => !item.complete);
+  if (run.environment.recoverLegacyShadow && String(phase?.layerName || "").toLowerCase() === "shadow" && remaining.length === 0) {
+    try { await prepareShadowPhase(run, phase); }
+    catch (shadowError) { return finishRun("failed", `Shadow processing failed: ${shadowError.message}`); }
+  }
+  if (activeRun !== run) return;
   refreshRunProgress();
-  const phase = activeRun.phases[activeRun.index], remaining = phaseTaskProgress(activeRun, phase).filter(item => !item.complete);
-  if (remaining.length) return restartRenderPhase(`${message}; ${remaining.length} incomplete model${remaining.length === 1 ? "" : "s"}`);
+  const afterProcessing = phaseTaskProgress(run, phase).filter(item => !item.complete);
+  if (afterProcessing.length) return restartRenderPhase(`${message}; ${afterProcessing.length} incomplete model${afterProcessing.length === 1 ? "" : "s"}`);
   if (phase.finalizesCrop) {
     try { finalizeCropCalibration(activeRun); }
     catch (calibrationError) { return finishRun("failed", calibrationError.message); }
@@ -279,16 +340,20 @@ function advancePhaseOrFinish(message) {
 function restartRenderPhase(reason) {
   if (!activeRun) return;
   const phase = activeRun.phases[activeRun.index], used = activeRun.phaseRestarts.get(phase.name) || 0;
+  const maxPhaseRestarts = activeRun.maxPhaseRestarts ?? MAX_PHASE_RESTARTS;
   refreshRunProgress();
-  if (used >= MAX_PHASE_RESTARTS) return finishRun("failed", `${phase.name} stopped after ${used} automatic restarts: ${reason}`);
+  if (used >= maxPhaseRestarts) return finishRun("failed", `${phase.name} stopped after ${used} automatic restarts: ${reason}`);
   activeRun.phaseRestarts.set(phase.name, used + 1); render.pid = null; render.phase = `Restarting ${phase.name}`; render.autoRestarts = (render.autoRestarts || 0) + 1; render.message = `Unreal exited · resuming incomplete models (${used + 1}/${MAX_PHASE_RESTARTS})`;
-  appendRenderLog(`\nUnreal interruption: ${reason}. Automatic ${phase.name} resume ${used + 1}/${MAX_PHASE_RESTARTS}; completed models stay skipped.\n`);
+  appendRenderLog(`\nUnreal interruption: ${reason}. Automatic ${phase.name} resume ${used + 1}/${maxPhaseRestarts}; completed models stay skipped.\n`);
   setTimeout(startRenderPhase, 2500);
 }
 
 function startRenderPhase() {
   if (!activeRun) return;
-  const phase = activeRun.phases[activeRun.index], apiUrl = `http://${HOST}:${PORT}/api/unreal`;
+  // The production BatchRender plugin appends `&Substrate=...` unconditionally. Give it an
+  // existing query string so the suffix stays a query parameter instead of becoming part of
+  // the pathname (`/api/unreal&Substrate=true`), which the local bridge cannot route.
+  const phase = activeRun.phases[activeRun.index], apiUrl = `http://${HOST}:${PORT}/api/unreal?source=local`;
   // Stamped once, not on every automatic restart, so a retry does not reset the clock on
   // work the phase has already done.
   if (!phase.startedAt) {
@@ -297,21 +362,21 @@ function startRenderPhase() {
   }
   let phaseJob = remainingPhaseJob(activeRun, phase);
   if (!phaseJob.tasks.length) return advancePhaseOrFinish(`${phase.name} already complete`);
-  // Only a probe may inherit a saved fit: the store keeps no record of the frame a fit was
-  // measured on, and a 500px fit on a 5000px frame is what cut the sofas.
-  const canApplyPersistentFits = phase.isCalibration && phase.layerName === "Fabric" && activeRun.cachedCameraStateKeys.size > 0;
-  if (phase.useCameraHandoff || canApplyPersistentFits) {
+  // A calibration probe must fit its own exact frame. Reusing a parent-job camera here made
+  // the 500px Fabric probe carry a 5000px state and inflated sofa crop heights by up to 50%.
+  if (phase.useCameraHandoff) {
     const handoff = applyCameraHandoff(phaseJob, activeRun.cameraStates);
     if (phase.useCameraHandoff && handoff.missing.length) return finishRun("failed", `Fabric camera handoff missing for ${handoff.missing.join(", ")}`);
     phaseJob = handoff.job;
     if (handoff.applied.length) {
-      const source = phase.layerName === "Fabric" && canApplyPersistentFits ? "persistent camera-fit cache" : "Fabric handoff";
-      appendRenderLog(`Applied ${handoff.applied.length} camera state${handoff.applied.length === 1 ? "" : "s"} from ${source} to ${phase.name}; fit disabled for cached views${handoff.missing.length ? `, ${handoff.missing.length} view${handoff.missing.length === 1 ? "" : "s"} will calculate Fit` : ""}.\n`);
+      appendRenderLog(`Applied ${handoff.applied.length} camera state${handoff.applied.length === 1 ? "" : "s"} from Fabric handoff to ${phase.name}; fit disabled for inherited views.\n`);
     }
   }
   bridge = { job: phaseJob, jobPath: activeRun.jobPath, outputFolder: activeRun.outputFolder, before: imageSnapshot(activeRun.outputFolder), delivered: false, completed: false, success: false, phase, exitHandled: false };
-  const phaseBridge = bridge, launch = buildUnrealLaunch(UNREAL_EDITOR, UNREAL_PROJECT, apiUrl, { substrate: phase.substrate });
-  appendRenderLog(`\nStarting ${phase.name} phase ${activeRun.index + 1}/${activeRun.phases.length}; ${phaseJob.tasks.length} incomplete model${phaseJob.tasks.length === 1 ? "" : "s"}; Substrate ${phase.substrate ? "ON" : "OFF"}.\n${launch.command}\n${launch.args.join(" ")}\n`);
+  const environment = activeRun.environment;
+  const nativeShadowDiagnostics = environment.id === "ue58" && activeRun.job?._rhLocal?.nativeShadowDiagnostics === true;
+  const phaseBridge = bridge, launch = buildUnrealLaunch(environment.editor, environment.project, apiUrl, { substrate: phase.substrate, nativeShadowDiagnostics });
+  appendRenderLog(`\nStarting ${phase.name} phase ${activeRun.index + 1}/${activeRun.phases.length} in ${environment.label}; ${phaseJob.tasks.length} incomplete model${phaseJob.tasks.length === 1 ? "" : "s"}; Substrate ${phase.substrate ? "ON" : "OFF"}.\n${launch.command}\n${launch.args.join(" ")}\n`);
   child = spawn(launch.command, launch.args, launch.options);
   const phaseProcess = child;
   render.pid = child.pid; render.phase = phase.name; render.phaseIndex = activeRun.index + 1; render.phaseCount = activeRun.phases.length; render.substrate = phase.substrate;
@@ -356,7 +421,7 @@ const MATERIAL_CLASSES = ["MaterialInstanceConstant", "Material"];
 // on it threw away M_RH_MASTER_V3/V5/V6. A texture asset carries no material class of its own,
 // so it is left out by not matching rather than by being pushed out.
 const NOT_A_MATERIAL = ["StaticMesh", "SkeletalMesh", "World", "LevelSequence", "SoundWave", "AnimSequence"];
-const holdsClass = (buffer, className) => buffer.includes(` ${className} `, 0, "latin1");
+const holdsClass = (buffer, className) => buffer.includes(`\x00${className}\x00`, 0, "latin1");
 
 function isMaterialAsset(file) {
   let head;
@@ -381,9 +446,9 @@ function rhFolders(root) {
   return found;
 }
 
-function unrealMaterials() {
-  if (unrealMaterialCache) return unrealMaterialCache;
-  const projectRoot = path.dirname(UNREAL_PROJECT);
+function unrealMaterials(environment = renderEnvironment(DEFAULT_ENVIRONMENT)) {
+  if (unrealMaterialCache.has(environment.id)) return unrealMaterialCache.get(environment.id);
+  const projectRoot = path.dirname(environment.project);
   const stack = ["Content", "Plugins"].flatMap(folder => rhFolders(path.join(projectRoot, folder)));
   const records = [];
   while (stack.length) {
@@ -396,8 +461,9 @@ function unrealMaterials() {
       }
     }
   }
-  unrealMaterialCache = records.sort((left, right) => left.name.localeCompare(right.name));
-  return unrealMaterialCache;
+  const sorted = records.sort((left, right) => left.name.localeCompare(right.name));
+  unrealMaterialCache.set(environment.id, sorted);
+  return sorted;
 }
 
 function latestModified(root, extensions) {
@@ -421,6 +487,7 @@ function pluginRuntimeIsCommitted(pluginRoot, files) {
 }
 
 async function preflight(input) {
+  const selectedEnvironment = renderEnvironment(input.renderEnvironment);
   const selections = input.models?.length ? input.models : input.modelPath ? [{ modelPath: input.modelPath }] : [];
   const checks = [], inspected = [];
   if (!selections.length) checks.push({ id: "models", level: "error", label: "Models", detail: "Add at least one model." });
@@ -472,12 +539,15 @@ async function preflight(input) {
       : { id: "crop", level: "ok", label: "Optimized crop",
           detail: `Every selected model/camera pair has a saved safe crop profile${when ? `, oldest ${when}` : ""}. No calibration will run.` });
   } else checks.push({ id: "crop", level: "ok", label: "Frame crop", detail: "Full frame · original resolution and sensor aspect." });
-  const assets = unrealMaterials(), assetNames = new Map(assets.map(asset => [asset.name.toLowerCase(), asset]));
+  const assets = unrealMaterials(selectedEnvironment), assetNames = new Map(assets.map(asset => [asset.name.toLowerCase(), asset]));
   const assigned = Array.isArray(input.materials) ? input.materials : [];
-  if (!assigned.length || assigned.some(row => !String(row.material || "").trim())) checks.push({ id: "materials", level: "error", label: "Materials", detail: "Complete every material assignment." });
+  const assignedNames = assigned.flatMap(row => Array.isArray(row.materials) ? row.materials : [row.material]).map(value => String(value || "").trim());
+  let materialVariants = 0;
+  if (!assigned.length || assignedNames.some(name => !name)) checks.push({ id: "materials", level: "error", label: "Materials", detail: "Complete every material assignment." });
   else {
-    const missing = assigned.map(row => String(row.material).trim()).filter(name => !assetNames.has(name.toLowerCase()));
-    checks.push(missing.length ? { id: "materials", level: "error", label: "Materials", detail: `Not found in Unreal: ${missing.join(", ")}` } : { id: "materials", level: "ok", label: "Materials", detail: `${assigned.length} assignment${assigned.length === 1 ? "" : "s"} found in Unreal Content.` });
+    const missing = assignedNames.filter(name => !assetNames.has(name.toLowerCase()));
+    materialVariants = materialCombinationCount(groupedMaterials(assigned));
+    checks.push(missing.length ? { id: "materials", level: "error", label: "Materials", detail: `Not found in Unreal: ${missing.join(", ")}` } : { id: "materials", level: "ok", label: "Materials", detail: `${assignedNames.length} material selection${assignedNames.length === 1 ? "" : "s"} found · ${materialVariants} Fabric variant${materialVariants === 1 ? "" : "s"} per camera.` });
   }
   // "auto" means the side comes from the model, so the scene has to be built from the side
   // that was actually resolved rather than from the word in the form.
@@ -491,20 +561,21 @@ async function preflight(input) {
       ? { id: "lights", level: sheet.status().source === "live" ? "ok" : "warning", label: "Light data", detail: `${sceneRows} camera${sceneRows === 1 ? "" : "s"} lit for ${lightScene} · ${sheet.status().rows} rows · ${sheet.status().source}` }
       : { id: "lights", level: "error", label: "Light data", detail: `The sheet has no lights for ${lightScene}.` }
     : { id: "lights", level: "error", label: "Light data", detail: "No light rows are available." });
-  const pluginRoot = path.join(path.dirname(UNREAL_PROJECT), "Plugins", "BatchRender"), markerFile = path.join(pluginRoot, "Source", "BatchRenderEditor", "Public", "JobModel.h");
+  const pluginRoot = path.join(path.dirname(selectedEnvironment.project), "Plugins", "BatchRender"), markerFile = path.join(pluginRoot, "Source", "BatchRenderEditor", "Public", "JobModel.h");
   const bridgeSource = fs.existsSync(markerFile) && fs.readFileSync(markerFile, "utf8").includes("CameraFocalHandoffVersion");
   const sourceTime = latestModified(path.join(pluginRoot, "Source"), [".h", ".cpp"]), binaryRelative = [path.join("Binaries", "Win64", "UnrealEditor-BatchRender.dll"), path.join("Binaries", "Win64", "UnrealEditor-BatchRenderEditor.dll")], binaryFiles = binaryRelative.map(file => path.join(pluginRoot, file));
   const runtimeRelative = [path.join("Source", "BatchRenderEditor", "Public", "JobModel.h"), path.join("Source", "BatchRenderEditor", "Private", "JobModel.cpp"), path.join("Source", "BatchRender", "Private", "BatchRender.cpp"), ...binaryRelative];
   const binariesCurrent = pluginRuntimeIsCommitted(pluginRoot, runtimeRelative) || binaryFiles.every(file => fs.existsSync(file) && fs.statSync(file).mtimeMs >= sourceTime);
   const bridgeReady = bridgeSource && binariesCurrent;
-  const bridgeDetail = !bridgeSource ? "BatchRender camera handoff is not installed." : !binariesCurrent ? "BatchRender camera handoff must be rebuilt." : "Editor, project, and Fabric camera handoff are ready.";
-  checks.push(fs.existsSync(UNREAL_EDITOR) && fs.existsSync(UNREAL_PROJECT) ? { id: "unreal", level: bridgeReady ? "ok" : "error", label: "Unreal", detail: bridgeDetail } : { id: "unreal", level: "error", label: "Unreal", detail: "Editor or project file is missing." });
+  const bridgeDetail = !bridgeSource ? "BatchRender camera handoff is not installed." : !binariesCurrent ? "BatchRender camera handoff must be rebuilt." : `${selectedEnvironment.label}, project, and Fabric camera handoff are ready.`;
+  checks.push(fs.existsSync(selectedEnvironment.editor) && fs.existsSync(selectedEnvironment.project) ? { id: "unreal", level: bridgeReady ? "ok" : "error", label: selectedEnvironment.label, detail: bridgeDetail } : { id: "unreal", level: "error", label: selectedEnvironment.label, detail: "Editor or project file is missing." });
   try { fs.accessSync(path.join(ROOT, "local", "renders"), fs.constants.W_OK); checks.push({ id: "output", level: "ok", label: "Output", detail: "Local render folder is writable." }); }
   catch { checks.push({ id: "output", level: "error", label: "Output", detail: "Local render folder is not writable." }); }
   const post = postProcessAvailability(ROOT);
-  checks.push(post.ok ? { id: "postprocess", level: "ok", label: "Post-process", detail: "libvips and AdobeRGB1998 are ready; originals will be preserved." } : { id: "postprocess", level: "error", label: "Post-process", detail: post.error });
-  const expected = inspected.length * cameras.length * layers.length;
-  return { ok: !checks.some(check => check.level === "error"), checks, counts: { models: inspected.length, cameras: cameras.length, layers: layers.length, expectedRenders: expected, cropCalibrations }, materials: assets.length };
+  checks.push(post.ok ? { id: "postprocess", level: "ok", label: "Post-process", detail: selectedEnvironment.recoverLegacyShadow ? "Legacy Shadow recovery, libvips, and AdobeRGB1998 are ready; originals will be preserved." : "Native 5.8 Shadow alpha will pass directly to delivery; libvips and AdobeRGB1998 are ready." } : { id: "postprocess", level: "error", label: "Post-process", detail: post.error });
+  const expectedPerCamera = (layers.includes("Fabric") ? Math.max(materialVariants, 1) : 0) + (layers.includes("Shadow") ? 1 : 0);
+  const expected = inspected.length * cameras.length * expectedPerCamera;
+  return { ok: !checks.some(check => check.level === "error"), checks, counts: { models: inspected.length, cameras: cameras.length, layers: layers.length, materialVariants, expectedRenders: expected, cropCalibrations }, materials: assets.length, renderEnvironment: publicRenderEnvironment(selectedEnvironment) };
 }
 
 function updateCatalog(jobPath) {
@@ -579,7 +650,10 @@ async function api(request, response, url) {
           aperture: Number(camera.CurrentAperture ?? camera.currentAperture), correctPerspective: Boolean(camera.bCorrectPerspective)
         };
         activeRun.cameraStates.set(cameraStateKey(data.taskId, sequenceName), state);
-        const saved = writeCameraFitState(ROOT, activeRun.job, data.taskId, sequenceName, state, { projectPath: UNREAL_PROJECT, rendererToken: CAMERA_FIT_RENDERER_TOKEN });
+        // Key the state by the phase that actually produced it. Using activeRun.job stored a
+        // 500px calibration camera under a 5000px parent signature and poisoned later probes.
+        const environment = activeRun?.environment || environmentForJob(bridge.job, RENDER_ENVIRONMENTS);
+        const saved = writeCameraFitState(ROOT, bridge.job, data.taskId, sequenceName, state, { projectPath: environment.project, rendererToken: cameraFitRendererToken(environment) });
         if (saved) appendRenderLog(`Saved persistent camera Fit for ${data.taskId}/${String(sequenceName).split("_").pop()}.\n`);
       }
     }
@@ -590,13 +664,17 @@ async function api(request, response, url) {
     if (matchesJob && eventName === "error") finishBridge("failed", data.error || "plugin reported an error");
     return json(response, 200, { ok: true });
   }
-  if (request.method === "GET" && url.pathname === "/api/status") return json(response, 200, {
+  if (request.method === "GET" && url.pathname === "/api/status") {
+    const defaultEnvironment = renderEnvironment(DEFAULT_ENVIRONMENT), publicEnvironments = Object.values(RENDER_ENVIRONMENTS).map(publicRenderEnvironment);
+    return json(response, 200, {
     project: "RH_Local_Renders", models: models.list(), sheet: sheet.status(),
-    unreal: { editor: UNREAL_EDITOR, project: UNREAL_PROJECT, available: fs.existsSync(UNREAL_EDITOR) && fs.existsSync(UNREAL_PROJECT), lastContactAt: lastUnrealContactAt, cameraFitCache: { profiles: Object.keys(readCameraFitProfiles(ROOT).profiles).length, rendererToken: CAMERA_FIT_RENDERER_TOKEN } }, render: currentRender(),
+    unreal: { ...publicRenderEnvironment(defaultEnvironment), lastContactAt: lastUnrealContactAt, cameraFitCache: { profiles: Object.keys(readCameraFitProfiles(ROOT).profiles).length, rendererToken: cameraFitRendererToken(defaultEnvironment) } },
+    renderEnvironments: publicEnvironments, defaultRenderEnvironment: DEFAULT_ENVIRONMENT, render: currentRender(),
     runtime: { startedAt: RUNTIME_STARTED_AT, sourceToken: RUNTIME_SOURCE_TOKEN, stale: RUNTIME_SOURCE_TOKEN !== runtimeSourceToken() },
     // The same verdict the gate uses, or the page would call itself read-only while acting.
     access: { required: Boolean(ACCESS_KEY), authorized: !ACCESS_KEY || isLocalOperator(request) || timingEqual(presentedKey(request), ACCESS_KEY) }
-  });
+    });
+  }
   if (request.method === "POST" && url.pathname === "/api/models/repair") {
     // Some downloads name their parts where an importer never looks. Rewriting the file puts
     // the names back on objects and materials, in place, keeping the original as .orig.
@@ -698,12 +776,27 @@ async function api(request, response, url) {
       warning: results.filter(item => item.warnings).length, models: results });
   }
   if (request.method === "POST" && url.pathname === "/api/models/inspect") return json(response, 200, await models.inspect((await body(request)).modelPath));
-  if (request.method === "GET" && url.pathname === "/api/materials") return json(response, 200, { materials: unrealMaterials() });
+  if (request.method === "GET" && url.pathname === "/api/materials") {
+    const environment = renderEnvironment(url.searchParams.get("environment"));
+    return json(response, 200, { materials: unrealMaterials(environment), renderEnvironment: publicRenderEnvironment(environment) });
+  }
+  if (request.method === "POST" && url.pathname === "/api/materials/refresh") {
+    const environment = renderEnvironment(url.searchParams.get("environment"));
+    const previous = unrealMaterialCache.get(environment.id) || null;
+    const previousNames = new Set((previous || []).map(asset => asset.path.toLowerCase()));
+    unrealMaterialCache.delete(environment.id);
+    const materials = unrealMaterials(environment);
+    const currentNames = new Set(materials.map(asset => asset.path.toLowerCase()));
+    const added = previous ? materials.filter(asset => !previousNames.has(asset.path.toLowerCase())).length : 0;
+    const removed = previous ? previous.filter(asset => !currentNames.has(asset.path.toLowerCase())).length : 0;
+    return json(response, 200, { materials, count: materials.length, added, removed, renderEnvironment: publicRenderEnvironment(environment) });
+  }
   if (request.method === "POST" && url.pathname === "/api/preflight") return json(response, 200, await preflight(await body(request)));
   if (request.method === "POST" && url.pathname === "/api/sheet/refresh") return json(response, 200, await sheet.refresh());
   if (request.method === "POST" && url.pathname === "/api/jobs") {
-    const input = await body(request), selections = input.models?.length ? input.models : [{ modelPath: input.modelPath, dimensions: input.dimensions, importYaw: input.importYaw }];
-    const entries = [], cropStore = readCropProfiles(ROOT);
+    const requested = await body(request), input = { ...requested, renderEnvironment: renderEnvironment(requested.renderEnvironment).id };
+    const selections = input.models?.length ? input.models : [{ modelPath: input.modelPath, dimensions: input.dimensions, importYaw: input.importYaw }];
+    const entries = [], cropStore = readCropProfiles(ROOT), rig = sheet.rig(), shadowConfig = loadPostProcessConfig(ROOT);
     for (const selection of selections) {
       const model = await models.inspect(selection.modelPath);
       const side = input.side === "auto" || !input.side ? model.side : String(input.side).toUpperCase();
@@ -711,26 +804,31 @@ async function api(request, response, url) {
       if (productType(input.productType || model.group).requiresSide && !["R", "L", "U"].includes(side)) {
         throw new Error(`Could not determine L, R, or U form factor for ${model.name}`);
       }
-      const fingerprint = modelFingerprint(model.path), cropProfiles = Object.fromEntries((input.cameras || []).map(camera => [camera, cropProfileFor(cropStore, fingerprint, camera)]).filter(([, profile]) => profile));
-      entries.push({ model, input: { ...input, ...selection, side, dimensions: selection.dimensions || model.dimensions, importYaw: selection.importYaw ?? model.importYaw, modelFingerprint: fingerprint, cropProfiles } });
+      const fingerprint = modelFingerprint(model.path);
+      const cropContextTokens = Object.fromEntries((input.cameras || []).map(camera => [camera, cropContextTokenFor({ input, selection, model, side, fingerprint, camera, rig, shadowConfig })]));
+      const cropProfiles = Object.fromEntries((input.cameras || []).map(camera => [camera, cropProfileFor(cropStore, fingerprint, camera, cropContextTokens[camera])]).filter(([, profile]) => profile));
+      entries.push({ model, input: { ...input, ...selection, side, dimensions: selection.dimensions || model.dimensions, importYaw: selection.importYaw ?? model.importYaw, modelFingerprint: fingerprint, cropProfiles, cropContextTokens } });
     }
-    const result = writeBatchJob(ROOT, entries, sheet.rig());
+    const result = writeBatchJob(ROOT, entries, rig);
     const cameraCount = result.job.tasks.reduce((total, task) => total + task.sequence.cameras.length, 0);
-    return json(response, 201, { jobPath: result.jobPath, outputFolder: result.outputFolder, modelCount: result.job.tasks.length, cameraCount, lightSource: sheet.source });
+    return json(response, 201, { jobPath: result.jobPath, outputFolder: result.outputFolder, modelCount: result.job.tasks.length, cameraCount, lightSource: sheet.source, renderEnvironment: input.renderEnvironment });
   }
   if (request.method === "POST" && url.pathname === "/api/renders") {
     if (child || activeRun || postProcessPromise) return error(response, 409, render.phase === "Post-processing" ? "Post-processing is still running" : render.state === "running" ? "A render is already running" : "Unreal Editor is still closing");
     const input = await body(request), jobPath = path.resolve(String(input.jobPath || "")), jobsRoot = path.join(ROOT, "local", "jobs", "generated");
     if (!within(jobPath, jobsRoot) || !fs.existsSync(jobPath)) return error(response, 400, "Only generated local job files can be launched");
-    if (!fs.existsSync(UNREAL_EDITOR) || !fs.existsSync(UNREAL_PROJECT)) return error(response, 503, "Unreal Editor 5.6 or rh_unreal_2.uproject was not found");
     const job = JSON.parse(fs.readFileSync(jobPath, "utf8"));
+    const environment = environmentForJob(job, RENDER_ENVIRONMENTS), fitToken = cameraFitRendererToken(environment);
+    if (!fs.existsSync(environment.editor) || !fs.existsSync(environment.project)) return error(response, 503, `${environment.label} or its project was not found`);
     const rendersRoot = path.join(ROOT, "local", "renders"), outputFolder = path.resolve(String(job._rhLocal?.outputFolder || ""));
     if (!within(outputFolder, rendersRoot)) return error(response, 400, "Job output must stay inside RH_Local_Renders/local/renders");
-    const phases = buildRenderPlan(job), cachedFits = cameraFitStatesForJob(ROOT, job, { projectPath: UNREAL_PROJECT, rendererToken: CAMERA_FIT_RENDERER_TOKEN });
-    activeRun = { job, jobPath, outputFolder, before: input.resume ? new Map() : imageSnapshot(outputFolder), phases, index: 0, cameraStates: cachedFits.states, cachedCameraStateKeys: new Set(cachedFits.states.keys()), phaseRestarts: new Map() };
+    const phases = buildRenderPlan(job), cachedFits = cameraFitStatesForJob(ROOT, job, { projectPath: environment.project, rendererToken: fitToken });
+    const maxPhaseRestarts = job._rhLocal?.disableAutomaticRestarts === true ? 0 : MAX_PHASE_RESTARTS;
+    activeRun = { job, jobPath, outputFolder, environment, before: input.resume ? new Map() : imageSnapshot(outputFolder), phases, index: 0, cameraStates: new Map(), phaseRestarts: new Map(), maxPhaseRestarts };
     const queue = (job.tasks || []).map(task => ({ name: task.taskId, state: "queued" }));
     const totalRenders = phases.reduce((total, phase) => total + (phase.job.tasks || []).reduce((phaseTotal, task) => phaseTotal + taskLayerExpected(task, phase.layerName || phase.name), 0), 0);
-    render = { state: "running", pid: null, jobPath, startedAt: new Date().toISOString(), finishedAt: null, exitCode: null, rendered: 0, totalRenders, currentTask: null, currentCamera: null, message: input.resume ? "Resuming completed files" : "Queued", queue, phase: null, phaseIndex: 0, phaseCount: phases.length, substrate: null, autoRestarts: 0, log: `Queued ${phases.map(phase => phase.name).join(" → ")} render plan${input.resume ? " in resume mode" : ""}.\nPersistent camera-fit cache: ${cachedFits.hits}/${cachedFits.total} views ready.\nLocal BatchRender API: http://${HOST}:${PORT}/api/unreal\n` };
+    const nativeShadowDiagnostics = environment.id === "ue58" && job._rhLocal?.nativeShadowDiagnostics === true;
+    render = { state: "running", pid: null, jobPath, startedAt: new Date().toISOString(), finishedAt: null, exitCode: null, rendered: 0, totalRenders, currentTask: null, currentCamera: null, message: input.resume ? "Resuming completed files" : "Queued", queue, phase: null, phaseIndex: 0, phaseCount: phases.length, substrate: null, environment: publicRenderEnvironment(environment), autoRestarts: 0, log: `Queued ${phases.map(phase => phase.name).join(" → ")} render plan for ${environment.label}${input.resume ? " in resume mode" : ""}.\nPersistent camera-fit cache: ${cachedFits.hits}/${cachedFits.total} exact-frame records available for diagnostics; every Fabric phase calculates a fresh Fit.\nShadow alpha: ${environment.recoverLegacyShadow ? "Legacy Composure recovery" : "native Composite output"}.\nNative Shadow diagnostics: ${nativeShadowDiagnostics ? "ON via process-local -ExecCmds" : "OFF"}.\nAutomatic phase restarts: ${maxPhaseRestarts}.\nLocal BatchRender API: http://${HOST}:${PORT}/api/unreal\n` };
     refreshRunProgress();
     startRenderPhase();
     return json(response, 202, currentRender());
@@ -798,7 +896,7 @@ Forced stop during ${stoppedDuring}. Unreal is being killed and the run is aband
     const job = JSON.parse(fs.readFileSync(jobPath, "utf8")), files = originalFilesForJob(job);
     if (!files.length) return error(response, 400, "This job has no original PNG files to post-process");
     render = { state: "running", pid: null, jobPath, startedAt: new Date().toISOString(), finishedAt: null, exitCode: null, rendered: 0, totalRenders: 0, queue: [], phase: null, phaseIndex: 0, phaseCount: 0, substrate: null, autoRestarts: 0, log: "Manual post-process requested from render history.\n" };
-    startPostProcessing(job, jobPath, files, { automatic: false });
+    startPostProcessing(job, jobPath, files, { automatic: false, environment: environmentForJob(job, RENDER_ENVIRONMENTS) });
     return json(response, 202, currentRender());
   }
   if (request.method === "GET" && url.pathname === "/api/history") {

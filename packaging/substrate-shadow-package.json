@@ -1,0 +1,13 @@
+{
+  "name": "rh-substrate-shadow-postprocess-handoff",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Portable RH UE 5.6 Substrate shadow alpha recovery and delivery handoff.",
+  "scripts": {
+    "smoke": "node scripts/smoke-shadow-handoff.cjs"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "pngjs": "^7.0.0"
+  }
+}

@@ -9,12 +9,12 @@ const { spawn } = require("node:child_process");
 const { PNG } = require("pngjs");
 const { parseCsv } = require("../lib/csv.cjs");
 const { buildRig, jobLights } = require("../lib/rig.cjs");
-const { PRODUCT_TYPES, withResolutionOverrides, buildJob, buildBatchJob, writeJob, CAMERA_YAW, RESOLUTION_PROFILES, groupedMaterials } = require("../lib/jobs.cjs");
+const { PRODUCT_TYPES, withResolutionOverrides, buildJob, buildBatchJob, writeJob, CAMERA_YAW, RESOLUTION_PROFILES, groupedMaterials, synchronizeMaterialGroups, materialCombinationCount } = require("../lib/jobs.cjs");
 const { ModelStore, sectionalFormFactor } = require("../lib/models.cjs");
 const { buildUnrealLaunch } = require("../lib/unreal.cjs");
 const { history, expectedRenders } = require("../lib/history.cjs");
 const { buildRenderPlan, cameraStateKey, applyCameraHandoff } = require("../lib/render-plan.cjs");
-const { analyzeCalibrationPair, applyCropProfile } = require("../lib/crop.cjs");
+const { analyzeCalibrationPair, applyCropProfile, calibrationFiles } = require("../lib/crop.cjs");
 const { cameraFitStatesForJob, writeCameraFitStates } = require("../lib/camera-fit.cjs");
 const { inspectObjParts, normalizeObjParts, writeMaterialLibrary } = require("../lib/obj-parts.cjs");
 const { applyCropProfileToCamera } = require("../lib/crop.cjs");
@@ -29,9 +29,11 @@ const freePort = () => new Promise((resolve, reject) => {
   probe.listen(0, "127.0.0.1", () => { const { port } = probe.address(); probe.close(() => resolve(port)); });
 });
 const { checkModel, summarise, unrealScaleFor } = require("../lib/model-check.cjs");
-const { siblingBranch, batchRootOf } = require("../lib/output-layout.cjs");
+const { siblingBranch, siblingLayerBranch, batchRootOf } = require("../lib/output-layout.cjs");
 const { publishPreviews, previewFileFor } = require("../lib/preview.cjs");
-const { READY_FOLDER_NAME, availability, isProcessedImage, processImage, processedPathFor, publishReadyToUpload, writePngText } = require("../lib/post-process.cjs");
+const { READY_FOLDER_NAME, availability, isProcessedImage, prepareSubstrateShadow, processImage, processedPathFor, publishReadyToUpload, writePngText } = require("../lib/post-process.cjs");
+const { DEFAULT_ENVIRONMENT, normalizeEnvironment, renderEnvironments, resolveRenderEnvironment, environmentForJob, publicRenderEnvironment } = require("../lib/render-environments.cjs");
+const runStats = require("../lib/run-stats.cjs");
 
 const root = path.join(__dirname, "..");
 const rows = parseCsv(fs.readFileSync(path.join(root, "data", "sectionals-indoor.csv"), "utf8"));
@@ -145,8 +147,68 @@ ${row}
   assert.deepEqual(shadowSun.Location, fabricSun.Location, "an intensity override must not move the light");
 });
 
-test("equal material names become one BatchRender material group", () => {
-  assert.deepEqual(groupedMaterials([{ meshes: ["UPH"], material: "A" }, { meshes: ["Stitches"], material: "A" }])[0].meshes, ["uph", "stitches"]);
+test("each Material ID keeps its own BatchRender variants", () => {
+  const groups = groupedMaterials([
+    { meshes: ["UPH"], materials: ["A", "B", "C", "D", "E"] },
+    { meshes: ["Stitches"], material: "A" }
+  ]);
+  assert.deepEqual(groups.map(group => group.meshes), [["uph"], ["stitches"]]);
+  assert.deepEqual(groups[0].list.map(item => item.name), ["A", "B", "C", "D", "E"]);
+  assert.ok(groups.flatMap(group => group.list).every(item => item.ApplyExposure === false && item.postProccessName === "RH_POST_PROCESS"));
+  assert.equal(materialCombinationCount(groups), 5);
+});
+
+test("identical multi-material lists stay paired across UPH and Stitches", () => {
+  const names = ["BLACK", "CARAMEL", "FOG", "BLUE", "INDIGO", "NATURAL", "WHITE"];
+  const groups = groupedMaterials([
+    { meshes: ["UPH"], materials: names },
+    { meshes: ["Stitches"], materials: names },
+    { meshes: ["Feet"], material: "WOOD" }
+  ]);
+  assert.deepEqual(groups.map(group => group.meshes), [["uph", "stitches"], ["feet"]]);
+  assert.deepEqual(groups[0].list.map(item => item.name), names);
+  assert.equal(materialCombinationCount(groups), 7, "seven paired fabrics must not become 7 × 7 combinations");
+});
+
+test("identical single materials share one BatchRender group and one filename token", () => {
+  const longUph = "belgian_track_arm_bench_seat_left_arm_return_sofa_luxe_9_47760743_uph";
+  const longStitches = "belgian_track_arm_bench_seat_left_arm_return_sofa_luxe_9_47760743_stitches";
+  const longFeet = "belgian_track_arm_bench_seat_left_arm_return_sofa_luxe_9_47760743_feet";
+  const input = {
+    ...baseInput,
+    cameras: ["F"],
+    materials: [
+      { meshes: [longUph], material: "BELGIAN_LINEN_CLASSIC_SAND_V1" },
+      { meshes: [longStitches], material: "BELGIAN_LINEN_CLASSIC_SAND_V1" },
+      { meshes: [longFeet], material: "UPH_WOOD_BROWN_OAK" }
+    ]
+  };
+  const longModel = { ...model, materialIds: [longUph, longStitches, longFeet] };
+  const task = buildJob(input, longModel, rig, "D:\\renders\\single-material").tasks[0];
+  assert.deepEqual(task.materials.map(group => group.meshes), [[longUph, longStitches], [longFeet]]);
+  assert.equal(task.materials[0].list[0].name, "BELGIAN_LINEN_CLASSIC_SAND_V1");
+  assert.equal(task.layers[0].output.fileNameFormat, `00000000_{camera}_Product_{material:${longUph}}_{material:${longFeet}}`);
+  assert.equal(materialCombinationCount(task.materials), 1);
+});
+
+test("Multiply makes selected Material IDs independent while the default refuses accidental products", () => {
+  const names = ["BLACK", "WHITE"];
+  const independent = groupedMaterials([
+    { meshes: ["UPH"], materials: names },
+    { meshes: ["Stitches"], materials: names, multiply: true }
+  ]);
+  assert.deepEqual(independent.map(group => group.meshes), [["uph"], ["stitches"]]);
+  assert.equal(materialCombinationCount(independent), 4);
+  assert.throws(() => groupedMaterials([
+    { meshes: ["UPH"], materials: ["FABRIC_A", "FABRIC_B"] },
+    { meshes: ["Stitches"], materials: ["THREAD_A", "THREAD_B"] }
+  ]), /Linked material lists differ/);
+  // A legacy saved job had no explicit mode. It keeps working, while identical lists are
+  // still safely collapsed when such a job is resumed.
+  assert.equal(materialCombinationCount(synchronizeMaterialGroups([
+    { meshes: ["UPH"], list: names.map(name => ({ name })) },
+    { meshes: ["Stitches"], list: ["THREAD_A", "THREAD_B"].map(name => ({ name })) }
+  ])), 4);
 });
 
 test("render history discovers saved jobs and their disk renders", () => {
@@ -167,6 +229,8 @@ test("render history discovers saved jobs and their disk renders", () => {
     assert.equal(saved.postProcessCount, 1); assert.ok(saved.models[0].renders[0].processed); assert.ok(isProcessedImage(processedPathFor(image)));
     assert.equal(saved.readyToUpload, null, "a loose delivery image without a manifest is not treated as an upload set");
     assert.deepEqual(saved.models[0].dimensions, baseInput.dimensions); assert.equal(saved.models[0].renders[0].camera, "F");
+    assert.equal(saved.models[0].renders[0].material, "FABRIC_A");
+    assert.deepEqual(saved.models[0].renders[0].materials, ["FABRIC_A", "WOOD_A"]);
     assert.match(saved.jobUrl, /^\/api\/jobs\/file\?path=/); assert.match(saved.models[0].renders[0].url, /^\/api\/renders\/file\?path=/);
   } finally { fs.rmSync(temp, { recursive: true, force: true }); }
 });
@@ -176,21 +240,61 @@ test("processed renders publish into an isolated ready-to-upload model structure
   const job = buildJob({ ...baseInput, cameras: ["F", "FH", "TQ"], layers: ["Fabric", "Shadow"] }, current, rig, output), task = job.tasks[0];
   fs.mkdirSync(task.layers[0].output.folder, { recursive: true });
   try {
+    fs.mkdirSync(task.layers[1].output.folder, { recursive: true });
     for (const camera of ["F", "FH", "TQ"]) for (const layer of ["Fabric", "Shadow"]) {
-      const source = path.join(task.layers[0].output.folder, layer === "Shadow" ? `00000000_${camera}_Shadow.png` : `00000000_${camera}_Product_FABRIC_A.png`);
+      const source = path.join(task.layers[layer === "Shadow" ? 1 : 0].output.folder, layer === "Shadow" ? `00000000_${camera}_Shadow.png` : `00000000_${camera}_Product_FABRIC_A.png`);
       fs.writeFileSync(source, `raw-${camera}-${layer}`); fs.writeFileSync(processedPathFor(source), `post-${camera}-${layer}`);
     }
     const delivery = publishReadyToUpload(job, { root, config: { outputSuffix: "_POST" } });
     assert.equal(READY_FOLDER_NAME, "POST");
     assert.equal(delivery.files, 6); assert.equal(delivery.models, 1); assert.equal(delivery.complete, true);
     const modelFolder = path.join(output, READY_FOLDER_NAME, model.name);
-    assert.deepEqual(fs.readdirSync(modelFolder).sort(), [
-      `${model.name}_F.png`, `${model.name}_FH.png`, `${model.name}_TQ.png`,
-      `${model.name}_F_Shadow.png`, `${model.name}_FH_Shadow.png`, `${model.name}_TQ_Shadow.png`
-    ].sort());
+    assert.deepEqual(fs.readdirSync(modelFolder).sort(), ["materials", "shadows"]);
+    assert.deepEqual(fs.readdirSync(path.join(modelFolder, "materials")).sort(), [`${model.name}_F.png`, `${model.name}_FH.png`, `${model.name}_TQ.png`].sort());
+    assert.deepEqual(fs.readdirSync(path.join(modelFolder, "shadows")).sort(), [`${model.name}_F_Shadow.png`, `${model.name}_FH_Shadow.png`, `${model.name}_TQ_Shadow.png`].sort());
     const manifest = JSON.parse(fs.readFileSync(path.join(output, "manifest.json"), "utf8"));
     assert.equal(manifest.fileCount, 6); assert.equal(manifest.complete, true); assert.ok(manifest.files.every(file => !path.isAbsolute(file.source)));
     assert.deepEqual(fs.readdirSync(path.join(output, READY_FOLDER_NAME)), [model.name], "POST holds delivery folders only");
+  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+});
+
+test("delivery keeps every Fabric variant beside one shared Shadow", () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "rh-material-variants-")), current = { ...model, materialIds: ["UPH", "Stitches", "Feet"] };
+  const materials = [{ meshes: ["UPH"], materials: ["FABRIC_RED", "FABRIC_BLUE"] }, { meshes: ["Stitches"], material: "THREAD" }, { meshes: ["Feet"], material: "WOOD" }];
+  const job = buildJob({ ...baseInput, cameras: ["F"], layers: ["Fabric", "Shadow"], materials }, current, rig, temp), task = job.tasks[0];
+  try {
+    for (const layer of task.layers) fs.mkdirSync(layer.output.folder, { recursive: true });
+    const sources = [
+      path.join(task.layers[0].output.folder, "00000000_F_Product_FABRIC_RED_THREAD_WOOD.png"),
+      path.join(task.layers[0].output.folder, "00000000_F_Product_FABRIC_BLUE_THREAD_WOOD.png"),
+      path.join(task.layers[1].output.folder, "00000000_F_Shadow.png")
+    ];
+    for (const source of sources) { fs.writeFileSync(source, "raw"); fs.writeFileSync(processedPathFor(source), "post"); }
+    const delivery = publishReadyToUpload(job, { root, config: { outputSuffix: "_POST" } });
+    const materialFolder = path.join(delivery.folder, model.name, "materials"), shadowFolder = path.join(delivery.folder, model.name, "shadows");
+    assert.deepEqual(fs.readdirSync(materialFolder).sort(), [`${model.name}_F_FABRIC_BLUE__THREAD__WOOD.png`, `${model.name}_F_FABRIC_RED__THREAD__WOOD.png`].sort());
+    assert.deepEqual(fs.readdirSync(shadowFolder), [`${model.name}_F_Shadow.png`]);
+    const manifest = JSON.parse(fs.readFileSync(path.join(temp, "manifest.json"), "utf8"));
+    assert.deepEqual(manifest.files.filter(file => file.layer === "Fabric").map(file => file.material).sort(), ["FABRIC_BLUE", "FABRIC_RED"]);
+    assert.deepEqual(manifest.files.find(file => file.layer === "Shadow").materials, []);
+  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+});
+
+test("history maps a top-level delivery manifest back to RAW renders", () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "rh-history-post-"));
+  const jobsRoot = path.join(temp, "local", "jobs", "generated"), output = path.join(temp, "local", "renders", "batch_post");
+  const current = { ...model, materialIds: ["UPH", "Stitches", "Feet"] };
+  const job = buildJob({ ...baseInput, cameras: ["F"], layers: ["Fabric"] }, current, rig, output), raw = job.tasks[0].layers[0].output.folder;
+  const source = path.join(raw, "00000000_F_Product_FABRIC_A.png"), deliveryFolder = path.join(output, READY_FOLDER_NAME, model.name), delivery = path.join(deliveryFolder, `${model.name}_F.png`);
+  fs.mkdirSync(jobsRoot, { recursive: true }); fs.mkdirSync(raw, { recursive: true }); fs.mkdirSync(deliveryFolder, { recursive: true });
+  try {
+    fs.writeFileSync(path.join(jobsRoot, "batch_post.job.json"), JSON.stringify({ ...job, jobId: "batch_post" }));
+    fs.writeFileSync(source, Buffer.alloc(2048)); fs.writeFileSync(delivery, Buffer.alloc(2048));
+    fs.writeFileSync(path.join(output, "manifest.json"), JSON.stringify({ version: 2, complete: true, fileCount: 1, modelCount: 1,
+      files: [{ model: model.name, camera: "F", layer: "Fabric", file: `${model.name}/${model.name}_F.png`, source: path.relative(output, source).replace(/\\/g, "/") }] }));
+    const [saved] = history(temp);
+    assert.equal(saved.postProcessCount, 1); assert.equal(saved.readyToUpload.files, 1); assert.equal(saved.readyToUpload.complete, true);
+    assert.ok(saved.models[0].renders[0].processed, "the manifest source must resolve to its POST delivery");
   } finally { fs.rmSync(temp, { recursive: true, force: true }); }
 });
 
@@ -199,9 +303,11 @@ test("every output kind lands in its own branch and previews stay small", () => 
   const current = { ...model, materialIds: ["UPH", "Stitches", "Feet"] };
   const job = buildBatchJob([{ model: current, input: { ...baseInput, cameras: ["F"], layers: ["Fabric"], cropMode: "optimized", modelFingerprint: "layout" } }], rig, batch, "batch_test");
   const raw = job.tasks[0].layers[0].output.folder;
-  assert.equal(path.relative(batch, raw), path.join("raw", model.name), "raw renders live in the raw branch");
-  assert.equal(path.relative(batch, siblingBranch(raw, "calibration")).replace(/\$/, ""), path.join("calibration", model.name), "500px probes get their own branch");
-  assert.equal(path.relative(batch, siblingBranch(raw, "preview")).replace(/\$/, ""), path.join("preview", model.name), "proxies get their own branch");
+  assert.equal(path.relative(batch, raw), path.join("raw", model.name, "materials"), "Fabric variants live in the material branch");
+  assert.equal(path.relative(batch, siblingBranch(raw, "calibration")).replace(/\$/, ""), path.join("calibration", model.name, "materials"), "500px probes get their own branch");
+  assert.equal(path.relative(batch, siblingLayerBranch(raw, "calibration", "Fabric")).replace(/\$/, ""), path.join("calibration", model.name, "materials"));
+  assert.equal(path.relative(batch, siblingLayerBranch(raw, "calibration", "Shadow")).replace(/\$/, ""), path.join("calibration", model.name, "shadows"));
+  assert.equal(path.relative(batch, siblingBranch(raw, "preview")).replace(/\$/, ""), path.join("preview", model.name, "materials"), "proxies preserve the layer branch");
   assert.equal(batchRootOf(raw), path.resolve(batch));
   // A pre-split batch has no raw segment, so the old nested folder must still resolve.
   assert.match(siblingBranch(path.join(batch, model.name), "calibration"), /_crop_calibration/);
@@ -218,7 +324,7 @@ test("every output kind lands in its own branch and previews stay small", () => 
     const result = publishPreviews([source]);
     assert.equal(result.created, 1); assert.deepEqual(result.failed, []);
     const proxy = previewFileFor(source);
-    assert.equal(path.relative(batch, proxy), path.join("preview", model.name, "00000000_F_Product_uph.png"));
+    assert.equal(path.relative(batch, proxy), path.join("preview", model.name, "materials", "00000000_F_Product_uph.png"));
     const shrunk = PNG.sync.read(fs.readFileSync(proxy));
     assert.equal(shrunk.width, 1200); assert.equal(shrunk.height, 400, "aspect ratio survives the downscale");
     assert.ok(fs.statSync(proxy).size < fs.statSync(source).size, "a proxy must be cheaper than its source");
@@ -240,6 +346,100 @@ test("PNG delivery metadata is inserted without replacing image chunks", () => {
   } finally { fs.rmSync(temp, { recursive: true, force: true }); }
 });
 
+test("Substrate Shadow RGB is converted to calibrated black RGBA before downstream work", () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "rh-shadow-alpha-")), file = path.join(temp, "00000000_F_Shadow.png");
+  const png = new PNG({ width: 3, height: 1 });
+  for (let x = 0; x < 3; x += 1) {
+    const value = [0, 128, 255][x], index = x << 2;
+    png.data[index] = value; png.data[index + 1] = value; png.data[index + 2] = value; png.data[index + 3] = 0;
+  }
+  fs.writeFileSync(file, PNG.sync.write(png));
+  try {
+    const original = fs.readFileSync(file);
+    const referenceCurve = [[0, 0], [1, 2], [255, 228]];
+    const result = prepareSubstrateShadow(file, { config: { shadow: { substrateAlpha: { inputBlack: 0, gamma: 0.159453125, inputWhite: 255, referenceCurve } } } });
+    assert.equal(result.skipped, false); assert.equal(result.maxAlpha, 228);
+    assert.deepEqual(fs.readFileSync(result.sourceBackup), original, "the hidden high-resolution RGB source stays recoverable");
+    const converted = PNG.sync.read(fs.readFileSync(file));
+    assert.deepEqual([...converted.data.subarray(0, 3)], [0, 0, 0]); assert.equal(converted.data[3], 0);
+    assert.deepEqual([...converted.data.subarray(4, 7)], [0, 0, 0]);
+    const levelsMiddle = Math.round(255 * Math.pow(128 / 255, 1 / 0.159453125));
+    assert.equal(converted.data[7], Math.round(2 + (228 - 2) * ((levelsMiddle - 1) / 254)));
+    assert.deepEqual([...converted.data.subarray(8, 12)], [0, 0, 0, 228]);
+    const bytes = fs.readFileSync(file), second = prepareSubstrateShadow(file);
+    assert.equal(second.skipped, true); assert.equal(second.reason, "alpha already present"); assert.deepEqual(fs.readFileSync(file), bytes);
+    const recalibrated = prepareSubstrateShadow(file, { config: { shadow: { substrateAlpha: { referenceCurve: [[0, 0], [228, 200], [255, 220]] } } }, recalibrateExistingAlpha: true });
+    assert.equal(recalibrated.recalibrated, true); assert.equal(PNG.sync.read(fs.readFileSync(file)).data[11], 200);
+  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+});
+
+test("constant opaque Legacy Shadow alpha is recovered from RGB instead of being skipped", () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "rh-shadow-opaque-alpha-")), file = path.join(temp, "00000000_F_Shadow.png");
+  const png = new PNG({ width: 3, height: 1 }), lut = Array.from({ length: 256 }, (_, value) => value);
+  for (let x = 0; x < 3; x += 1) {
+    const value = [0, 128, 255][x], index = x << 2;
+    png.data[index] = value; png.data[index + 1] = value; png.data[index + 2] = value; png.data[index + 3] = 255;
+  }
+  fs.writeFileSync(file, PNG.sync.write(png));
+  try {
+    const result = prepareSubstrateShadow(file, { config: { shadow: { substrateAlpha: { directLumaLut: { F: lut } } } } });
+    assert.equal(result.skipped, false); assert.equal(result.calibration.mode, "direct-luma-lut");
+    const converted = PNG.sync.read(fs.readFileSync(file));
+    assert.deepEqual([...converted.data], [0, 0, 0, 0, 0, 0, 0, 128, 0, 0, 0, 255]);
+    assert.match(result.sourceBackup, /\.substrate-rgb\.bak$/);
+  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+});
+
+test("camera Shadow LUTs are the primary conversion for every product type", () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "rh-camera-shadow-lut-"));
+  const lut = Array.from({ length: 256 }, (_, value) => Math.round(value / 2));
+  try {
+    for (const [productType, camera] of [["sofas", "F"], ["sectionals", "TQ"], ["chairs", "P"]]) {
+      const file = path.join(temp, `00000000_${camera}_Shadow.png`);
+      const png = new PNG({ width: 1, height: 1 }); png.data[0] = 128; png.data[1] = 128; png.data[2] = 128; png.data[3] = 0;
+      fs.writeFileSync(file, PNG.sync.write(png));
+      const result = prepareSubstrateShadow(file, { productType, config: { shadow: { substrateAlpha: { directLumaLut: { F: lut, P: lut, TQ: lut, TQB: lut } } } } });
+      assert.equal(result.calibration.mode, "direct-luma-lut"); assert.equal(result.calibration.camera, camera);
+      assert.equal(result.calibration.productType, productType); assert.equal(PNG.sync.read(fs.readFileSync(file)).data[3], 64);
+    }
+  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+});
+
+test("render environments keep production UE 5.6 and beta UE 5.8 isolated", () => {
+  const profiles = renderEnvironments({
+    RH_UNREAL_EDITOR_56: "D:\\UE56\\UnrealEditor.exe",
+    RH_UNREAL_PROJECT_56: "D:\\RH56\\rh.uproject",
+    RH_UNREAL_EDITOR_58: "D:\\UE58\\UnrealEditor.exe",
+    RH_UNREAL_PROJECT_58: "D:\\RH58\\rh.uproject"
+  });
+  assert.equal(DEFAULT_ENVIRONMENT, "ue56");
+  assert.equal(normalizeEnvironment("UE-5.8"), "ue58");
+  assert.equal(normalizeEnvironment("beta"), "ue58");
+  assert.equal(normalizeEnvironment("unknown"), "ue56");
+  assert.equal(resolveRenderEnvironment("ue58", profiles).project, "D:\\RH58\\rh.uproject");
+  assert.equal(resolveRenderEnvironment("ue56", profiles).editor, "D:\\UE56\\UnrealEditor.exe");
+  assert.equal(profiles.ue56.recoverLegacyShadow, true);
+  assert.equal(profiles.ue58.recoverLegacyShadow, false);
+  assert.equal(profiles.ue58.beta, true);
+  assert.equal(publicRenderEnvironment(profiles.ue58).id, "ue58");
+});
+
+test("generated and saved jobs stay pinned to their selected render environment", () => {
+  const current = { ...model, materialIds: ["UPH", "Stitches", "Feet"] };
+  const single = buildJob({ ...baseInput, renderEnvironment: "ue58" }, current, rig, "D:\\renders\\ue58");
+  const batch = buildBatchJob([
+    { model: current, input: { ...baseInput, renderEnvironment: "ue58" } },
+    { model: { ...current, name: "TEST_prod2" }, input: { ...baseInput, renderEnvironment: "ue58" } }
+  ], rig, "D:\\renders\\ue58-batch", "ue58_batch");
+  assert.equal(single._rhLocal.renderEnvironment, "ue58");
+  assert.equal(single._rhLocal.models, undefined);
+  assert.equal(single.tasks[0]._rhLocal, undefined);
+  assert.equal(environmentForJob(single, renderEnvironments()).id, "ue58");
+  assert.equal(batch._rhLocal.renderEnvironment, "ue58");
+  assert.ok(batch._rhLocal.models.every(item => item.renderEnvironment === "ue58"));
+  assert.equal(environmentForJob({ _rhLocal: {} }, renderEnvironments()).id, "ue56");
+});
+
 test("post-process creates a delivery PNG beside an untouched original", { skip: !availability(root).ok }, async () => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "rh-post-test-")), source = path.join(temp, "00000000_F_Product_FABRIC_A.png");
   const png = new PNG({ width: 4, height: 4 });
@@ -259,7 +459,8 @@ test("post-process creates a delivery PNG beside an untouched original", { skip:
 test("Shadow post-process recolors RGB and boosts alpha on the delivery canvas", { skip: !availability(root).ok }, async () => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "rh-shadow-post-test-")), source = path.join(temp, "00000000_F_Shadow.png");
   const png = new PNG({ width: 2, height: 2 });
-  for (let index = 0; index < png.data.length; index += 4) { png.data[index] = 240; png.data[index + 1] = 240; png.data[index + 2] = 240; png.data[index + 3] = 128; }
+  const alpha = [128, 64, 192, 128];
+  for (let index = 0; index < png.data.length; index += 4) { png.data[index] = 240; png.data[index + 1] = 240; png.data[index + 2] = 240; png.data[index + 3] = alpha[index >> 2]; }
   fs.writeFileSync(source, PNG.sync.write(png));
   const original = fs.readFileSync(source), job = buildJob({ ...baseInput, cameras: ["F"], layers: ["Shadow"] }, { ...model, materialIds: ["UPH", "Stitches", "Feet"] }, rig, temp), task = job.tasks[0];
   try {
@@ -267,6 +468,42 @@ test("Shadow post-process recolors RGB and boosts alpha on the delivery canvas",
     const processed = PNG.sync.read(fs.readFileSync(result.output)), center = (1 * processed.width + 2) * 4;
     assert.deepEqual([...processed.data.subarray(center, center + 3)], [18, 12, 6]); assert.ok(processed.data[center + 3] > 128);
     assert.deepEqual(fs.readFileSync(source), original); assert.equal(processed.width, 6); assert.equal(processed.height, 4);
+  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+});
+
+test("a recovered camera-LUT matte still receives the configured delivery boost", { skip: !availability(root).ok }, async () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "rh-shadow-lut-post-test-")), source = path.join(temp, "00000000_F_Shadow.png");
+  const png = new PNG({ width: 2, height: 2 });
+  for (let index = 0; index < png.data.length; index += 4) {
+    const value = 10 + (index >> 2);
+    png.data[index] = value; png.data[index + 1] = value; png.data[index + 2] = value; png.data[index + 3] = 0;
+  }
+  fs.writeFileSync(source, PNG.sync.write(png));
+  const job = buildJob({ ...baseInput, cameras: ["F"], layers: ["Shadow"] }, { ...model, materialIds: ["UPH", "Stitches", "Feet"] }, rig, temp), task = job.tasks[0];
+  const directLumaLut = { F: Array.from({ length: 256 }, (_, value) => value) };
+  try {
+    const config = { canvas: { width: 6, height: 4 }, dpi: 300, outputSuffix: "_POST", shadow: { color: "#120C06", alphaBoostPercent: { F: 100 }, substrateAlpha: { directLumaLut } } };
+    prepareSubstrateShadow(source, { config, task, productType: "sectionals" });
+    const result = await processImage(root, source, job, task, { force: true, config });
+    const output = PNG.sync.read(fs.readFileSync(result.output));
+    const alphas = [...output.data].filter((_, index) => index % 4 === 3);
+    assert.equal(Math.max(...alphas), 25);
+    assert.deepEqual(alphas.filter(value => value > 0).sort((a, b) => a - b), [19, 21, 23, 25]);
+  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+});
+
+test("UE 5.8 delivery preserves native Shadow alpha without creating a legacy recovery backup", { skip: !availability(root).ok }, async () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "rh-native-shadow-post-test-")), source = path.join(temp, "00000000_F_Shadow.png");
+  const png = new PNG({ width: 2, height: 2 });
+  for (let index = 0; index < png.data.length; index += 4) { png.data[index] = 0; png.data[index + 1] = 0; png.data[index + 2] = 0; png.data[index + 3] = index === 0 ? 64 : 192; }
+  fs.writeFileSync(source, PNG.sync.write(png));
+  const originalAlpha = [...PNG.sync.read(fs.readFileSync(source)).data].filter((_, index) => index % 4 === 3);
+  const job = buildJob({ ...baseInput, renderEnvironment: "ue58", cameras: ["F"], layers: ["Shadow"] }, { ...model, materialIds: ["UPH", "Stitches", "Feet"] }, rig, temp), task = job.tasks[0];
+  try {
+    const result = await processImage(root, source, job, task, { prepareShadow: false, config: { canvas: { width: 6, height: 4 }, dpi: 300, outputSuffix: "_POST", shadow: { color: "#120C06", alphaBoostPercent: { F: 0 } } } });
+    assert.equal(result.skipped, false);
+    assert.equal(fs.existsSync(`${source}.substrate-rgb.bak`), false);
+    assert.deepEqual([...PNG.sync.read(fs.readFileSync(source)).data].filter((_, index) => index % 4 === 3), originalAlpha);
   } finally { fs.rmSync(temp, { recursive: true, force: true }); }
 });
 
@@ -373,10 +610,10 @@ test("every Fabric filename material token resolves to an exact mesh in its task
   }
 });
 
-test("Fabric and Shadow become ordered Unreal phases with the required Substrate state", () => {
+test("Fabric and Shadow become ordered Unreal phases with Substrate always enabled", () => {
   const job = buildJob({ ...baseInput, layers: ["Fabric", "Shadow"] }, { ...model, materialIds: ["UPH", "Stitches", "Feet"] }, rig, "D:\\renders\\phases");
   const original = JSON.stringify(job), plan = buildRenderPlan(job);
-  assert.deepEqual(plan.map(phase => [phase.name, phase.substrate]), [["Fabric", true], ["Shadow", false]]);
+  assert.deepEqual(plan.map(phase => [phase.name, phase.substrate]), [["Fabric", true], ["Shadow", true]]);
   assert.deepEqual(plan[0].job.tasks[0].layers.map(layer => layer.name), ["Fabric"]);
   assert.deepEqual(plan[1].job.tasks[0].layers.map(layer => layer.name), ["Shadow"]);
   assert.ok(plan[0].job.tasks[0].sequence.cameras.every(camera => camera.LayerResolutions.length === 1 && camera.LayerResolutions[0].Name === "Fabric"));
@@ -390,6 +627,32 @@ test("Fabric and Shadow become ordered Unreal phases with the required Substrate
   assert.ok(!("_rhLocalShadowLights" in fabricCamera)); assert.ok(!("_rhLocalShadowLights" in shadowCamera));
   assert.equal(plan[0].job.jobId, `${job.jobId}__fabric`); assert.equal(plan[1].job.jobId, `${job.jobId}__shadow`);
   assert.equal(JSON.stringify(job), original, "the saved parent job stays unchanged");
+});
+
+test("five Fabric materials render in sequence while Shadow and crop probes render once", () => {
+  const materials = [
+    { meshes: ["UPH"], materials: ["FAB_A", "FAB_B", "FAB_C", "FAB_D", "FAB_E"] },
+    { meshes: ["Stitches"], material: "THREAD" },
+    { meshes: ["Feet"], material: "WOOD" }
+  ];
+  const job = buildJob({ ...baseInput, cameras: ["F", "TQ"], layers: ["Fabric", "Shadow"], cropMode: "optimized", modelFingerprint: "five-materials", materials }, { ...model, materialIds: ["UPH", "Stitches", "Feet"] }, rig, "D:\\renders\\five-materials");
+  const task = job.tasks[0], plan = buildRenderPlan(job);
+  assert.deepEqual(task.materials.map(group => group.list.length), [5, 1, 1]);
+  assert.match(task.layers.find(layer => layer.name === "Fabric").output.fileNameFormat, /\{material:uph\}.*\{material:stitches\}.*\{material:feet\}/);
+  assert.match(task.layers.find(layer => layer.name === "Fabric").output.folder, /raw[\\/]TEST_prod1[\\/]materials[\\/]$/);
+  assert.match(task.layers.find(layer => layer.name === "Shadow").output.folder, /raw[\\/]TEST_prod1[\\/]shadows[\\/]$/);
+  assert.equal(expectedRenders(task), 12, "two cameras produce five fabrics and one shadow each");
+  assert.deepEqual(runStats.frameCounts(job), { Fabric: 10, Shadow: 2 });
+  assert.deepEqual(plan.find(phase => phase.name === "Fabric").job.tasks[0].materials.map(group => group.list.length), [5, 1, 1]);
+  assert.match(plan.find(phase => phase.name === "Crop calibration · Fabric").job.tasks[0].layers[0].output.fileNameFormat, /crop_fabric_\{camera\}_Product_\{material:uph\}/);
+  assert.match(plan.find(phase => phase.name === "Crop calibration · Fabric").job.tasks[0].layers[0].output.folder, /calibration[\\/]TEST_prod1[\\/]materials[\\/]$/);
+  assert.match(plan.find(phase => phase.name === "Crop calibration · Shadow").job.tasks[0].layers[0].output.folder, /calibration[\\/]TEST_prod1[\\/]shadows[\\/]$/);
+  assert.ok(plan.filter(phase => phase.isCalibration).every(phase => phase.job.tasks.every(item => item.materials.every(group => group.list.length === 1))), "calibration uses one representative material only");
+});
+
+test("every Shadow calibration phase also keeps Substrate enabled", () => {
+  const optimized = buildJob({ ...baseInput, layers: ["Fabric", "Shadow"], cropMode: "optimized", modelFingerprint: "substrate-test" }, { ...model, materialIds: ["UPH", "Stitches", "Feet"] }, rig, "D:\\renders\\substrate-shadow-crop");
+  assert.ok(buildRenderPlan(optimized).filter(phase => phase.layerName === "Shadow").every(phase => phase.substrate === true));
 });
 
 test("Low and High profiles preserve the 1:3 Fabric-to-Shadow pixel grid", () => {
@@ -502,7 +765,7 @@ test("cached optimized profiles crop both final layers without calibration", () 
   assert.equal(optimized.tasks[0].sequence.cameras[0]._rhLocalCrop.status, "ready");
 });
 
-test("local render service completes Fabric before restarting for Substrate-off Shadow", async () => {
+test("local render service completes Fabric before restarting for Substrate-on Shadow", async () => {
   const suffix = `${process.pid}_${Date.now()}`, port = 56000 + process.pid % 5000;
   const jobsRoot = path.join(root, "local", "jobs", "generated"), output = path.join(root, "local", "renders", `test_phases_${suffix}`);
   const jobPath = path.join(jobsRoot, `test_phases_${suffix}.job.json`), fakeLog = path.join(os.tmpdir(), `rh-fake-unreal-${suffix}.log`);
@@ -531,14 +794,14 @@ test("local render service completes Fabric before restarting for Substrate-off 
     assert.equal(status.state, "success", status.log);
     const launches = fs.readFileSync(fakeLog, "utf8").trim().split(/\r?\n/).map(line => JSON.parse(line));
     assert.deepEqual(launches.map(item => item.phase), ["Fabric", "Shadow"]);
-    assert.match(launches[0].substrateArgument, /r\.Substrate=True$/); assert.match(launches[1].substrateArgument, /r\.Substrate=False$/);
+    assert.match(launches[0].substrateArgument, /r\.Substrate=True$/); assert.match(launches[1].substrateArgument, /r\.Substrate=True$/);
     for (const launch of launches) {
       assert.equal(launch.keyLight.intensity, 2.5); assert.equal(launch.keyLight.InnerConeAngle, -1); assert.equal(launch.keyLight.OuterConeAngle, -1);
     }
     assert.ok(launches[1].cameras.every(camera => camera.fit === "none"));
     assert.deepEqual(launches[1].cameras.map(camera => camera.Camera.FocalLength), [140, 141, 142]);
     assert.ok(launches[1].cameras.every(camera => camera.Camera.OverrideLocation && camera.Camera.OverrideRotation && camera.Camera.OverrideFocalLength));
-    assert.match(status.log, /Fabric is complete\. Restarting Unreal for Shadow with Substrate OFF/);
+    assert.match(status.log, /Fabric is complete\. Restarting Unreal for Shadow with Substrate ON/);
     assert.match(status.log, /Applied 3 camera states from Fabric handoff to Shadow; fit disabled/);
   } finally {
     service.kill();
@@ -586,6 +849,11 @@ test("local render service calibrates, saves and applies an optimized crop befor
     assert.equal(saved._rhLocal.cameraStates["test_prod1::sectional_indoor_r_f"].focalLength, 140, "the delivery passport can reuse the actual Fabric camera state");
     assert.equal(Object.keys(JSON.parse(fs.readFileSync(cropCache, "utf8")).profiles).length, 1);
     assert.match(status.log, /Saved 1 crop profile; average vertical pixel saving/);
+    assert.match(status.log, /Starting Shadow alpha recovery for 1 calibration image; crop and previews wait for this stage/);
+    const calibrationShadow = calibrationFiles(siblingBranch(job.tasks[0].layers[0].output.folder, "calibration"), "F").shadow;
+    const normalized = PNG.sync.read(fs.readFileSync(calibrationShadow));
+    assert.ok([...normalized.data].some((value, index) => index % 4 === 3 && value > 0), "crop sees recovered Shadow alpha");
+    assert.ok([...normalized.data].every((value, index) => index % 4 === 3 || value === 0), "recovered Shadow RGB is black");
   } finally {
     service.kill();
     fs.rmSync(jobPath, { force: true }); fs.rmSync(output, { recursive: true, force: true }); fs.rmSync(fakeLog, { force: true }); fs.rmSync(cropCache, { force: true });
@@ -800,7 +1068,7 @@ test("without the key the service still shows everything and refuses only the ac
     assert.deepEqual((await (await fetch(at("/api/status"), { headers: signed })).json()).access, { required: true, authorized: true });
 
     // Acting is not: everything that starts work, writes a file or reaches the network.
-    for (const path of ["/api/renders", "/api/renders/stop", "/api/renders/delete", "/api/jobs", "/api/postprocess", "/api/sheet/refresh", "/api/models/inspect", "/api/local/open"]) {
+    for (const path of ["/api/renders", "/api/renders/stop", "/api/renders/delete", "/api/jobs", "/api/postprocess", "/api/sheet/refresh", "/api/materials/refresh", "/api/models/inspect", "/api/local/open"]) {
       assert.equal((await fetch(at(path), { method: "POST", headers: json, body: "{}" })).status, 401, `${path} must need the key`);
     }
     assert.equal((await fetch(at("/api/renders"), { method: "POST", headers: { ...json, Authorization: "Bearer wrong-key-entirely" }, body: "{}" })).status, 401);
@@ -915,6 +1183,22 @@ test("model checks catch a wrong scale, a missing part and an uncorrected FBX or
   const suffixed = checkModel({ name: "X_L_SECTIONAL", group: "sectionals", format: "fbx" },
     { ...sectional, materialIds: ["UPH1", "Stitches1", "Feet1"] });
   assert.equal(summarise(suffixed).errors, 0, "UPH1 is UPH");
+
+  // Some FBX exports keep the whole source mesh name in every Material ID. Assignment
+  // already groups these by their final token, so the checker must not call the same
+  // renderable parts missing and extra at the same time.
+  const prefixed = checkModel({ name: "X_L_SECTIONAL", group: "sectionals", format: "fbx" }, {
+    ...sectional,
+    materialIds: [
+      "belgian_track_arm_two_seat_left_arm_sofa_luxe_8_10094415_uph",
+      "belgian_track_arm_two_seat_left_arm_sofa_luxe_8_10094415_stitches",
+      "belgian_track_arm_two_seat_left_arm_sofa_luxe_8_10094415_feet"
+    ]
+  });
+  assert.equal(summarise(prefixed).errors, 0, "long exporter names still expose UPH, Stitches and Feet");
+  assert.equal(find(prefixed, "missing-parts"), undefined);
+  assert.equal(find(prefixed, "extra-parts"), undefined);
+  assert.match(find(prefixed, "parts").detail, /uph, stitches, feet/);
 });
 
 test("a sofa job matches the farm's shape: four angles, one layer, its own scene", () => {
@@ -1005,7 +1289,7 @@ test("the Unreal material list holds materials from RH folders and nothing else"
   assert.match(source, /isMaterialAsset\(full\)/);
 
   // Class names are matched whole, so MaterialFunction is not a Material.
-  assert.match(source, /\u0000\$\{className\}\u0000/);
+  assert.match(source, /\\x00\$\{className\}\\x00/);
   // A master material references its textures, so Texture2D must not exclude it.
   assert.doesNotMatch(source, /NOT_A_MATERIAL = \[[^\]]*Texture2D/);
   assert.match(source, /NOT_A_MATERIAL = \["StaticMesh"/);
@@ -1268,6 +1552,13 @@ test("a checked model is not checked again until its file changes", () => {
   assert.equal(hit.fromCache, true, "the page is told the verdict came from store");
   assert.equal(hit.checkedAt, "2026-01-01T00:00:00.000Z");
 
+  // Verdicts made by an older checker must not survive a semantic fix merely because
+  // the FBX/OBJ itself stayed byte-for-byte identical.
+  const currentFingerprint = cache.fingerprint(file);
+  const legacyFingerprint = currentFingerprint.split(":").slice(1).join(":");
+  const legacy = { [cache.keyFor(file)]: { fingerprint: legacyFingerprint, checkedAt: hit.checkedAt, row } };
+  assert.equal(cache.lookup(legacy, file), null, "a cache entry without the checker version is stale");
+
   // Case and separators must not decide whether a verdict is found again.
   assert.ok(cache.lookup(entries, file.toUpperCase()) || cache.keyFor(file) === cache.keyFor(file.toUpperCase()));
 
@@ -1456,11 +1747,13 @@ test("a saved crop can be dropped, and preflight counts every camera the type ha
   try {
     process.env.RH_CROP_CACHE_FILE = store;
     crop.writeCropProfiles(dir, [
-      { fingerprint: "aaa", camera: "F",   cropRatio: 0.4, modelName: "SOFA_A", analyzedAt: "2026-01-01T00:00:00.000Z" },
+      { fingerprint: "aaa", camera: "F",   contextToken: "frame-a", cropRatio: 0.4, modelName: "SOFA_A", analyzedAt: "2026-01-01T00:00:00.000Z" },
       { fingerprint: "aaa", camera: "TQB", cropRatio: 0.5, modelName: "SOFA_A", analyzedAt: "2026-01-02T00:00:00.000Z" },
       { fingerprint: "bbb", camera: "F",   cropRatio: 0.6, modelName: "SOFA_B", analyzedAt: "2026-01-03T00:00:00.000Z" }
     ]);
     assert.equal(Object.keys(crop.readCropProfiles(dir).profiles).length, 3);
+    assert.equal(crop.cropProfileFor(crop.readCropProfiles(dir), "aaa", "F", "frame-a").cropRatio, 0.4);
+    assert.equal(crop.cropProfileFor(crop.readCropProfiles(dir), "aaa", "F", "another-frame"), null, "a crop measured for another frame is never reused");
 
     // One camera of one model, named.
     const one = crop.forgetCropProfiles(dir, { fingerprints: ["aaa"], cameras: ["f"] });
@@ -1537,7 +1830,8 @@ test("a probe's camera never frames a final render", () => {
 
   // And only a probe may inherit a saved fit at all.
   const service = fs.readFileSync(path.join(root, "server.cjs"), "utf8");
-  assert.match(service, /phase\.isCalibration && phase\.layerName === "Fabric" && activeRun\.cachedCameraStateKeys\.size > 0/);
+  assert.doesNotMatch(service, /canApplyPersistentFits|cachedCameraStateKeys/, "a Fabric calibration probe must always fit its own frame");
+  assert.match(service, /writeCameraFitState\(ROOT, bridge\.job/, "camera state is keyed by the phase that actually measured it");
 });
 
 test("a phase that inherits a camera renders one model at a time, whatever the product", () => {
@@ -1605,6 +1899,8 @@ test("desktop launcher replaces a stale hidden server and waits before opening t
   assert.match(powerShellLauncher, /Get-RHServerState/);
   assert.match(powerShellLauncher, /runtime\.stale/);
   assert.match(powerShellLauncher, /Get-NetTCPConnection/);
+  assert.match(powerShellLauncher, /local\\server\.pid/);
+  assert.match(powerShellLauncher, /belongsToThisService/);
   assert.match(powerShellLauncher, /Stop-Process/);
   assert.match(powerShellLauncher, /start-local-service\.ps1/);
   assert.match(powerShellLauncher, /Start-Process \$siteUrl/);
@@ -1634,6 +1930,20 @@ test("Unreal launch points the stock BatchRender plugin at the local API", () =>
   assert.ok(!launch.args.some(argument => argument.startsWith("-BatchRenderJob=")));
   const shadow = buildUnrealLaunch("D:\\UE\\UnrealEditor.exe", "D:\\RH\\rh.uproject", apiUrl, { substrate: false });
   assert.ok(shadow.args.includes("-ini:Engine:[/Script/Engine.RendererSettings]:r.Substrate=False"));
+  assert.ok(!shadow.args.some(argument => argument.startsWith("-ExecCmds=")));
+  const diagnostic = buildUnrealLaunch("D:\\UE\\UnrealEditor.exe", "D:\\RH\\rh.uproject", apiUrl, { substrate: false, nativeShadowDiagnostics: true });
+  assert.ok(diagnostic.args.includes("-ExecCmds=r.BatchRender.NativeShadowDiagnostics 1"));
+});
+
+test("the local BatchRender URL includes a query before the plugin appends Substrate", () => {
+  const server = fs.readFileSync(path.join(root, "server.cjs"), "utf8");
+  assert.match(server, /\/api\/unreal\?source=local/);
+});
+
+test("a camera prefit is counted from its isolated calibration branch", () => {
+  const server = fs.readFileSync(path.join(root, "server.cjs"), "utf8");
+  assert.match(server, /phaseUsesCalibrationBranch\(phase\)/);
+  assert.match(server, /layer\._rhLocalPrefit/);
 });
 
 test("every element app.js reaches for by id exists in the markup", () => {
@@ -1654,6 +1964,20 @@ test("main page renders the workspace, previews and dropdowns", () => {
   assert.doesNotMatch(html, /<iframe/i);
   assert.match(client, /canReachLocalService/);
   assert.match(html, /id="modelDropTarget"/);
+  assert.match(html, /id="refreshMaterials"[^>]*>Refresh materials<\/button>/);
+  assert.match(client, /\/api\/materials\/refresh\?environment=/);
+  assert.match(client, /data-material-multiply/);
+  assert.match(styles, /\.material-multiply/);
+  assert.match(html, /id="modelPath"[^>]*data-suggest-action="inspect-model"/);
+  assert.match(client, /input\.dataset\.suggestAction === "inspect-model"\) inspect\(\)/);
+  assert.match(html, /id="renderEnvironmentSwitcher"/);
+  assert.match(html, /data-render-environment="ue56"/);
+  assert.match(html, /data-render-environment="ue58"/);
+  assert.match(client, /renderEnvironment: state\.renderEnvironment/);
+  assert.match(client, /\/api\/materials\?environment=/);
+  assert.match(client, /chooseRenderEnvironment\(batch\.renderEnvironment/);
+  assert.match(styles, /\.render-environment-switcher/);
+  assert.match(styles, /\.material-remove:before,\.material-remove:after\{[^}]*left:50%;top:50%/);
   assert.match(html, /id="modelFileInput" type="file" accept="\.fbx,\.obj" multiple/);
   assert.match(client, /droppedFilePath/);
   assert.match(client, /dropTarget\.addEventListener\("drop"/);
@@ -1673,6 +1997,13 @@ test("main page renders the workspace, previews and dropdowns", () => {
   assert.match(styles, /@keyframes accent-breathe/);
   assert.match(styles, /\.render-preview-card>span\{bottom:auto/);
   assert.match(styles, /\.render-preview-card\.render-combined:hover \.render-preview-media \.render-composite-fabric\{transform:translate\(-50%,-50%\)\}/);
+  assert.match(client, /data-material-carousel/);
+  assert.match(client, /scrollGalleryMaterials/);
+  assert.match(styles, /scroll-snap-type:x mandatory/);
+  assert.match(styles, /\.render-material-carousel\{[^}]*gap:0[^}]*scrollbar-width:none/);
+  assert.match(client, /data-gallery-material-select/);
+  assert.match(client, /data-gallery-page/);
+  assert.match(client, /data-gallery-scrubber/);
   assert.match(styles, /render-soft-glow/);
   assert.match(styles, /aspect-ratio:3\/1!important/);
   assert.match(styles, /strong,b\{font-weight:500!important\}h1,h2,h3\{font-weight:550!important\}/);
@@ -1707,9 +2038,11 @@ test("main page renders the workspace, previews and dropdowns", () => {
   assert.match(html, /<pre id="renderLog" class="render-log"><\/pre>/);
   assert.match(client, /log\.hidden = false;/);
   assert.match(styles, /\.workspace-col-status>\.output-panel\{overflow:visible;flex:1 1 auto/);
-  assert.match(styles, /\.workspace-col-status>\.queue-panel\{flex:0 0 auto\}/);
+  assert.match(html, /<div class="runtime-workspace">[\s\S]*?<section class="panel queue-panel"[\s\S]*?<section class="panel log-panel"/);
+  assert.match(styles, /\.runtime-workspace\{display:grid;grid-template-columns:minmax\(0,1fr\)/);
+  assert.match(styles, /\.runtime-workspace\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\);height:587px\}/);
   assert.match(html, /<section class="panel log-panel"[\s\S]*?<pre id="renderLog" class="render-log"><\/pre>/);
-  assert.match(styles, /\.log-panel \.render-log\{height:300px/);
+  assert.match(styles, /\.runtime-workspace \.render-log\{height:300px/);
   assert.match(styles, /\.render-queue\{[^}]*max-height:min\(34vh,300px\);overflow:auto/);
   assert.doesNotMatch(styles, /box-shadow:box-shadow/);
   // queue rows are spans with data-state, so nothing may style them as divs or by
@@ -1727,7 +2060,10 @@ test("main page renders the workspace, previews and dropdowns", () => {
   assert.match(styles, /\[data-material-status\]\[data-state=found\]\{background:var\(--accent-soft\)/);
   assert.match(styles, /\[data-material-status\]\[data-state=missing\]\{background:var\(--danger-soft\)/);
   assert.doesNotMatch(styles, /\.render-preview-media\{background-color:[^}]*linear-gradient/);
-  assert.match(html, /Shadow runs in a fresh Unreal process with Substrate disabled/);
+  assert.doesNotMatch(html, /shadowSubstrate|Shadow Substrate/);
+  assert.match(html, /id="shadowPipelineNote"/);
+  assert.match(client, /UE 5\.8 uses the native Composite shadow alpha/);
+  assert.match(client, /button\[data-render-environment\]/);
   assert.match(html, /name="renderProfile" value="low"/);
   assert.match(html, /name="renderProfile" value="high" checked/);
   assert.match(html, /name="cropMode" value="optimized"/);
@@ -1758,6 +2094,9 @@ test("main page renders the workspace, previews and dropdowns", () => {
   assert.doesNotMatch(client, /stickyGenerate/);
   assert.match(client, /data-history-action="selective"/);
   assert.match(client, /renderProfile: selected\("renderProfile"\)\[0\] \|\| "high"/);
+  assert.doesNotMatch(client, /shadowSubstrate|rhShadowSubstrate/);
+  assert.match(client, /render\.phase === "Shadow processing"/);
+  assert.match(client, /shadows processed/);
   assert.match(client, /Substrate \$\{render\.substrate \? "ON" : "OFF"\}/);
   assert.doesNotMatch(client, /Open the local dashboard with npm start to resolve full model paths/);
   assert.match(styles, /main\{width:calc\(100% - clamp\([^)]*\)\);max-width:none/);

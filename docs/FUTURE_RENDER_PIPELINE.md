@@ -4,6 +4,8 @@ This file records investigated or proposed improvements for a later dedicated im
 
 ## Implemented local changes
 
+The local dashboard now exposes UE 5.6 Production and UE 5.8 Beta as isolated render environments. Every generated job records the selected environment. UE 5.6 retains Legacy Composure RGB-to-alpha recovery; UE 5.8 is wired to bypass that recovery and consume native Composite shadow alpha once the in-editor integration test passes.
+
 The BatchRender plugin has a separate local branch `codex/rh-fit-convergence`:
 
 - `02ebd93` adds job-side focal handoff support;
@@ -32,11 +34,11 @@ Between models, the current `ClearProduct` path still performs expensive work:
 For a new model using `Optimized crop`, the safe order can require four Unreal launches for the whole batch:
 
 1. Crop Fabric with Substrate ON.
-2. Crop Shadow with Substrate OFF.
+2. Crop Shadow with Substrate ON, followed by RGB-to-alpha normalization.
 3. Final Fabric with Substrate ON.
-4. Final Shadow with Substrate OFF.
+4. Final Shadow with Substrate ON, followed by RGB-to-alpha normalization.
 
-When crop profiles already exist, only Final Fabric and Final Shadow remain. These process boundaries currently protect the Substrate/Composure requirement.
+When crop profiles already exist, only Final Fabric and Final Shadow remain. The process boundaries preserve camera handoff and phase isolation; Substrate stays enabled throughout.
 
 ## Hypothesis: persistent StaticMesh cache and stable Composure map
 
@@ -63,7 +65,7 @@ The scheduler should track these states per model and view:
 
 Only missing work should be emitted to Unreal. For this scale, a local SQLite queue is preferable to repeatedly scanning and rewriting one very large JSON. JSON remains the editable logical job; SQLite owns execution state, retries, shards, cache records, and completed outputs.
 
-The primary expected performance gain is eliminating repeated FBX import and full map cleanup. Combining all four Optimized-crop phases into one Unreal process is not the first target because Substrate must currently change between Fabric and Shadow.
+The primary expected performance gain is eliminating repeated FBX import and full map cleanup. Combining all four Optimized-crop phases into one Unreal process is still not the first target because the phases have distinct render configurations and camera-handoff requirements.
 
 ## Estimated implementation difficulty
 

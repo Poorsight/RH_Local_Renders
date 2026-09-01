@@ -28,7 +28,20 @@ const { PNG } = require("pngjs");
       if (job._rhLocal?.cropCalibration) {
         const resolution = camera.LayerResolutions?.[0]?.Resolution || { X: layerName === "Shadow" ? 1500 : 500, Y: 500 }, png = new PNG({ width: resolution.X, height: resolution.Y });
         const top = layerName === "Shadow" ? Math.floor(resolution.Y * 0.53) : Math.floor(resolution.Y * 0.31), bottom = layerName === "Shadow" ? Math.floor(resolution.Y * 0.65) : Math.floor(resolution.Y * 0.63);
-        for (let y = top; y <= bottom; y += 1) for (let x = Math.floor(resolution.X * 0.3); x < Math.ceil(resolution.X * 0.7); x += 1) png.data[((y * resolution.X + x) << 2) + 3] = 220;
+        for (let y = top; y <= bottom; y += 1) for (let x = Math.floor(resolution.X * 0.3); x < Math.ceil(resolution.X * 0.7); x += 1) {
+          const pixel = ((y * resolution.X + x) << 2);
+          if (layerName === "Shadow") {
+            // UE 5.6 Substrate + Legacy Composure writes the matte into RGB and clears alpha.
+            png.data[pixel] = 255; png.data[pixel + 1] = 255; png.data[pixel + 2] = 255; png.data[pixel + 3] = 0;
+          } else png.data[pixel + 3] = 220;
+        }
+        fs.writeFileSync(outputFile, PNG.sync.write(png));
+      } else if (layerName === "Shadow") {
+        const png = new PNG({ width: 8, height: 4 });
+        for (let y = 1; y < 3; y += 1) for (let x = 2; x < 7; x += 1) {
+          const pixel = ((y * png.width + x) << 2);
+          png.data[pixel] = 255; png.data[pixel + 1] = 255; png.data[pixel + 2] = 255; png.data[pixel + 3] = 0;
+        }
         fs.writeFileSync(outputFile, PNG.sync.write(png));
       } else fs.writeFileSync(outputFile, `${phase}:${task.taskId}:${camera.name}:${Date.now()}`);
       if (layerName === "Fabric") await fetch(apiUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({

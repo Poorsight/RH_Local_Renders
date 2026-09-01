@@ -1,6 +1,6 @@
 # RH Local Renders
 
-Local control centre for RH BatchRender jobs. It reads model geometry and FBX component IDs, creates `.job.json` files from the live Google Sheet, and launches one-shot renders in `D:\GitHub\rh_unreal_2`.
+Local control centre for RH BatchRender jobs. It reads model geometry and FBX component IDs, creates `.job.json` files from the live Google Sheet, and launches one-shot renders in the selected Unreal environment.
 
 ## Start
 
@@ -15,15 +15,17 @@ npm start
 
 Open `http://127.0.0.1:5500/`. The service binds only to localhost.
 
+The header environment switch keeps the current UE 5.6 production renderer and the isolated UE 5.8 beta renderer side by side. A generated job records its environment, so opening or rerunning it later cannot silently use the other engine.
+
 Default local paths:
 
-- Unreal Editor: `D:\Unreal_Engine\UE_5.6\Engine\Binaries\Win64\UnrealEditor.exe`
-- Unreal project: `D:\GitHub\rh_unreal_2\rh_unreal_2.uproject`
+- UE 5.6 production: `D:\Unreal_Engine\UE_5.6\Engine\Binaries\Win64\UnrealEditor.exe` + `D:\GitHub\rh_unreal_2\rh_unreal_2.uproject`
+- UE 5.8 beta: `D:\Unreal_Engine\UE_5.8\Engine\Binaries\Win64\UnrealEditor.exe` + `D:\GitHub\rh_unreal_2_58\rh_unreal_2.uproject`
 - models: `D:\GitHub\RH_Local_Renders\local\models\`
 - jobs: `D:\GitHub\RH_Local_Renders\local\jobs\generated\`
 - renders: `D:\GitHub\RH_Local_Renders\local\renders\`
 
-Override them with `RH_UNREAL_EDITOR`, `RH_UNREAL_PROJECT`, and `RH_MODELS_ROOT` environment variables.
+Override the engine paths with `RH_UNREAL_EDITOR_56`, `RH_UNREAL_PROJECT_56`, `RH_UNREAL_EDITOR_58`, and `RH_UNREAL_PROJECT_58`. The old `RH_UNREAL_EDITOR` and `RH_UNREAL_PROJECT` names remain UE 5.6-compatible fallbacks. Use `RH_MODELS_ROOT` for the models folder.
 
 ## Current scope
 
@@ -34,7 +36,9 @@ Override them with `RH_UNREAL_EDITOR`, `RH_UNREAL_PROJECT`, and `RH_MODELS_ROOT`
 - An import correction such as `-90°` is added to the camera Actor yaw. `model.Rotation` is deliberately not emitted because BatchRender does not parse it.
 - Render layers: Fabric Path Trace 5K and optional Shadow Lumen 15K×5K.
 
-Fabric and Shadow are separate Unreal phases because Substrate requires an editor restart. Fabric launches with the effective project override `r.Substrate=True`; Shadow launches in a fresh Unreal process with `r.Substrate=False`, which keeps Composure compatible. If both layers are selected, the service waits for Fabric `job_completed` and changed output files, closes Unreal, then starts Shadow. The override is passed with `-ini:Engine:[/Script/Engine.RendererSettings]` for that process only, so `rh_unreal_2/Config/DefaultEngine.ini` stays unchanged and its normal `r.Substrate=True` setting is preserved. The saved parent job keeps default camera lights plus its local Shadow-light variant; before each Unreal launch the runtime strips the local metadata and gives BatchRender only the active phase's normal `lights` array. For the current Sectionals rules, Shadow overrides `main_key_lgt` with base intensity `100`, inner cone `45`, and outer cone `60`; blank Shadow transform fields inherit the default transform. Both base intensities go through the same model-size/source-mode correction, and light Z remains fixed.
+Fabric and Shadow are separate Unreal phases, and both launch with the effective project override `r.Substrate=True`. If both layers are selected, the service waits for Fabric `job_completed` and changed output files, closes Unreal, then starts Shadow. In UE 5.6, immediately after each Shadow phase, the service converts the grayscale RGB matte produced by Legacy Composure into black RGB plus calibrated alpha. Camera-specific monotonic LUTs fitted directly from high-resolution hidden RGB to the client-approved Legacy Composure alpha are the primary conversion for every product type on cameras `F`, `P`, `TQ`, and `TQB`. A camera without a calibrated LUT, currently `FH`, retains the Levels/reference-curve fallback. Before replacing the PNG, the service saves its exact input beside it as `*.substrate-rgb.bak`; this keeps future recalibration possible without another Unreal render. Conversion happens before crop calibration reads the Fabric/Shadow union, before previews are published, and before delivery post-processing. UE 5.8 expects the new Composite pass to write usable native alpha and deliberately skips this legacy LUT recovery; normal delivery recolouring/canvas processing still runs. The override is passed with `-ini:Engine:[/Script/Engine.RendererSettings]` for that process only, so either project's `Config/DefaultEngine.ini` stays unchanged. The saved parent job keeps default camera lights plus its local Shadow-light variant; before each Unreal launch the runtime strips the local metadata and gives BatchRender only the active phase's normal `lights` array. For the current Sectionals rules, Shadow overrides `main_key_lgt` with base intensity `100`, inner cone `45`, and outer cone `60`; blank Shadow transform fields inherit the default transform. Both base intensities go through the same model-size/source-mode correction, and light Z remains fixed.
+
+An optimized crop always measures Fabric with a fresh Fit in the probe's own frame, then hands that exact camera to the Shadow probe. Persistent camera states are never substituted into calibration. Crop cache v2 also binds a saved ratio to the model, camera, frame request, rig, renderer, and Shadow-alpha configuration, so changing any of them forces a new measurement rather than silently reusing an incompatible height.
 
 The light rows are refreshed from the public Google Sheet (`gid=0`). `data/sectionals-indoor.csv` is a tracked offline startup copy of the same Sectionals/Indoor rules, not a user cache that needs to be cleared. A successful live refresh is kept in memory for the current service session; the tracked copy lets the service start with the latest verified rules when Google Sheets is unavailable.
 
@@ -52,7 +56,7 @@ There are no bundled model presets. **Render & job history** discovers the JSON 
 
 ## Automatic delivery post-process
 
-After every successful render plan, the local service automatically prepares the delivery images described by the RH farm handoff. The original Unreal PNG is never opened for writing. Processing happens in a temporary staging folder and the complete result replaces the batch's `POST` folder atomically. Saved jobs expose **Build POST** only as a recovery action when that folder is missing or incomplete.
+After every successful render plan, the local service automatically prepares the delivery images described by the RH farm handoff. Fabric PNGs remain untouched. A Substrate Shadow PNG is normalized to visible alpha before this step, with its exact pre-conversion bytes retained in the adjacent `.bak` source described above. Delivery processing happens in a temporary staging folder and the complete result replaces the batch's `POST` folder atomically. Saved jobs expose **Build POST** only as a recovery action when that folder is missing or incomplete.
 
 At the end of every render, the service automatically post-processes the RAW images and atomically rebuilds `<batch>/POST/`. It contains one folder per model and clean upload names such as `<MODEL>_F.png` and `<MODEL>_F_Shadow.png`; jobs with multiple Fabric materials add the material to avoid collisions. `manifest.json` records every RAW-to-delivery mapping and whether all expected files are present. Processed images are written through a temporary staging folder directly into `POST`; no `_POST.png` copies are left beside the untouched RAW files. The generated `POST` folder is excluded from render discovery. A manual recovery action appears in history only when POST is missing or incomplete.
 

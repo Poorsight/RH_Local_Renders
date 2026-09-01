@@ -8,3 +8,7 @@ __pycache__/
 # Local work area: FBX models plus generated jobs, renders and catalogue data.
 # Everything under local/ stays on this machine and is never pushed.
 local/
+
+# Generated diagnostics, intermediate image arrays, and comparison renders.
+# This directory can be several gigabytes and is reproducible from the tracked scripts.
+work/

@@ -20,7 +20,13 @@ if ($state -eq "stale") {
   $connection = Get-NetTCPConnection -LocalAddress "127.0.0.1" -LocalPort 5500 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
   if ($connection) {
     $process = Get-CimInstance Win32_Process -Filter "ProcessId=$($connection.OwningProcess)"
-    if ($process.Name -eq "node.exe" -and $process.CommandLine -match "RH_Local_Renders.+server\.cjs") {
+    $pidFile = Join-Path $projectRoot "local\server.pid"
+    $recordedPid = if (Test-Path -LiteralPath $pidFile -PathType Leaf) { [int](Get-Content -LiteralPath $pidFile -Raw) } else { 0 }
+    # The hidden launcher deliberately starts `node server.cjs` from the project working
+    # directory, so Windows does not preserve RH_Local_Renders in CommandLine. The PID file,
+    # the localhost status response above, and the exact listening port identify that process.
+    $belongsToThisService = $recordedPid -eq $connection.OwningProcess -or $process.CommandLine -match "RH_Local_Renders.+server\.cjs"
+    if ($process.Name -eq "node.exe" -and $belongsToThisService) {
       Stop-Process -Id $connection.OwningProcess -Force
     }
   }

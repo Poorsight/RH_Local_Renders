@@ -2065,6 +2065,7 @@ test("main page renders the workspace, previews and dropdowns", () => {
   assert.match(html, /id="jobDialog"/);
   assert.match(client, /const loadHistory = async/);
   assert.match(client, /data-history-action="rerun"/);
+  assert.match(client, /class="secondary-button" type="button" data-history-action="viewJob">View JSON<\/button>/);
   assert.match(client, />Edit selection<\/button>/);
   assert.match(client, /data-history-action="openReady"/);
   assert.match(client, /const editHistoryJob = async \(batch, options = \{\}\) =>/);

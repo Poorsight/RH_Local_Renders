@@ -1531,10 +1531,8 @@ test("the page reads a job's own cameras, product type and check verdicts", () =
   assert.match(styles, /\.batch-model\[data-check=error\]:before\{background:var\(--danger\)\}/);
   assert.match(client, /\$\("checkJump"\)\.addEventListener/);
 
-  // The close control is not a delete. Wearing that class subscribed it to the page's
-  // delete interception, which consumed the click before the button ever saw it.
-  assert.match(html, /id="closeModelCheck" class="panel-close"/);
-  assert.match(html, /id="closeModelCheck"[^>]*><svg /, "a drawn cross centres itself; the glyph did not");
+  assert.match(client, /class="batch-model-info"[^>]*data-focus-source="#modelDetails"/);
+  assert.match(client, /aria-label="Open information for/);
   assert.doesNotMatch(styles, /\.quiet-button\{background:transparent/, "a button invisible until hovered cannot be found");
   assert.doesNotMatch(html, /card-delete/, "delete controls are generated where they have a target to name");
 });
@@ -1973,21 +1971,24 @@ test("every element app.js reaches for by id exists in the markup", () => {
   assert.deepEqual(missing, [], `app.js reads ids that the page does not have: ${missing.join(", ")}`);
 });
 
-test("dense information blocks share one accessible focus view", () => {
+test("model checks open in one accessible information dialog without generic enlarge controls", () => {
   const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
   const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const styles = fs.readFileSync(path.join(root, "app.css"), "utf8");
   assert.match(html, /<dialog id="focusDialog"[^>]*aria-labelledby="focusDialogTitle"/);
-  assert.match(html, /id="closeFocusDialog"[^>]*aria-label="Close focus view"/);
-  for (const source of ["#modelBatch", "#modelCheck", "#materialsPanel", "#outputPanel", "#queuePanel", "#logPanel", "#historyWorkspace"]) {
-    assert.ok(html.includes(`data-focus-source="${source}"`), `${source} has no focus-view trigger`);
-  }
+  assert.match(html, /id="closeFocusDialog"[^>]*aria-label="Close model information"/);
+  assert.match(client, /class="batch-model-info"[^>]*data-focus-source="#modelDetails"[^>]*data-focus-move="self"/);
+  assert.doesNotMatch(html, /class="focus-view-button/);
   assert.match(client, /showModal\(\)/);
   assert.match(client, /focusView\.source/);
   assert.match(client, /focusView\.trigger/);
   assert.match(styles, /\.focus-dialog\{[^}]*height:min\(92vh,980px\)/);
-  assert.match(styles, /\.focus-dialog\[data-focus-kind=log\] #renderLog/);
-  assert.match(styles, /\.focus-dialog\[data-focus-kind=history\] \.history-workspace/);
+  assert.match(styles, /\.setup-panel>\.model-details\{display:none\}/);
+  assert.match(styles, /\.focus-dialog\[data-focus-kind=model\] \.model-details/);
+  assert.match(styles, /\.focus-dialog\[data-focus-kind=model\] \.model-check/);
+  assert.match(client, /<small><span>\$\{modelCount\} model/);
+  assert.match(client, /<\/span><span>\$\{sourceIds\.length\} component ID/);
+  assert.match(styles, /\.material-id>small\{display:flex;flex-direction:column/);
 });
 
 test("interface controls do not trigger accidental text selection", () => {

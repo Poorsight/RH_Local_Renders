@@ -231,7 +231,7 @@
     $("materialsList").innerHTML = ids.map(item => {
       const sourceIds = [...item.ids], modelCount = item.models.size;
       const saved = previous.get(item.key), values = saved?.values?.length ? saved.values : [""];
-      return `<div class="material-row" data-material-group="${escapeHtml(item.key)}" data-material-ids="${escapeHtml(JSON.stringify(sourceIds))}"><span class="material-id"><b>${escapeHtml(item.label)}</b><small>${modelCount} model${modelCount === 1 ? "" : "s"} · ${sourceIds.length} component ID${sourceIds.length === 1 ? "" : "s"}</small></span><div class="material-variants"><div data-material-variants>${values.map(value => materialVariantMarkup(item, value)).join("")}</div><div class="material-variant-actions"><span class="material-action-buttons"><button class="secondary-button material-add" type="button" data-add-material>Add material</button><button class="quiet-button material-multiply" type="button" data-material-multiply aria-pressed="${saved?.multiply ? "true" : "false"}" title="Render this ID independently and multiply it with the other variant lists">Multiply</button></span><small data-material-count></small></div></div></div>`;
+      return `<div class="material-row" data-material-group="${escapeHtml(item.key)}" data-material-ids="${escapeHtml(JSON.stringify(sourceIds))}"><span class="material-id"><b>${escapeHtml(item.label)}</b><small><span>${modelCount} model${modelCount === 1 ? "" : "s"}</span><span>${sourceIds.length} component ID${sourceIds.length === 1 ? "" : "s"}</span></small></span><div class="material-variants"><div data-material-variants>${values.map(value => materialVariantMarkup(item, value)).join("")}</div><div class="material-variant-actions"><span class="material-action-buttons"><button class="secondary-button material-add" type="button" data-add-material>Add material</button><button class="quiet-button material-multiply" type="button" data-material-multiply aria-pressed="${saved?.multiply ? "true" : "false"}" title="Render this ID independently and multiply it with the other variant lists">Multiply</button></span><small data-material-count></small></div></div></div>`;
     }).join("");
     materialInputs().forEach(bindMaterialInput);
     document.querySelectorAll("[data-material-group]").forEach(group => {
@@ -434,7 +434,7 @@
     renderCheckSummary();
     $("modelBatch").hidden = !state.batch.length; $("batchCount").textContent = `${state.batch.length} model${state.batch.length === 1 ? "" : "s"}`;
     loadCachedChecks();
-    $("batchList").innerHTML = state.batch.map(model => `<div class="batch-model${state.model?.path === model.path ? " active" : ""}" data-model-path="${escapeHtml(model.path)}"${checkStateOf(model.name) ? ` data-check="${checkStateOf(model.name)}"` : ""}><button class="batch-model-select" type="button" title="Open ${escapeHtml(model.name)}"><span>${escapeHtml(model.name)}</span><small>${model.dimensions.width} × ${model.dimensions.depth} × ${model.dimensions.height} cm · ${escapeHtml(model.materialIds.length)} IDs</small></button><button class="batch-model-remove" type="button" title="Remove ${escapeHtml(model.name)}" aria-label="Remove ${escapeHtml(model.name)}">×</button></div>`).join("");
+    $("batchList").innerHTML = state.batch.map(model => `<div class="batch-model${state.model?.path === model.path ? " active" : ""}" data-model-path="${escapeHtml(model.path)}"${checkStateOf(model.name) ? ` data-check="${checkStateOf(model.name)}"` : ""}><button class="batch-model-select" type="button" title="Select ${escapeHtml(model.name)}"><span>${escapeHtml(model.name)}</span><small>${model.dimensions.width} × ${model.dimensions.depth} × ${model.dimensions.height} cm · ${escapeHtml(model.materialIds.length)} IDs</small></button><button class="batch-model-info" type="button" data-focus-source="#modelDetails" data-focus-title="${escapeHtml(model.name)}" data-focus-kind="model" data-focus-move="self" aria-label="Open information for ${escapeHtml(model.name)}" title="Model information"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 10.5v6M12 7.5h.01"/></svg></button><button class="batch-model-remove" type="button" title="Remove ${escapeHtml(model.name)}" aria-label="Remove ${escapeHtml(model.name)}">×</button></div>`).join("");
   };
   const selectModel = model => {
     state.model = model; state.historyModel = null;
@@ -1060,7 +1060,6 @@
   $("category").addEventListener("change", applyProductType);
   $("checkModels").addEventListener("click", checkModels);
   $("remeasureCrops").addEventListener("click", remeasureCrops);
-  $("closeModelCheck").addEventListener("click", () => { state.modelCheck = null; renderModelCheck(); renderBatch(); });
   // Repeated clicks tour every model that needs attention, starting after the one in hand.
   $("checkJump").addEventListener("click", () => {
     const failing = needsAttention();
@@ -1108,6 +1107,12 @@
       renderMaterials(); renderBatch();
       if (state.model) selectModel(state.model); else { $("modelDetails").hidden = true; $("modelEmpty").hidden = false; $("modelPath").value = ""; }
       validate(); return;
+    }
+    if (event.target.closest(".batch-model-info")) {
+      event.stopPropagation();
+      selectModel(state.batch[index]);
+      openFocusView($("batchList").children[index]?.querySelector(".batch-model-info"));
+      return;
     }
     selectModel(state.batch[index]);
   });
@@ -1259,7 +1264,7 @@
     $("focusDialogTitle").textContent = trigger.dataset.focusTitle;
     $("focusDialog").dataset.focusKind = trigger.dataset.focusKind || "details";
     $("focusDialog").showModal();
-    requestAnimationFrame(() => $("focusDialogTitle").focus({ preventScroll: true }));
+    requestAnimationFrame(() => $("closeFocusDialog").focus({ preventScroll: true }));
   };
   document.addEventListener("click", event => {
     const trigger = event.target.closest("[data-focus-source]");

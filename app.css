@@ -334,8 +334,9 @@ input[type=range]:hover::-moz-range-thumb,input[type=range]:active::-moz-range-t
 .batch-model-remove:hover{color:var(--danger);background:var(--danger-soft)}
 .model-details{display:flex;flex-direction:column;gap:14px}
 .model-name-row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
-.model-name-row>div{display:flex;flex-direction:column;gap:5px;min-width:0}
-.model-name-row span:first-child{color:var(--faint);font-size:10px;font-weight:750;letter-spacing:.16em}
+.model-name-copy{display:flex;flex-direction:column;gap:5px;min-width:0}
+.model-name-actions{display:flex;align-items:center;gap:8px;flex:none}
+.model-name-copy>span{color:var(--faint);font-size:10px;font-weight:750;letter-spacing:.16em}
 .model-name-row strong{font-size:13px;font-weight:560;overflow-wrap:anywhere;line-height:1.45}
 .tag{flex:none;padding:5px 11px;border-radius:var(--radius-pill);background:var(--accent-soft);color:var(--accent-ink);font-size:11px;font-weight:650;letter-spacing:.02em}
 
@@ -345,7 +346,7 @@ input[type=range]:hover::-moz-range-thumb,input[type=range]:active::-moz-range-t
 @media (min-width:640px){.material-row{grid-template-columns:minmax(120px,.55fr) minmax(0,1fr)}}
 .material-id{display:flex;flex-direction:column;gap:4px;min-width:0}
 .material-id>b{color:var(--text);font-size:12px;font-weight:500;line-height:1.4;overflow-wrap:anywhere}
-.material-id>small{color:var(--muted);font-size:11px;font-weight:520;line-height:1.4;overflow-wrap:anywhere}
+.material-id>small{display:flex;flex-direction:column;gap:1px;color:var(--muted);font-size:11px;font-weight:520;line-height:1.4;overflow-wrap:anywhere}
 .material-variants{display:flex;flex-direction:column;gap:8px;min-width:0}
 .material-variants>[data-material-variants]{display:flex;flex-direction:column;gap:7px}
 .material-variant{display:flex;align-items:center;gap:8px;min-width:0}
@@ -521,12 +522,10 @@ input[type=range]:hover::-moz-range-thumb,input[type=range]:active::-moz-range-t
 .job-dialog-heading span{color:var(--faint);font-size:10px;font-weight:750;letter-spacing:.16em}
 .job-dialog-heading strong{display:block;margin-top:4px;font-size:14px;font-weight:600;overflow-wrap:anywhere}
 .job-dialog pre{flex:1;overflow:auto;padding:15px;border-radius:var(--radius-sm);background:var(--inset);box-shadow:var(--press-sm);color:var(--soft);font-size:11.5px;line-height:1.62}
-.focus-view-button{width:32px;height:32px;flex:none;display:grid;place-items:center;border-radius:var(--radius-xs);background:var(--surface-raised);box-shadow:var(--bevel),var(--lift-sm);color:var(--faint);transition:transform .16s cubic-bezier(.2,.8,.2,1),box-shadow .2s,color .16s,background .16s}
-.focus-view-button:hover{color:var(--accent-ink);transform:translateY(-1px);box-shadow:var(--bevel),var(--lift)}
-.focus-view-button:active{transform:none;box-shadow:var(--bevel),var(--lift-sm)}
-.focus-view-button svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
-.focus-view-button.compact{width:24px;height:24px;border-radius:7px}
-.focus-view-button.compact svg{width:12px;height:12px}
+.batch-model-info{width:28px;height:28px;flex:none;align-self:center;display:grid;place-items:center;border-radius:var(--radius-xs);background:var(--surface-raised);box-shadow:var(--bevel),var(--lift-sm);color:var(--faint);transition:transform .16s cubic-bezier(.2,.8,.2,1),box-shadow .2s,color .16s,background .16s}
+.batch-model-info:hover{color:var(--accent-ink);transform:translateY(-1px);box-shadow:var(--bevel),var(--lift)}
+.batch-model-info:active{transform:none;box-shadow:var(--bevel),var(--lift-sm)}
+.batch-model-info svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .focus-dialog{width:min(1180px,calc(100vw - 32px));height:min(92vh,980px);max-width:none;max-height:none;padding:0;border:0;border-radius:var(--radius);background:var(--surface);box-shadow:var(--lift-lg);color:var(--text);overflow:hidden;opacity:0;transform:translateY(10px) scale(.99);transition:opacity .2s ease,transform .26s cubic-bezier(.2,.8,.2,1),overlay .26s allow-discrete,display .26s allow-discrete}
 .focus-dialog[open]{display:flex;flex-direction:column;opacity:1;transform:none}
 .focus-dialog::backdrop{background:rgba(0,0,0,.5);backdrop-filter:blur(3px);opacity:0;transition:opacity .22s ease,overlay .22s allow-discrete,display .22s allow-discrete}
@@ -541,22 +540,10 @@ input[type=range]:hover::-moz-range-thumb,input[type=range]:active::-moz-range-t
 .focus-dialog-close svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}
 .focus-dialog-body{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;gap:16px;padding:20px 22px 22px;overflow:auto;overscroll-behavior:contain}
 .focus-placeholder{min-height:86px;display:grid;place-items:center;padding:16px;border-radius:var(--radius-sm);background:var(--inset);box-shadow:var(--press-sm);color:var(--faint);font-size:12px;text-align:center}
-.focus-dialog[data-focus-kind=models] #batchList,
-.focus-dialog[data-focus-kind=materials] #materialsList,
-.focus-dialog[data-focus-kind=queue] #renderQueue,
-.focus-dialog[data-focus-kind=report] .model-check-list{max-height:none;overflow:visible}
-.focus-dialog[data-focus-kind=queue] #renderProgress{flex:1 1 auto;min-height:0}
-.focus-dialog[data-focus-kind=queue] #renderQueue{flex:1 1 auto;min-height:0;overflow:auto}
-.focus-dialog[data-focus-kind=log] #renderLog{flex:1 1 auto;min-height:0;height:auto;max-height:none;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}
-.focus-dialog[data-focus-kind=output] .output-fieldsets{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 18px}
-.focus-dialog[data-focus-kind=output] .full-row{grid-column:1/-1}
-.focus-dialog[data-focus-kind=output] .preflight-checks{grid-template-columns:repeat(auto-fit,minmax(220px,1fr));overflow:visible}
-.focus-dialog[data-focus-kind=history] .history-workspace{flex:1 1 auto;min-height:0;grid-template-columns:minmax(280px,360px) minmax(0,1fr);align-items:stretch}
-.focus-dialog[data-focus-kind=history] .history-list,
-.focus-dialog[data-focus-kind=history] .history-detail{height:100%;max-height:none;min-height:0;overflow:auto}
-.focus-dialog[data-focus-kind=report] .model-check{flex:1 1 auto;max-height:none;margin:0}
-.focus-dialog[data-focus-kind=report] .model-check-list{flex:1 1 auto}
-.focus-dialog .focus-view-button{display:none}
+.focus-dialog[data-focus-kind=model]{width:min(820px,calc(100vw - 32px))}
+.focus-dialog[data-focus-kind=model] .model-details{display:flex;flex:1 1 auto;min-height:0}
+.focus-dialog[data-focus-kind=model] .model-check{flex:1 1 auto;max-height:none}
+.focus-dialog[data-focus-kind=model] .model-check-list{flex:1 1 auto}
 @starting-style{
   .focus-dialog[open]{opacity:0;transform:translateY(10px) scale(.99)}
   .focus-dialog[open]::backdrop{opacity:0}
@@ -565,11 +552,6 @@ input[type=range]:hover::-moz-range-thumb,input[type=range]:active::-moz-range-t
   .focus-dialog{width:calc(100vw - 16px);height:calc(100dvh - 16px);border-radius:var(--radius-sm)}
   .focus-dialog-heading{padding:15px 15px 13px}
   .focus-dialog-body{padding:15px;gap:13px}
-  .focus-dialog[data-focus-kind=output] .output-fieldsets,
-  .focus-dialog[data-focus-kind=history] .history-workspace{grid-template-columns:minmax(0,1fr)}
-  .focus-dialog[data-focus-kind=history] .history-workspace{overflow:auto}
-  .focus-dialog[data-focus-kind=history] .history-list,
-  .focus-dialog[data-focus-kind=history] .history-detail{height:auto;min-height:280px;overflow:visible}
 }
 .toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,18px);opacity:0;pointer-events:none;padding:13px 22px;border-radius:var(--radius-pill);background:var(--ink-btn);color:var(--ink-btn-text);box-shadow:var(--lift-lg);font-size:13px;font-weight:540;z-index:40;transition:opacity .2s,transform .2s}
 .toast.show{opacity:1;transform:translate(-50%,0)}
@@ -1129,6 +1111,8 @@ legend+.choice-row,legend+.selective-options{margin-top:8px}
    as another panel. */
 .model-batch-tools{display:flex;align-items:center;gap:10px}
 .model-check{display:flex;flex-direction:column;max-height:clamp(190px,22vh,220px);margin-top:11px;padding:11px 12px;border-radius:var(--radius-sm);background:var(--inset);box-shadow:var(--press);overflow:hidden}
+.setup-panel>.model-details{display:none}
+.setup-panel>.focus-placeholder{display:none}
 .model-check[data-worst=error]{box-shadow:var(--press),inset 0 0 0 1px var(--danger-line)}
 .model-check[data-worst=warning]{box-shadow:var(--press),inset 0 0 0 1px var(--amber-soft)}
 .model-check[data-worst=error] .model-check-heading strong{color:var(--danger)}
@@ -1154,11 +1138,7 @@ legend+.choice-row,legend+.selective-options{margin-top:8px}
 input[readonly]{padding-inline:0;background:transparent;box-shadow:none;color:var(--text);cursor:default;font-variant-numeric:tabular-nums}
 input[readonly]:hover,input[readonly]:focus{box-shadow:none}
 
-/* The report needed a way out: it only cleared when the batch changed. */
 .model-check-actions{display:flex;align-items:center;gap:8px}
-.panel-close{width:24px;height:24px;flex:none;display:grid;place-items:center;border-radius:var(--radius-pill);color:var(--faint);background:var(--surface-raised);box-shadow:var(--bevel),var(--lift-sm);transition:color .16s,background .16s,box-shadow .16s}
-.panel-close:hover{color:var(--danger);background:var(--danger-soft);box-shadow:var(--bevel),inset 0 0 0 1px var(--danger-line)}
-.panel-close svg{width:11px;height:11px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
 
 /* ── frame size ─────────────────────────────────────────────────────
    Eight numbers that used to live in code, behind a button so they do not

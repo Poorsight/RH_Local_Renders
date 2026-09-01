@@ -107,7 +107,7 @@
         </label>
 
         <div id="modelBatch" class="model-batch" hidden>
-          <div class="model-batch-heading"><span>MODEL BATCH</span><div class="model-batch-tools"><button id="checkModels" class="secondary-button" type="button">Check models</button><button id="checkJump" class="check-chip" type="button" hidden></button><strong id="batchCount">0 models</strong></div></div>
+          <div class="model-batch-heading"><span>MODEL BATCH</span><div class="model-batch-tools"><button class="focus-view-button" type="button" data-focus-source="#modelBatch" data-focus-title="Model batch" data-focus-kind="models" aria-label="Open model batch in focus view" title="Open in focus view"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4H4v5M15 4h5v5M20 15v5h-5M4 15v5h5"/></svg></button><button id="checkModels" class="secondary-button" type="button">Check models</button><button id="checkJump" class="check-chip" type="button" hidden></button><strong id="batchCount">0 models</strong></div></div>
           <div id="batchList" class="model-batch-list"></div>
         </div>
 
@@ -122,7 +122,7 @@
           </div>
           <p id="modelWarning" class="inline-warning" hidden></p>
           <div id="modelCheck" class="model-check" hidden>
-            <div class="model-check-heading"><strong id="modelCheckSummary"></strong><div class="model-check-actions"><button id="repairModels" class="quiet-button danger-button" type="button" hidden>Repair OBJ parts</button><button id="closeModelCheck" class="panel-close" type="button" aria-label="Close the report" title="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg></button></div></div>
+            <div class="model-check-heading"><strong id="modelCheckSummary"></strong><div class="model-check-actions"><button id="repairModels" class="quiet-button danger-button" type="button" hidden>Repair OBJ parts</button><button class="focus-view-button compact" type="button" data-focus-source="#modelCheck" data-focus-title="Model check report" data-focus-kind="report" data-focus-move="self" aria-label="Open model check report in focus view" title="Open in focus view"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4H4v5M15 4h5v5M20 15v5h-5M4 15v5h5"/></svg></button><button id="closeModelCheck" class="panel-close" type="button" aria-label="Close the report" title="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg></button></div></div>
             <div id="modelCheckList" class="model-check-list"></div>
           </div>
         </div>
@@ -131,8 +131,8 @@
       </div>
 
       <div class="workspace-col workspace-col-build">
-      <section class="panel materials-panel" aria-labelledby="materialsTitle">
-        <div class="panel-heading"><div><span class="step">02</span><h2 id="materialsTitle">Material assignments</h2></div><button id="refreshMaterials" class="secondary-button" type="button">Refresh materials</button></div>
+      <section class="panel materials-panel" id="materialsPanel" aria-labelledby="materialsTitle">
+        <div class="panel-heading"><div><span class="step">02</span><h2 id="materialsTitle">Material assignments</h2></div><div class="panel-heading-actions"><button id="refreshMaterials" class="secondary-button" type="button">Refresh materials</button><button class="focus-view-button" type="button" data-focus-source="#materialsPanel" data-focus-title="Material assignments" data-focus-kind="materials" aria-label="Open material assignments in focus view" title="Open in focus view"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4H4v5M15 4h5v5M20 15v5h-5M4 15v5h5"/></svg></button></div></div>
         <div id="materialsEmpty" class="empty-state">Shared Material IDs appear after model inspection.</div>
         <div id="materialsList" class="materials-list"></div>
         <datalist id="materialOptions"></datalist>
@@ -142,8 +142,8 @@
       </div>
 
       <div class="workspace-col workspace-col-status">
-      <section class="panel output-panel" aria-labelledby="outputTitle">
-        <div class="panel-heading"><div><span class="step">03</span><h2 id="outputTitle">Views &amp; output</h2></div><div class="panel-heading-actions"><button id="refreshSheet" class="secondary-button" type="button">Refresh light data</button><button id="remeasureCrops" class="secondary-button" type="button" hidden>Clear saved crops</button></div></div>
+      <section class="panel output-panel" id="outputPanel" aria-labelledby="outputTitle">
+        <div class="panel-heading"><div><span class="step">03</span><h2 id="outputTitle">Views &amp; output</h2></div><div class="panel-heading-actions"><button id="refreshSheet" class="secondary-button" type="button">Refresh light data</button><button id="remeasureCrops" class="secondary-button" type="button" hidden>Clear saved crops</button><button class="focus-view-button" type="button" data-focus-source="#outputPanel" data-focus-title="Views &amp; output" data-focus-kind="output" aria-label="Open views and output in focus view" title="Open in focus view"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4H4v5M15 4h5v5M20 15v5h-5M4 15v5h5"/></svg></button></div></div>
         <div class="output-fieldsets">
           <label class="output-field full-row" data-for-type="Sectionals"><span>Sectional side</span>
             <select id="sceneSide">
@@ -220,8 +220,8 @@
     </div>
 
     <div class="runtime-workspace">
-      <section class="panel queue-panel" aria-labelledby="queueTitle">
-        <div class="panel-heading"><div><span class="step">04</span><h2 id="queueTitle">Render status</h2></div><div class="panel-badges"><i id="activeEnvironmentBadge" class="environment-badge" hidden>UE 5.8 · BETA</i><span id="renderBadge" class="status-badge">Idle</span></div></div>
+      <section class="panel queue-panel" id="queuePanel" aria-labelledby="queueTitle">
+        <div class="panel-heading"><div><span class="step">04</span><h2 id="queueTitle">Render status</h2></div><div class="panel-heading-actions"><div class="panel-badges"><i id="activeEnvironmentBadge" class="environment-badge" hidden>UE 5.8 · BETA</i><span id="renderBadge" class="status-badge">Idle</span></div><button class="focus-view-button" type="button" data-focus-source="#queuePanel" data-focus-title="Render status" data-focus-kind="queue" aria-label="Open render status in focus view" title="Open in focus view"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4H4v5M15 4h5v5M20 15v5h-5M4 15v5h5"/></svg></button></div></div>
         <div id="renderStatus" class="render-status"><div class="status-orb"></div><div><strong>No active render</strong><span>Choose an Unreal environment, generate a job, then launch it.</span></div></div>
         <div id="renderProgress" class="render-progress" hidden>
           <div class="render-progress-head"><strong id="renderProgressLabel">0 / 0</strong><span id="renderProgressMeta"></span></div>
@@ -234,8 +234,8 @@
         </div>
       </section>
 
-      <section class="panel log-panel" aria-labelledby="logTitle">
-        <div class="panel-heading"><div><span class="step">05</span><h2 id="logTitle">Unreal output</h2></div></div>
+      <section class="panel log-panel" id="logPanel" aria-labelledby="logTitle">
+        <div class="panel-heading"><div><span class="step">05</span><h2 id="logTitle">Unreal output</h2></div><button class="focus-view-button" type="button" data-focus-source="#logPanel" data-focus-title="Unreal output" data-focus-kind="log" aria-label="Open Unreal output in focus view" title="Open in focus view"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4H4v5M15 4h5v5M20 15v5h-5M4 15v5h5"/></svg></button></div>
         <pre id="renderLog" class="render-log"></pre>
       </section>
     </div>
@@ -243,9 +243,9 @@
     <section class="history-section" aria-labelledby="historyTitle">
       <div class="section-heading history-heading">
         <div><p class="eyebrow">LOCAL ARCHIVE</p><h2 id="historyTitle">Render &amp; job history</h2><p>Review models, load a saved job back into setup, edit it, or run it again.</p></div>
-        <div class="history-heading-actions"><span id="historyCount">0 jobs</span><input id="historySearch" type="search" placeholder="Filter jobs or models" aria-label="Filter render history"><select id="historyFilter" aria-label="Filter render state"><option value="all">All states</option><option value="complete">Complete</option><option value="partial">Partial</option><option value="failed">Failed</option><option value="ready">Ready</option></select><button id="refreshHistory" class="quiet-button" type="button">Refresh</button></div>
+        <div class="history-heading-actions"><span id="historyCount">0 jobs</span><input id="historySearch" type="search" placeholder="Filter jobs or models" aria-label="Filter render history"><select id="historyFilter" aria-label="Filter render state"><option value="all">All states</option><option value="complete">Complete</option><option value="partial">Partial</option><option value="failed">Failed</option><option value="ready">Ready</option></select><button id="refreshHistory" class="quiet-button" type="button">Refresh</button><button class="focus-view-button" type="button" data-focus-source="#historyWorkspace" data-focus-title="Render &amp; job history" data-focus-kind="history" data-focus-move="self" aria-label="Open render and job history in focus view" title="Open in focus view"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4H4v5M15 4h5v5M20 15v5h-5M4 15v5h5"/></svg></button></div>
       </div>
-      <div class="history-workspace">
+      <div id="historyWorkspace" class="history-workspace">
         <div id="historyList" class="history-list"><div class="empty-state">Render history requires the local service.</div></div>
         <article id="historyDetail" class="history-detail"><div class="empty-state">Choose a saved job to inspect its models, JSON, and render output.</div></article>
       </div>
@@ -270,6 +270,13 @@
   <dialog id="jobDialog" class="job-dialog" aria-labelledby="jobDialogTitle">
     <div class="job-dialog-heading"><div><span>JOB JSON</span><strong id="jobDialogTitle"></strong></div><button id="closeJobDialog" class="quiet-button" type="button">Close</button></div>
     <pre id="jobJson"></pre>
+  </dialog>
+  <dialog id="focusDialog" class="focus-dialog" aria-labelledby="focusDialogTitle">
+    <div class="focus-dialog-heading">
+      <div><span>FOCUS VIEW</span><strong id="focusDialogTitle" tabindex="-1">Details</strong></div>
+      <button id="closeFocusDialog" class="focus-dialog-close" type="button" aria-label="Close focus view" title="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg></button>
+    </div>
+    <div id="focusDialogBody" class="focus-dialog-body"></div>
   </dialog>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="config.js"></script>

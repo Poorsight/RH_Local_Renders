@@ -66,7 +66,8 @@
   :root:not([data-theme=light]) .panel,
   :root:not([data-theme=light]) .hero,
   :root:not([data-theme=light]) .history-detail,
-  :root:not([data-theme=light]) .job-dialog{border:1px solid var(--line)}
+  :root:not([data-theme=light]) .job-dialog,
+  :root:not([data-theme=light]) .focus-dialog{border:1px solid var(--line)}
   :root:not([data-theme=light]) .muted-fix{color:#9a9a9a}
 }
 
@@ -85,7 +86,7 @@
   --lift:inset 0 1px 0 rgba(255,255,255,.075), 0 10px 26px rgba(0,0,0,.5), 0 2px 5px rgba(0,0,0,.42); --lift-sm:inset 0 1px 0 rgba(255,255,255,.065), 0 5px 14px rgba(0,0,0,.42), 0 1px 3px rgba(0,0,0,.38); --lift-lg:inset 0 1px 0 rgba(255,255,255,.08), 0 26px 60px rgba(0,0,0,.6), 0 3px 8px rgba(0,0,0,.45);
   --press:inset 0 2px 6px rgba(0,0,0,.66), inset 0 0 0 1px rgba(255,255,255,.05); --press-sm:inset 0 1px 4px rgba(0,0,0,.56), inset 0 0 0 1px rgba(255,255,255,.045);
 }
-:root[data-theme=dark] .panel,:root[data-theme=dark] .hero,:root[data-theme=dark] .history-detail,:root[data-theme=dark] .job-dialog{border:1px solid var(--line)}
+:root[data-theme=dark] .panel,:root[data-theme=dark] .hero,:root[data-theme=dark] .history-detail,:root[data-theme=dark] .job-dialog,:root[data-theme=dark] .focus-dialog{border:1px solid var(--line)}
 
 /* ── base ───────────────────────────────────────────────────────── */
 *{box-sizing:border-box}
@@ -508,6 +509,56 @@ input[type=range]:hover::-moz-range-thumb,input[type=range]:active::-moz-range-t
 .job-dialog-heading span{color:var(--faint);font-size:10px;font-weight:750;letter-spacing:.16em}
 .job-dialog-heading strong{display:block;margin-top:4px;font-size:14px;font-weight:600;overflow-wrap:anywhere}
 .job-dialog pre{flex:1;overflow:auto;padding:15px;border-radius:var(--radius-sm);background:var(--inset);box-shadow:var(--press-sm);color:var(--soft);font-size:11.5px;line-height:1.62}
+.focus-view-button{width:32px;height:32px;flex:none;display:grid;place-items:center;border-radius:var(--radius-xs);background:var(--surface-raised);box-shadow:var(--bevel),var(--lift-sm);color:var(--faint);transition:transform .16s cubic-bezier(.2,.8,.2,1),box-shadow .2s,color .16s,background .16s}
+.focus-view-button:hover{color:var(--accent-ink);transform:translateY(-1px);box-shadow:var(--bevel),var(--lift)}
+.focus-view-button:active{transform:none;box-shadow:var(--bevel),var(--lift-sm)}
+.focus-view-button svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.focus-view-button.compact{width:24px;height:24px;border-radius:7px}
+.focus-view-button.compact svg{width:12px;height:12px}
+.focus-dialog{width:min(1180px,calc(100vw - 32px));height:min(92vh,980px);max-width:none;max-height:none;padding:0;border:0;border-radius:var(--radius);background:var(--surface);box-shadow:var(--lift-lg);color:var(--text);overflow:hidden;opacity:0;transform:translateY(10px) scale(.99);transition:opacity .2s ease,transform .26s cubic-bezier(.2,.8,.2,1),overlay .26s allow-discrete,display .26s allow-discrete}
+.focus-dialog[open]{display:flex;flex-direction:column;opacity:1;transform:none}
+.focus-dialog::backdrop{background:rgba(0,0,0,.5);backdrop-filter:blur(3px);opacity:0;transition:opacity .22s ease,overlay .22s allow-discrete,display .22s allow-discrete}
+.focus-dialog[open]::backdrop{opacity:1}
+.focus-dialog-heading{flex:none;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:20px 22px 16px;border-bottom:1px solid var(--line-soft)}
+.focus-dialog-heading>div{min-width:0}
+.focus-dialog-heading span{display:block;color:var(--faint);font-size:10px;font-weight:750;letter-spacing:.16em}
+.focus-dialog-heading strong{display:block;margin-top:4px;font-size:18px;font-weight:620;letter-spacing:-.015em;overflow-wrap:anywhere}
+.focus-dialog-close{width:34px;height:34px;flex:none;display:grid;place-items:center;border-radius:var(--radius-xs);background:var(--surface-raised);box-shadow:var(--bevel),var(--lift-sm);color:var(--faint);transition:color .16s,box-shadow .2s,transform .16s}
+.focus-dialog-close:hover{color:var(--danger);box-shadow:var(--bevel),var(--lift);transform:translateY(-1px)}
+.focus-dialog-close:active{transform:none;box-shadow:var(--bevel),var(--lift-sm)}
+.focus-dialog-close svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}
+.focus-dialog-body{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;gap:16px;padding:20px 22px 22px;overflow:auto;overscroll-behavior:contain}
+.focus-placeholder{min-height:86px;display:grid;place-items:center;padding:16px;border-radius:var(--radius-sm);background:var(--inset);box-shadow:var(--press-sm);color:var(--faint);font-size:12px;text-align:center}
+.focus-dialog[data-focus-kind=models] #batchList,
+.focus-dialog[data-focus-kind=materials] #materialsList,
+.focus-dialog[data-focus-kind=queue] #renderQueue,
+.focus-dialog[data-focus-kind=report] .model-check-list{max-height:none;overflow:visible}
+.focus-dialog[data-focus-kind=queue] #renderProgress{flex:1 1 auto;min-height:0}
+.focus-dialog[data-focus-kind=queue] #renderQueue{flex:1 1 auto;min-height:0;overflow:auto}
+.focus-dialog[data-focus-kind=log] #renderLog{flex:1 1 auto;min-height:0;height:auto;max-height:none;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}
+.focus-dialog[data-focus-kind=output] .output-fieldsets{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 18px}
+.focus-dialog[data-focus-kind=output] .full-row{grid-column:1/-1}
+.focus-dialog[data-focus-kind=output] .preflight-checks{grid-template-columns:repeat(auto-fit,minmax(220px,1fr));overflow:visible}
+.focus-dialog[data-focus-kind=history] .history-workspace{flex:1 1 auto;min-height:0;grid-template-columns:minmax(280px,360px) minmax(0,1fr);align-items:stretch}
+.focus-dialog[data-focus-kind=history] .history-list,
+.focus-dialog[data-focus-kind=history] .history-detail{height:100%;max-height:none;min-height:0;overflow:auto}
+.focus-dialog[data-focus-kind=report] .model-check{flex:1 1 auto;max-height:none;margin:0}
+.focus-dialog[data-focus-kind=report] .model-check-list{flex:1 1 auto}
+.focus-dialog .focus-view-button{display:none}
+@starting-style{
+  .focus-dialog[open]{opacity:0;transform:translateY(10px) scale(.99)}
+  .focus-dialog[open]::backdrop{opacity:0}
+}
+@media (max-width:760px){
+  .focus-dialog{width:calc(100vw - 16px);height:calc(100dvh - 16px);border-radius:var(--radius-sm)}
+  .focus-dialog-heading{padding:15px 15px 13px}
+  .focus-dialog-body{padding:15px;gap:13px}
+  .focus-dialog[data-focus-kind=output] .output-fieldsets,
+  .focus-dialog[data-focus-kind=history] .history-workspace{grid-template-columns:minmax(0,1fr)}
+  .focus-dialog[data-focus-kind=history] .history-workspace{overflow:auto}
+  .focus-dialog[data-focus-kind=history] .history-list,
+  .focus-dialog[data-focus-kind=history] .history-detail{height:auto;min-height:280px;overflow:visible}
+}
 .toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,18px);opacity:0;pointer-events:none;padding:13px 22px;border-radius:var(--radius-pill);background:var(--ink-btn);color:var(--ink-btn-text);box-shadow:var(--lift-lg);font-size:13px;font-weight:540;z-index:40;transition:opacity .2s,transform .2s}
 .toast.show{opacity:1;transform:translate(-50%,0)}
 
@@ -893,7 +944,7 @@ input[type=radio]:checked{animation:accent-breathe 3.6s ease-in-out infinite}
 @media (prefers-reduced-motion:reduce){
   .segmented:before,.theme-switcher:before{transition:opacity .01s}
   .workspace-col>.panel,.preflight-checks>span{animation:none}
-  .job-dialog,.job-dialog::backdrop,.suggest-pop,::picker(select){transition:opacity .01s}
+  .job-dialog,.job-dialog::backdrop,.focus-dialog,.focus-dialog::backdrop,.suggest-pop,::picker(select){transition:opacity .01s}
   .batch-model:hover,.material-row:hover{transform:none}
 }
 

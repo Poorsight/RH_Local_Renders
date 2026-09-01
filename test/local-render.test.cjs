@@ -1965,6 +1965,23 @@ test("every element app.js reaches for by id exists in the markup", () => {
   assert.deepEqual(missing, [], `app.js reads ids that the page does not have: ${missing.join(", ")}`);
 });
 
+test("dense information blocks share one accessible focus view", () => {
+  const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
+  const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const styles = fs.readFileSync(path.join(root, "app.css"), "utf8");
+  assert.match(html, /<dialog id="focusDialog"[^>]*aria-labelledby="focusDialogTitle"/);
+  assert.match(html, /id="closeFocusDialog"[^>]*aria-label="Close focus view"/);
+  for (const source of ["#modelBatch", "#modelCheck", "#materialsPanel", "#outputPanel", "#queuePanel", "#logPanel", "#historyWorkspace"]) {
+    assert.ok(html.includes(`data-focus-source="${source}"`), `${source} has no focus-view trigger`);
+  }
+  assert.match(client, /showModal\(\)/);
+  assert.match(client, /focusView\.source/);
+  assert.match(client, /focusView\.trigger/);
+  assert.match(styles, /\.focus-dialog\{[^}]*height:min\(92vh,980px\)/);
+  assert.match(styles, /\.focus-dialog\[data-focus-kind=log\] #renderLog/);
+  assert.match(styles, /\.focus-dialog\[data-focus-kind=history\] \.history-workspace/);
+});
+
 test("main page renders the workspace, previews and dropdowns", () => {
   const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
   const client = fs.readFileSync(path.join(root, "app.js"), "utf8");

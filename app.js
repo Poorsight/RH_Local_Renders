@@ -1229,6 +1229,50 @@
   });
   $("closeJobDialog").addEventListener("click", () => $("jobDialog").close());
   $("jobDialog").addEventListener("click", event => { if (event.target === $("jobDialog")) $("jobDialog").close(); });
+  const focusView = { source: null, placeholder: null, moved: [], trigger: null };
+  const closeFocusView = () => {
+    if (!focusView.source || !focusView.placeholder) return;
+    if (focusView.moved.length === 1 && focusView.moved[0] === focusView.source) {
+      focusView.placeholder.replaceWith(focusView.source);
+    } else {
+      focusView.moved.forEach(node => focusView.source.insertBefore(node, focusView.placeholder));
+      focusView.placeholder.remove();
+    }
+    focusView.source = null; focusView.placeholder = null; focusView.moved = [];
+    $("focusDialogBody").replaceChildren();
+    delete $("focusDialog").dataset.focusKind;
+  };
+  const openFocusView = trigger => {
+    const source = document.querySelector(trigger.dataset.focusSource);
+    // `close` is queued by the browser. Keep a second dialog from opening in the
+    // short gap after `.close()` clears `open` but before the live nodes are restored.
+    if (!source || $("focusDialog").open || focusView.source) return;
+    const moveSelf = trigger.dataset.focusMove === "self";
+    const placeholder = document.createElement("div");
+    placeholder.className = "focus-placeholder";
+    placeholder.textContent = `${trigger.dataset.focusTitle} is open in focus view.`;
+    const moved = moveSelf ? [source] : [...source.children].filter(node => !node.matches(".panel-heading,.model-batch-heading"));
+    if (!moved.length) return;
+    if (moveSelf) source.before(placeholder); else source.insertBefore(placeholder, moved[0]);
+    moved.forEach(node => $("focusDialogBody").append(node));
+    focusView.source = source; focusView.placeholder = placeholder; focusView.moved = moved; focusView.trigger = trigger;
+    $("focusDialogTitle").textContent = trigger.dataset.focusTitle;
+    $("focusDialog").dataset.focusKind = trigger.dataset.focusKind || "details";
+    $("focusDialog").showModal();
+    requestAnimationFrame(() => $("focusDialogTitle").focus({ preventScroll: true }));
+  };
+  document.addEventListener("click", event => {
+    const trigger = event.target.closest("[data-focus-source]");
+    if (trigger) openFocusView(trigger);
+  });
+  $("closeFocusDialog").addEventListener("click", () => $("focusDialog").close());
+  $("focusDialog").addEventListener("click", event => { if (event.target === $("focusDialog")) $("focusDialog").close(); });
+  $("focusDialog").addEventListener("close", () => {
+    const trigger = focusView.trigger;
+    closeFocusView();
+    focusView.trigger = null;
+    if (trigger?.isConnected) trigger.focus({ preventScroll: true });
+  });
   document.querySelectorAll("[data-theme-value]").forEach(button => button.addEventListener("click", () => applyTheme(button.dataset.themeValue, true)));
   document.querySelectorAll("button[data-render-environment]").forEach(button => button.addEventListener("click", () => chooseRenderEnvironment(button.dataset.renderEnvironment)));
   applyTheme(document.documentElement.dataset.theme);

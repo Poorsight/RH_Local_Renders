@@ -1982,6 +1982,14 @@ test("dense information blocks share one accessible focus view", () => {
   assert.match(styles, /\.focus-dialog\[data-focus-kind=history\] \.history-workspace/);
 });
 
+test("interface controls do not trigger accidental text selection", () => {
+  const styles = fs.readFileSync(path.join(root, "app.css"), "utf8");
+  assert.match(styles, /button,select,option,label,legend,[\s\S]*?-webkit-user-select:none;user-select:none/);
+  assert.match(styles, /input:not\(\[type=checkbox\]\):not\(\[type=radio\]\):not\(\[type=range\]\),textarea,pre,code\{[\s\S]*?user-select:text/);
+  assert.match(styles, /\.render-queue>span/);
+  assert.match(styles, /\.render-preview-card/);
+});
+
 test("main page renders the workspace, previews and dropdowns", () => {
   const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
   const client = fs.readFileSync(path.join(root, "app.js"), "utf8");

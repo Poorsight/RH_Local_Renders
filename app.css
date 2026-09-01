@@ -101,6 +101,18 @@ svg{display:block}
 a{color:var(--accent-ink)}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
 ::selection{background:var(--accent-soft)}
+/* Rapid clicks belong to controls, not to the browser's text-selection gesture.
+   Keep real copyable content selectable, while buttons, labels and card-shaped
+   controls behave like interface chrome instead of accidental paragraphs. */
+button,select,option,label,legend,
+[role=button],[role=tab],[role=radio],[role=checkbox],[role=option],
+.history-card,.history-model-row,.batch-model,.gallery-model,.render-preview-card,
+.material-row,.render-queue>span,.suggest-item,.frame-size-trigger{
+  -webkit-user-select:none;user-select:none
+}
+input:not([type=checkbox]):not([type=radio]):not([type=range]),textarea,pre,code{
+  -webkit-user-select:text;user-select:text
+}
 main{width:calc(100% - clamp(18px,2.4vw,44px));max-width:none;margin:0 auto;padding-bottom:72px}
 
 /* ── topbar ─────────────────────────────────────────────────────── */

@@ -43,6 +43,10 @@ const { PNG } = require("pngjs");
           png.data[pixel] = 255; png.data[pixel + 1] = 255; png.data[pixel + 2] = 255; png.data[pixel + 3] = 0;
         }
         fs.writeFileSync(outputFile, PNG.sync.write(png));
+      } else if (process.env.RH_FAKE_UNREAL_VALID_PNG === "1") {
+        const png = new PNG({ width: 8, height: 4 });
+        for (let pixel = 3; pixel < png.data.length; pixel += 4) png.data[pixel] = 255;
+        fs.writeFileSync(outputFile, PNG.sync.write(png));
       } else fs.writeFileSync(outputFile, `${phase}:${task.taskId}:${camera.name}:${Date.now()}`);
       if (layerName === "Fabric") await fetch(apiUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
         event: "sequence_camera_data",

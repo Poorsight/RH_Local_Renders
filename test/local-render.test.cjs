@@ -809,6 +809,49 @@ test("local render service completes Fabric before restarting for Substrate-on S
   }
 });
 
+test("persistent job queue deduplicates saved jobs and renders them sequentially", async () => {
+  const suffix = `${process.pid}_${Date.now()}`, port = 55500 + process.pid % 400;
+  const jobsRoot = path.join(root, "local", "jobs", "generated"), queueFile = path.join(os.tmpdir(), `rh-job-queue-${suffix}.json`), fakeLog = path.join(os.tmpdir(), `rh-fake-queue-${suffix}.log`);
+  const records = ["a", "b"].map(label => {
+    const output = path.join(root, "local", "renders", `test_queue_${suffix}_${label}`), jobPath = path.join(jobsRoot, `test_queue_${suffix}_${label}.job.json`);
+    fs.mkdirSync(output, { recursive: true });
+    const job = buildJob({ ...baseInput, cameras: ["F"], layers: ["Fabric"] }, { ...model, name: `${model.name}_${label}`, materialIds: ["UPH", "Stitches", "Feet"] }, rig, output);
+    job.jobId = `test_queue_${suffix}_${label}`; job._rhLocal.outputFolder = `${output}${path.sep}`;
+    fs.writeFileSync(jobPath, JSON.stringify(job));
+    return { output, jobPath };
+  });
+  const service = spawn(process.execPath, [path.join(root, "server.cjs")], {
+    cwd: root, windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, RH_LOCAL_RENDERS_PORT: String(port), RH_UNREAL_EDITOR: process.execPath, RH_UNREAL_PROJECT: path.join(root, "test", "fake-unreal.cjs"), RH_FAKE_UNREAL_LOG: fakeLog, RH_FAKE_UNREAL_VALID_PNG: "1", RH_JOB_QUEUE_FILE: queueFile, RH_RUN_STATS_FILE: path.join(os.tmpdir(), `rh-queue-stats-${suffix}.json`), RH_CHECK_CACHE_FILE: path.join(os.tmpdir(), `rh-queue-checks-${suffix}.json`) }
+  });
+  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), at = endpoint => `http://127.0.0.1:${port}${endpoint}`, post = value => fetch(at("/api/job-queue"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(value) });
+  try {
+    let online = false;
+    for (let attempt = 0; attempt < 60 && !online; attempt++) { try { online = (await fetch(at("/api/status"))).ok; } catch {} if (!online) await sleep(50); }
+    assert.equal(online, true);
+    const added = await (await post({ action: "add", jobPaths: records.map(record => record.jobPath) })).json();
+    assert.equal(added.added, 2); assert.equal(added.items.length, 2);
+    const duplicate = await (await post({ action: "add", jobPaths: [records[0].jobPath] })).json();
+    assert.equal(duplicate.added, 0); assert.equal(duplicate.items.length, 2);
+    assert.equal((await post({ action: "start" })).status, 202);
+    let status;
+    for (let attempt = 0; attempt < 300; attempt++) {
+      status = await (await fetch(at("/api/renders/status"))).json();
+      if (status.jobQueue.state === "idle" && !status.jobQueue.items.length && status.state !== "running") break;
+      await sleep(50);
+    }
+    assert.equal(status.state, "success", status.log);
+    assert.equal(status.jobQueue.state, "idle"); assert.equal(status.jobQueue.items.length, 0);
+    const launches = fs.readFileSync(fakeLog, "utf8").trim().split(/\r?\n/).map(line => JSON.parse(line));
+    assert.deepEqual(launches.map(item => item.jobId.replace(/__.*$/, "")), records.map(record => path.basename(record.jobPath, ".job.json")));
+    assert.equal(JSON.parse(fs.readFileSync(queueFile, "utf8")).items.length, 0, "completed queue state is persisted");
+  } finally {
+    service.kill();
+    for (const record of records) { fs.rmSync(record.jobPath, { force: true }); fs.rmSync(record.output, { recursive: true, force: true }); }
+    for (const file of [queueFile, fakeLog, path.join(os.tmpdir(), `rh-queue-stats-${suffix}.json`), path.join(os.tmpdir(), `rh-queue-checks-${suffix}.json`)]) fs.rmSync(file, { force: true });
+  }
+});
+
 test("local render service calibrates, saves and applies an optimized crop before final layers", async () => {
   const suffix = `${process.pid}_${Date.now()}`, port = 58000 + process.pid % 3000;
   const jobsRoot = path.join(root, "local", "jobs", "generated"), output = path.join(root, "local", "renders", `test_crop_${suffix}`);
@@ -1040,7 +1083,7 @@ test("without the key the service still shows everything and refuses only the ac
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   const service = spawn(process.execPath, [path.join(root, "server.cjs")], {
     cwd: root, windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, RH_LOCAL_RENDERS_PORT: String(port), RH_ACCESS_KEY: key }
+    env: { ...process.env, RH_LOCAL_RENDERS_PORT: String(port), RH_ACCESS_KEY: key, RH_JOB_QUEUE_FILE: path.join(os.tmpdir(), `rh-job-queue-${port}.json`) }
   });
   const at = path => `http://127.0.0.1:${port}${path}`;
   const signed = { Authorization: `Bearer ${key}` };
@@ -1054,7 +1097,7 @@ test("without the key the service still shows everything and refuses only the ac
     assert.equal(online, true);
 
     // Looking is open: a viewer with the address sees the queue, the history and the files.
-    for (const path of ["/api/status", "/api/history", "/api/catalog", "/api/materials", "/api/renders/status"]) {
+    for (const path of ["/api/status", "/api/history", "/api/catalog", "/api/materials", "/api/renders/status", "/api/job-queue"]) {
       assert.equal((await fetch(at(path))).status, 200, `${path} must stay readable`);
     }
     assert.notEqual((await fetch(at("/api/renders/file?path=nothing.png"))).status, 401, "renders are readable without a key");
@@ -1068,7 +1111,7 @@ test("without the key the service still shows everything and refuses only the ac
     assert.deepEqual((await (await fetch(at("/api/status"), { headers: signed })).json()).access, { required: true, authorized: true });
 
     // Acting is not: everything that starts work, writes a file or reaches the network.
-    for (const path of ["/api/renders", "/api/renders/stop", "/api/renders/delete", "/api/jobs", "/api/postprocess", "/api/sheet/refresh", "/api/materials/refresh", "/api/models/inspect", "/api/local/open"]) {
+    for (const path of ["/api/renders", "/api/renders/stop", "/api/renders/delete", "/api/jobs", "/api/job-queue", "/api/postprocess", "/api/sheet/refresh", "/api/materials/refresh", "/api/models/inspect", "/api/local/open"]) {
       assert.equal((await fetch(at(path), { method: "POST", headers: json, body: "{}" })).status, 401, `${path} must need the key`);
     }
     assert.equal((await fetch(at("/api/renders"), { method: "POST", headers: { ...json, Authorization: "Bearer wrong-key-entirely" }, body: "{}" })).status, 401);
@@ -1720,9 +1763,13 @@ test("Launch render launches what is on screen, and only a resume says it is one
   // Loading a saved job for editing clears the generated path, so gating Launch on that path
   // alone left the button dead until Generate was pressed -- while Run again would launch the
   // file on disk and ignore the edits just made.
-  assert.match(client, /\$\("launchRender"\)\.disabled = !state\.jobPath && !ready;/);
+  assert.match(client, /button\.disabled = !state\.jobPath && !basicReady;/);
   assert.match(client, /if \(!state\.jobPath && !resuming\) \{/,
     "with nothing generated, Launch generates on the way");
+  assert.match(client, /state\.jobQueue\?\.items\?\.length/,
+    "saved jobs in the persistent queue take precedence over the setup form");
+  assert.match(client, /action: "start"/,
+    "the main action starts the server-side queue when jobs are waiting");
 
   // The click listener used to hand launch() the event, which is truthy, so every manual
   // launch told the server it was resuming -- and on a resume the server skips the
@@ -1735,6 +1782,24 @@ test("Launch render launches what is on screen, and only a resume says it is one
 
   // And a job that has never run should not offer to run it "again".
   assert.match(client, /batch\.renderCount \? "Run again" : "Run this job"/);
+});
+
+test("saved jobs use a persistent, deduplicated server queue with explicit recovery", () => {
+  const client = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  const server = fs.readFileSync(path.join(root, "server.cjs"), "utf8");
+  const markup = fs.readFileSync(path.join(root, "index.html"), "utf8");
+
+  assert.match(server, /RH_JOB_QUEUE_FILE/);
+  assert.match(server, /fs\.renameSync\(temporary, JOB_QUEUE_FILE\)/, "queue writes are atomic");
+  assert.match(server, /new Set\(jobQueue\.items\.map\(item => path\.normalize\(item\.jobPath\)\.toLowerCase\(\)\)\)/,
+    "the same saved job cannot silently enter the queue twice");
+  assert.match(server, /jobQueue\.state = "paused"/, "a restart or failure requires an explicit operator decision");
+  assert.match(server, /action === "retry"/);
+  assert.match(server, /action === "skip"/);
+  assert.match(client, /data-select-job=/, "history cards expose selection mode");
+  assert.match(client, /Start queue · \$\{count\} job/);
+  assert.match(markup, /id="jobSelectionBar"/);
+  assert.match(markup, /id="jobQueuePanel"/);
 });
 
 test("a saved crop can be dropped, and preflight counts every camera the type has", () => {

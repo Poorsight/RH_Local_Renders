@@ -84,6 +84,8 @@ let render = { state: "idle", pid: null, jobPath: null, startedAt: null, finishe
 let child = null, bridge = null, activeRun = null, lastUnrealContactAt = null;
 let postProcessPromise = null;
 const unrealMaterialCache = new Map();
+const JOB_QUEUE_FILE = path.resolve(process.env.RH_JOB_QUEUE_FILE || path.join(ROOT, "local", "cache", "job-queue.json"));
+let jobQueue = { state: "idle", items: [], updatedAt: null };
 
 const ACCESS_KEY = String(process.env.RH_ACCESS_KEY || "").trim();
 const timingEqual = (left, right) => {
@@ -123,7 +125,7 @@ const body = request => new Promise((resolve, reject) => {
 const within = (file, root) => { const relative = path.relative(path.resolve(root), path.resolve(file)); return relative && !relative.startsWith("..") && !path.isAbsolute(relative); };
 const contentType = file => ({ ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".json": "application/json; charset=utf-8", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".svg": "image/svg+xml" })[path.extname(file).toLowerCase()] || "application/octet-stream";
 const sendFile = (response, file) => { if (!fs.existsSync(file) || !fs.statSync(file).isFile()) return error(response, 404, "File not found"); response.writeHead(200, { "Content-Type": contentType(file), ...corsHeaders(response.req?.headers?.origin) }); fs.createReadStream(file).pipe(response); };
-const currentRender = () => ({ ...render, log: render.log.slice(-12000) });
+const currentRender = () => ({ ...render, jobQueue: publicJobQueue(), log: render.log.slice(-12000) });
 const appendRenderLog = chunk => { render.log = `${render.log}${chunk}`.slice(-50000); };
 
 function imageSnapshot(folder) {
@@ -148,6 +150,50 @@ const taskLayerExpected = (task, layerName) => {
     : 1;
   return cameras * variants;
 };
+
+function readJobQueue() {
+  try {
+    const saved = JSON.parse(fs.readFileSync(JOB_QUEUE_FILE, "utf8"));
+    const items = Array.isArray(saved.items) ? saved.items.filter(item => item?.jobPath).map(item => ({ ...item, state: "queued", error: null })) : [];
+    return { state: items.length ? "paused" : "idle", items, updatedAt: saved.updatedAt || null };
+  } catch { return { state: "idle", items: [], updatedAt: null }; }
+}
+
+function writeJobQueue() {
+  jobQueue.updatedAt = new Date().toISOString();
+  fs.mkdirSync(path.dirname(JOB_QUEUE_FILE), { recursive: true });
+  const temporary = `${JOB_QUEUE_FILE}.${process.pid}.tmp`;
+  fs.writeFileSync(temporary, `${JSON.stringify(jobQueue, null, 2)}\n`, "utf8");
+  fs.renameSync(temporary, JOB_QUEUE_FILE);
+}
+
+function publicJobQueue() {
+  const items = jobQueue.items.map(({ id, jobPath, jobId, state, addedAt, startedAt, error, renderEnvironment, modelCount, expectedRenders }) => ({
+    id, jobPath, jobId, state, addedAt, startedAt, error, renderEnvironment, modelCount, expectedRenders
+  }));
+  return {
+    state: jobQueue.state,
+    items,
+    active: items.find(item => item.state === "active") || null,
+    pendingCount: items.filter(item => item.state === "queued").length,
+    failedCount: items.filter(item => item.state === "failed" || item.state === "paused").length
+  };
+}
+
+function queueItemFor(jobPath) {
+  const resolved = path.resolve(String(jobPath || "")), jobsRoot = path.join(ROOT, "local", "jobs", "generated");
+  if (!within(resolved, jobsRoot) || !fs.existsSync(resolved)) throw Object.assign(new Error("Only generated local job files can be queued"), { status: 400 });
+  const job = JSON.parse(fs.readFileSync(resolved, "utf8")), environment = environmentForJob(job, RENDER_ENVIRONMENTS), phases = buildRenderPlan(job);
+  return {
+    id: crypto.randomUUID(), jobPath: resolved, jobId: job.jobId || path.basename(resolved, ".job.json"), state: "queued",
+    addedAt: new Date().toISOString(), startedAt: null, error: null, renderEnvironment: environment.id,
+    modelCount: (job.tasks || []).length,
+    expectedRenders: phases.reduce((total, phase) => total + (phase.job.tasks || []).reduce((sum, task) => sum + taskLayerExpected(task, phase.layerName || phase.name), 0), 0)
+  };
+}
+
+jobQueue = readJobQueue();
+
 const taskOutputFolder = (task, layerName) => path.resolve(String((task.layers || []).find(layer => String(layer.name || "").toLowerCase() === layerName.toLowerCase())?.output?.folder || ""));
 const runProducedImages = (run, folder, layerName, calibration = false) => scanImages(folder).filter(file => {
   const isCalibration = isInBranch(file, "calibration");
@@ -264,6 +310,8 @@ function finishRun(state, message) {
   activeRun = null; bridge = null;
   if (!succeeded) {
     render.state = "failed"; render.finishedAt = new Date().toISOString();
+    if (run.queueItemId) failQueuedJob(jobQueue.items.find(item => item.id === run.queueItemId), new Error(message));
+    else if (jobQueue.state === "running") setTimeout(continueJobQueue, 0);
     return;
   }
   if (run.cameraStates.size) {
@@ -271,7 +319,7 @@ function finishRun(state, message) {
     fs.writeFileSync(run.jobPath, `${JSON.stringify(run.job, null, 2)}\n`, "utf8");
   }
   updateCatalog(run.jobPath);
-  startPostProcessing(run.job, run.jobPath, deliverables, { automatic: true, cameraStates: run.cameraStates, environment: run.environment });
+  startPostProcessing(run.job, run.jobPath, deliverables, { automatic: true, cameraStates: run.cameraStates, environment: run.environment, queueItemId: run.queueItemId });
 }
 
 function startPostProcessing(job, jobPath, files, options = {}) {
@@ -304,12 +352,14 @@ function startPostProcessing(job, jobPath, files, options = {}) {
     render.postProcess = { ...render.postProcess, state: "success", completed: results.length, created, skipped, readyToUpload, finishedAt: render.finishedAt };
     appendRenderLog(`Post-process complete: ${created} created, ${skipped} already current. Delivery files are isolated in ${readyToUpload?.folder || "POST"} (${readyToUpload?.files || 0} files).\n`);
     updateCatalog(jobPath);
+    finishQueuedJob(options.queueItemId);
   }).catch(postError => {
-    render.state = options.automatic ? "success" : "failed"; render.finishedAt = new Date().toISOString(); render.currentTask = null; render.currentCamera = null;
+    render.state = options.queueItemId || !options.automatic ? "failed" : "success"; render.finishedAt = new Date().toISOString(); render.currentTask = null; render.currentCamera = null;
     render.message = `Render files are safe, but post-process failed: ${postError.message}`;
     render.postProcess = { ...render.postProcess, state: "failed", error: postError.message, finishedAt: render.finishedAt };
     appendRenderLog(`Post-process failed without changing originals: ${postError.stack || postError.message}\n`);
-  }).finally(() => { postProcessPromise = null; });
+    if (options.queueItemId) failQueuedJob(jobQueue.items.find(item => item.id === options.queueItemId), postError);
+  }).finally(() => { postProcessPromise = null; setTimeout(continueJobQueue, 0); });
   return postProcessPromise;
 }
 
@@ -425,6 +475,49 @@ function startRenderPhase() {
     if (!phaseBridge.success) return restartRenderPhase(`${phase.name} did not produce render files`);
     advancePhaseOrFinish(`${phase.name} job_completed`);
   });
+}
+
+function beginRender(jobPath, options = {}) {
+  if (child || activeRun || postProcessPromise) throw Object.assign(new Error(render.phase === "Post-processing" ? "Post-processing is still running" : render.state === "running" ? "A render is already running" : "Unreal Editor is still closing"), { status: 409 });
+  const resolved = path.resolve(String(jobPath || "")), jobsRoot = path.join(ROOT, "local", "jobs", "generated");
+  if (!within(resolved, jobsRoot) || !fs.existsSync(resolved)) throw Object.assign(new Error("Only generated local job files can be launched"), { status: 400 });
+  const job = JSON.parse(fs.readFileSync(resolved, "utf8"));
+  const environment = environmentForJob(job, RENDER_ENVIRONMENTS), fitToken = cameraFitRendererToken(environment);
+  if (!fs.existsSync(environment.editor) || !fs.existsSync(environment.project)) throw Object.assign(new Error(`${environment.label} or its project was not found`), { status: 503 });
+  const rendersRoot = path.join(ROOT, "local", "renders"), outputFolder = path.resolve(String(job._rhLocal?.outputFolder || ""));
+  if (!within(outputFolder, rendersRoot)) throw Object.assign(new Error("Job output must stay inside RH_Local_Renders/local/renders"), { status: 400 });
+  const phases = buildRenderPlan(job), cachedFits = cameraFitStatesForJob(ROOT, job, { projectPath: environment.project, rendererToken: fitToken });
+  const maxPhaseRestarts = job._rhLocal?.disableAutomaticRestarts === true ? 0 : MAX_PHASE_RESTARTS;
+  activeRun = { job, jobPath: resolved, outputFolder, environment, before: options.resume ? new Map() : imageSnapshot(outputFolder), phases, index: 0, cameraStates: new Map(), phaseRestarts: new Map(), maxPhaseRestarts, queueItemId: options.queueItemId || null };
+  const queue = (job.tasks || []).map(task => ({ name: task.taskId, state: "queued" }));
+  const totalRenders = phases.reduce((total, phase) => total + (phase.job.tasks || []).reduce((phaseTotal, task) => phaseTotal + taskLayerExpected(task, phase.layerName || phase.name), 0), 0);
+  const nativeShadowDiagnostics = environment.id === "ue58" && job._rhLocal?.nativeShadowDiagnostics === true;
+  render = { state: "running", pid: null, jobPath: resolved, startedAt: new Date().toISOString(), finishedAt: null, exitCode: null, rendered: 0, totalRenders, currentTask: null, currentCamera: null, message: options.resume ? "Resuming completed files" : "Queued", queue, phase: null, phaseIndex: 0, phaseCount: phases.length, substrate: null, environment: publicRenderEnvironment(environment), autoRestarts: 0, log: `Queued ${phases.map(phase => phase.name).join(" → ")} render plan for ${environment.label}${options.resume ? " in resume mode" : ""}.\nPersistent camera-fit cache: ${cachedFits.hits}/${cachedFits.total} exact-frame records available for diagnostics; every Fabric phase calculates a fresh Fit.\nShadow alpha: ${environment.recoverLegacyShadow ? "Legacy Composure recovery" : "native Composite output"}.\nNative Shadow diagnostics: ${nativeShadowDiagnostics ? "ON via process-local -ExecCmds" : "OFF"}.\nAutomatic phase restarts: ${maxPhaseRestarts}.\nLocal BatchRender API: http://${HOST}:${PORT}/api/unreal\n` };
+  refreshRunProgress();
+  startRenderPhase();
+  return currentRender();
+}
+
+function failQueuedJob(item, failure) {
+  if (!item) return;
+  item.state = "failed"; item.error = failure?.message || String(failure || "The job could not be started");
+  jobQueue.state = "paused"; writeJobQueue();
+}
+
+function continueJobQueue() {
+  if (jobQueue.state !== "running" || child || activeRun || postProcessPromise) return;
+  const item = jobQueue.items.find(candidate => candidate.state === "queued");
+  if (!item) { jobQueue.state = "idle"; writeJobQueue(); return; }
+  item.state = "active"; item.startedAt = new Date().toISOString(); item.error = null; writeJobQueue();
+  try { beginRender(item.jobPath, { resume: true, queueItemId: item.id }); }
+  catch (failure) { failQueuedJob(item, failure); }
+}
+
+function finishQueuedJob(id) {
+  if (!id) return;
+  jobQueue.items = jobQueue.items.filter(item => item.id !== id);
+  if (!jobQueue.items.length) jobQueue.state = "idle";
+  writeJobQueue();
 }
 
 function scanImages(folder) {
@@ -846,25 +939,66 @@ async function api(request, response, url) {
     const cameraCount = result.job.tasks.reduce((total, task) => total + task.sequence.cameras.length, 0);
     return json(response, 201, { jobPath: result.jobPath, outputFolder: result.outputFolder, modelCount: result.job.tasks.length, cameraCount, lightSource: sheet.source, renderEnvironment: input.renderEnvironment });
   }
+  if (request.method === "GET" && url.pathname === "/api/job-queue") return json(response, 200, publicJobQueue());
+  if (request.method === "POST" && url.pathname === "/api/job-queue") {
+    const input = await body(request), action = String(input.action || "");
+    if (action === "add") {
+      const known = new Set(jobQueue.items.map(item => path.normalize(item.jobPath).toLowerCase()));
+      let added = 0;
+      try {
+        for (const asked of Array.isArray(input.jobPaths) ? input.jobPaths : []) {
+          const item = queueItemFor(asked), key = path.normalize(item.jobPath).toLowerCase();
+          if (known.has(key) || (activeRun && path.normalize(activeRun.jobPath).toLowerCase() === key)) continue;
+          jobQueue.items.push(item); known.add(key); added += 1;
+        }
+      } catch (failure) { return error(response, failure.status || 400, failure.message); }
+      writeJobQueue();
+      if (jobQueue.state === "running") setTimeout(continueJobQueue, 0);
+      return json(response, 200, { ...publicJobQueue(), added });
+    }
+    if (action === "start") {
+      if (!jobQueue.items.length) return error(response, 409, "Add at least one saved job to the queue first");
+      if (jobQueue.items.some(item => item.state === "failed")) return error(response, 409, "Retry or skip the failed job before continuing the queue");
+      jobQueue.items.forEach(item => { if (item.state === "paused") item.state = "queued"; });
+      jobQueue.state = "running"; writeJobQueue(); setTimeout(continueJobQueue, 0);
+      return json(response, 202, publicJobQueue());
+    }
+    if (action === "pause") {
+      jobQueue.state = jobQueue.items.length ? "paused" : "idle"; writeJobQueue();
+      return json(response, 200, publicJobQueue());
+    }
+    if (action === "retry") {
+      const item = jobQueue.items.find(candidate => candidate.state === "failed" || candidate.state === "paused");
+      if (!item) return error(response, 409, "There is no paused or failed job to retry");
+      item.state = "queued"; item.error = null; jobQueue.state = "running"; writeJobQueue(); setTimeout(continueJobQueue, 0);
+      return json(response, 202, publicJobQueue());
+    }
+    if (action === "skip") {
+      const item = jobQueue.items.find(candidate => candidate.state === "failed" || candidate.state === "paused");
+      if (!item) return error(response, 409, "There is no paused or failed job to skip");
+      jobQueue.items = jobQueue.items.filter(candidate => candidate.id !== item.id);
+      jobQueue.state = jobQueue.items.length ? "running" : "idle"; writeJobQueue(); setTimeout(continueJobQueue, 0);
+      return json(response, 200, publicJobQueue());
+    }
+    if (action === "remove") {
+      const item = jobQueue.items.find(candidate => candidate.id === input.itemId);
+      if (!item) return error(response, 404, "That queued job was not found");
+      if (item.state === "active") return error(response, 409, "Stop the active render before removing it");
+      jobQueue.items = jobQueue.items.filter(candidate => candidate.id !== item.id);
+      if (!jobQueue.items.length) jobQueue.state = "idle";
+      writeJobQueue(); return json(response, 200, publicJobQueue());
+    }
+    if (action === "clear") {
+      jobQueue.items = jobQueue.items.filter(item => item.state === "active");
+      jobQueue.state = jobQueue.items.length ? jobQueue.state : "idle"; writeJobQueue();
+      return json(response, 200, publicJobQueue());
+    }
+    return error(response, 400, "Unknown job queue action");
+  }
   if (request.method === "POST" && url.pathname === "/api/renders") {
-    if (child || activeRun || postProcessPromise) return error(response, 409, render.phase === "Post-processing" ? "Post-processing is still running" : render.state === "running" ? "A render is already running" : "Unreal Editor is still closing");
-    const input = await body(request), jobPath = path.resolve(String(input.jobPath || "")), jobsRoot = path.join(ROOT, "local", "jobs", "generated");
-    if (!within(jobPath, jobsRoot) || !fs.existsSync(jobPath)) return error(response, 400, "Only generated local job files can be launched");
-    const job = JSON.parse(fs.readFileSync(jobPath, "utf8"));
-    const environment = environmentForJob(job, RENDER_ENVIRONMENTS), fitToken = cameraFitRendererToken(environment);
-    if (!fs.existsSync(environment.editor) || !fs.existsSync(environment.project)) return error(response, 503, `${environment.label} or its project was not found`);
-    const rendersRoot = path.join(ROOT, "local", "renders"), outputFolder = path.resolve(String(job._rhLocal?.outputFolder || ""));
-    if (!within(outputFolder, rendersRoot)) return error(response, 400, "Job output must stay inside RH_Local_Renders/local/renders");
-    const phases = buildRenderPlan(job), cachedFits = cameraFitStatesForJob(ROOT, job, { projectPath: environment.project, rendererToken: fitToken });
-    const maxPhaseRestarts = job._rhLocal?.disableAutomaticRestarts === true ? 0 : MAX_PHASE_RESTARTS;
-    activeRun = { job, jobPath, outputFolder, environment, before: input.resume ? new Map() : imageSnapshot(outputFolder), phases, index: 0, cameraStates: new Map(), phaseRestarts: new Map(), maxPhaseRestarts };
-    const queue = (job.tasks || []).map(task => ({ name: task.taskId, state: "queued" }));
-    const totalRenders = phases.reduce((total, phase) => total + (phase.job.tasks || []).reduce((phaseTotal, task) => phaseTotal + taskLayerExpected(task, phase.layerName || phase.name), 0), 0);
-    const nativeShadowDiagnostics = environment.id === "ue58" && job._rhLocal?.nativeShadowDiagnostics === true;
-    render = { state: "running", pid: null, jobPath, startedAt: new Date().toISOString(), finishedAt: null, exitCode: null, rendered: 0, totalRenders, currentTask: null, currentCamera: null, message: input.resume ? "Resuming completed files" : "Queued", queue, phase: null, phaseIndex: 0, phaseCount: phases.length, substrate: null, environment: publicRenderEnvironment(environment), autoRestarts: 0, log: `Queued ${phases.map(phase => phase.name).join(" → ")} render plan for ${environment.label}${input.resume ? " in resume mode" : ""}.\nPersistent camera-fit cache: ${cachedFits.hits}/${cachedFits.total} exact-frame records available for diagnostics; every Fabric phase calculates a fresh Fit.\nShadow alpha: ${environment.recoverLegacyShadow ? "Legacy Composure recovery" : "native Composite output"}.\nNative Shadow diagnostics: ${nativeShadowDiagnostics ? "ON via process-local -ExecCmds" : "OFF"}.\nAutomatic phase restarts: ${maxPhaseRestarts}.\nLocal BatchRender API: http://${HOST}:${PORT}/api/unreal\n` };
-    refreshRunProgress();
-    startRenderPhase();
-    return json(response, 202, currentRender());
+    const input = await body(request);
+    try { return json(response, 202, beginRender(input.jobPath, { resume: input.resume === true })); }
+    catch (failure) { return error(response, failure.status || 500, failure.message); }
   }
   if (request.method === "POST" && url.pathname === "/api/renders/delete") {
     if (child || activeRun || postProcessPromise) return error(response, 409, "Finish or stop the running render before deleting anything");
@@ -884,6 +1018,14 @@ async function api(request, response, url) {
     }
     const jobPath = path.resolve(String(input.jobPath || ""));
     if (!within(jobPath, jobsRoot) || !fs.existsSync(jobPath)) return error(response, 400, "Only generated local job files can be deleted");
+    const queued = jobQueue.items.filter(item => path.normalize(item.jobPath).toLowerCase() === path.normalize(jobPath).toLowerCase());
+    if (queued.some(item => item.state === "active")) return error(response, 409, "Stop the active queued job before deleting it");
+    if (queued.length) {
+      const queuedIds = new Set(queued.map(item => item.id));
+      jobQueue.items = jobQueue.items.filter(item => !queuedIds.has(item.id));
+      if (!jobQueue.items.length) jobQueue.state = "idle";
+      writeJobQueue();
+    }
     let outputFolder = "";
     try { outputFolder = path.resolve(String(JSON.parse(fs.readFileSync(jobPath, "utf8"))._rhLocal?.outputFolder || "")); } catch { outputFolder = ""; }
     const deleted = [];
@@ -897,12 +1039,17 @@ async function api(request, response, url) {
   }
   if (request.method === "POST" && url.pathname === "/api/renders/stop") {
     if (!activeRun && !child) return error(response, 409, postProcessPromise ? "Post-processing cannot be interrupted; it finishes on its own" : "No render is running");
-    const doomed = child, stoppedDuring = render.phase || "render";
+    const doomed = child, stoppedDuring = render.phase || "render", queueItemId = activeRun?.queueItemId;
     // Dropping the run first is what disarms the automatic phase restart: the exit handler
     // bails out on a missing activeRun instead of resuming the phase for another try.
     activeRun = null; bridge = null;
     render.state = "stopped"; render.finishedAt = new Date().toISOString(); render.pid = null;
     render.message = `Stopped by hand during ${stoppedDuring}`;
+    if (queueItemId) {
+      const item = jobQueue.items.find(candidate => candidate.id === queueItemId);
+      if (item) { item.state = "paused"; item.error = "Stopped by hand"; }
+      jobQueue.state = "paused"; writeJobQueue();
+    } else if (jobQueue.state === "running") { jobQueue.state = "paused"; writeJobQueue(); }
     appendRenderLog(`
 Forced stop during ${stoppedDuring}. Unreal is being killed and the run is abandoned; files already on disk stay, so a resume can skip them.
 `);

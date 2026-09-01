@@ -1,7 +1,7 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const CLOSE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17"/></svg>';
-  const state = { status: null, models: [], metadata: null, materialAssets: [], renderEnvironment: "ue56", renderEnvironments: [], preflight: null, preflightTimer: null, batch: [], model: null, jobPath: null, poll: null, history: [], historyBatch: null, historySelection: new Set(), historyModel: null, galleryBatch: null, galleryMaterialIndex: 0, queueFocus: null };
+  const state = { status: null, models: [], metadata: null, materialAssets: [], renderEnvironment: "ue56", renderEnvironments: [], preflight: null, preflightTimer: null, batch: [], model: null, jobPath: null, poll: null, history: [], historyBatch: null, historySelection: new Set(), historyModel: null, galleryBatch: null, galleryMaterialIndex: 0, queueFocus: null, jobQueue: { state: "idle", items: [], pendingCount: 0, failedCount: 0 }, jobSelectionMode: false, selectedJobs: new Set() };
   const LOCAL_MODELS_ROOT = "D:\\GitHub\\RH_Local_Renders\\local\\models";
   const THEME_KEY = "rh-local-renders-theme";
   const THEME_CHROME = { light: "#dadada", dark: "#242424" };
@@ -147,10 +147,21 @@
     } catch (error) { toast(error.message, true); }
     finally { button.disabled = false; button.textContent = "Clear saved crops"; }
   };
+  const syncLaunchAction = basicReady => {
+    const button = $("launchRender"), queue = state.jobQueue || { state: "idle", items: [] }, count = queue.items?.length || 0;
+    if (count) {
+      const failed = queue.items.some(item => ["failed", "paused"].includes(item.state));
+      button.textContent = queue.state === "running" ? `Queue running · ${count} left` : failed ? "Queue needs attention" : `Start queue · ${count} job${count === 1 ? "" : "s"}`;
+      button.disabled = queue.state === "running" || failed;
+      return;
+    }
+    button.textContent = "Launch render";
+    button.disabled = !state.jobPath && !basicReady;
+  };
   const syncActionButtons = basicReady => {
     const ready = basicReady && state.preflight?.ok === true;
     $("generateJob").disabled = !ready;
-    $("launchRender").disabled = !state.jobPath && !ready;
+    syncLaunchAction(ready);
     syncCropActions();
   };
   const renderPreflight = result => {
@@ -572,6 +583,13 @@
   const launch = async (resume = false) => {
     const resuming = resume === true;
     const button = $("launchRender");
+    if (!resuming && state.jobQueue?.items?.length) {
+      try {
+        state.jobQueue = await api("/api/job-queue", { method: "POST", body: JSON.stringify({ action: "start" }) });
+        renderJobQueue(); toast(`Queue started · ${state.jobQueue.items.length} job${state.jobQueue.items.length === 1 ? "" : "s"}`); startPolling();
+      } catch (error) { toast(error.message, true); }
+      return;
+    }
     if (!state.jobPath && !resuming) {
       button.disabled = true; button.textContent = "Preparing job…";
       try { await generate(); } finally { button.textContent = "Launch render"; }
@@ -619,8 +637,22 @@
       toast("Render stopped; Unreal is being killed");
     } catch (error) { toast(error.message, true); }
   };
+  const renderJobQueue = (queue = state.jobQueue) => {
+    state.jobQueue = queue || { state: "idle", items: [], pendingCount: 0, failedCount: 0 };
+    const items = state.jobQueue.items || [], panel = $("jobQueuePanel"), failed = items.some(item => ["failed", "paused"].includes(item.state));
+    panel.hidden = !items.length;
+    $("jobQueueSummary").textContent = items.length ? `${items.length} job${items.length === 1 ? "" : "s"} · ${state.jobQueue.state}` : "0 jobs";
+    $("jobQueueList").innerHTML = items.map((item, index) => {
+      const label = ({ active: "Rendering", queued: "Waiting", failed: "Failed", paused: "Paused" })[item.state] || item.state;
+      return `<div data-state="${escapeHtml(item.state)}"><b>${String(index + 1).padStart(2, "0")}</b><span><strong>${escapeHtml(item.jobId)}</strong><small>${item.modelCount} model${item.modelCount === 1 ? "" : "s"} · ${item.expectedRenders} frames · ${escapeHtml(renderEnvironmentLabel(item.renderEnvironment))}${item.error ? ` · ${escapeHtml(item.error)}` : ""}</small></span><i>${escapeHtml(label)}</i>${item.state === "active" ? "" : `<button class="queue-remove" type="button" data-remove-queue="${escapeHtml(item.id)}" aria-label="Remove ${escapeHtml(item.jobId)} from queue">${CLOSE_ICON}</button>`}</div>`;
+    }).join("");
+    $("retryQueue").hidden = !failed; $("skipQueue").hidden = !failed;
+    $("clearQueue").hidden = !items.some(item => item.state !== "active");
+    syncLaunchAction(state.preflight?.ok === true);
+  };
   const updateRender = (render) => {
     state.status ||= {}; state.status.render = render;
+    if (render.jobQueue) renderJobQueue(render.jobQueue);
     document.querySelectorAll("button[data-render-environment]").forEach(button => { button.disabled = render.state === "running"; });
     const badge = $("renderBadge"), environmentBadge = $("activeEnvironmentBadge"), box = $("renderStatus"), log = $("renderLog"), progress = $("renderProgress");
     const activeEnvironment = render.environment?.id || state.renderEnvironment;
@@ -659,10 +691,10 @@
     state.queueFocus = running ? render.currentTask : null;
     $("stopRender").hidden = render.state !== "running";
     if (render.state !== "running") disarmStop();
-    $("retryRender").hidden = !["failed", "stopped"].includes(render.state) || !render.jobPath;
+    $("retryRender").hidden = !["failed", "stopped"].includes(render.state) || !render.jobPath || Boolean(state.jobQueue.items?.length);
     $("retryRender").textContent = render.state === "stopped" ? "Resume stopped job" : "Retry failed job";
     log.hidden = false; log.textContent = render.log || "";
-    if (render.state !== "running" && state.poll) { clearInterval(state.poll); state.poll = null; loadHistory(); }
+    if (render.state !== "running" && state.jobQueue.state !== "running" && state.poll) { clearInterval(state.poll); state.poll = null; loadHistory(); }
   };
   const startPolling = () => { if (state.poll) clearInterval(state.poll); state.poll = setInterval(async () => { try { updateRender(await api("/api/renders/status")); } catch {} }, 2000); };
   const formatDate = value => {
@@ -694,11 +726,23 @@
     $("deleteConfirm").hidePopover?.();
     document.querySelectorAll('.card-delete[aria-expanded="true"]').forEach(button => button.setAttribute("aria-expanded", "false"));
   };
+  const renderJobSelection = () => {
+    const selected = state.history.filter(batch => state.selectedJobs.has(batch.id)), count = selected.length;
+    $("toggleJobSelection").setAttribute("aria-pressed", String(state.jobSelectionMode));
+    $("toggleJobSelection").textContent = state.jobSelectionMode ? "Done selecting" : "Select jobs";
+    $("jobSelectionBar").hidden = !state.jobSelectionMode;
+    $("jobSelectionCount").textContent = `${count} job${count === 1 ? "" : "s"} selected`;
+    const models = selected.reduce((sum, batch) => sum + Number(batch.modelCount || 0), 0), renders = selected.reduce((sum, batch) => sum + Number(batch.expectedRenders || 0), 0);
+    const seconds = selected.reduce((sum, batch) => sum + Number(batch.timing?.seconds || batch.estimate?.seconds || 0), 0);
+    $("jobSelectionMeta").textContent = count ? `${models} models · ${renders} frames${seconds ? ` · ≈ ${humanDuration(seconds)}` : ""}` : "Choose saved jobs to queue";
+    $("addJobsToQueue").disabled = !count;
+  };
   const renderHistoryList = () => {
     const query = $("historySearch").value.trim().toLowerCase(), filter = $("historyFilter").value;
     const batches = state.history.filter(batch => (filter === "all" || batch.state === filter) && (!query || batch.id.toLowerCase().includes(query) || (batch.models || []).some(model => model.name.toLowerCase().includes(query))));
     $("historyCount").textContent = batches.length === state.history.length ? `${state.history.length} job${state.history.length === 1 ? "" : "s"}` : `${batches.length} of ${state.history.length}`;
-    $("historyList").innerHTML = batches.length ? batches.map(batch => `<div class="card-shell"><button class="history-card${state.historyBatch?.id === batch.id ? " active" : ""}" type="button" data-history-id="${escapeHtml(batch.id)}"><span class="history-card-top"><strong>${escapeHtml(batch.id)}</strong><span class="history-card-badges">${renderEnvironmentBadge(batch.renderEnvironment)}<i class="history-state" data-state="${escapeHtml(batch.state)}">${escapeHtml(historyStateLabel(batch.state))}</i></span></span><span class="history-card-meta"><b>${batch.modelCount} model${batch.modelCount === 1 ? "" : "s"} · ${escapeHtml(renderEnvironmentLabel(batch.renderEnvironment))}</b><b>${batch.renderCount}/${batch.expectedRenders} renders · ${batch.postProcessCount || 0} POST</b></span><small>${escapeHtml(formatDate(batch.updatedAt || batch.generatedAt))}</small></button><button class="card-delete" type="button" aria-expanded="false" aria-label="Delete this batch" title="Delete batch" data-delete-batch="${escapeHtml(batch.id)}">${TRASH_ICON}</button></div>`).join("") : '<div class="empty-state">No jobs match this filter.</div>';
+    $("historyList").innerHTML = batches.length ? batches.map(batch => `<div class="card-shell${state.selectedJobs.has(batch.id) ? " selected" : ""}">${state.jobSelectionMode ? `<button class="job-pick" type="button" data-select-job="${escapeHtml(batch.id)}" aria-pressed="${state.selectedJobs.has(batch.id)}" aria-label="${state.selectedJobs.has(batch.id) ? "Remove" : "Add"} ${escapeHtml(batch.id)} ${state.selectedJobs.has(batch.id) ? "from" : "to"} selection"><span></span></button>` : ""}<button class="history-card${state.historyBatch?.id === batch.id ? " active" : ""}" type="button" data-history-id="${escapeHtml(batch.id)}"><span class="history-card-top"><strong>${escapeHtml(batch.id)}</strong><span class="history-card-badges">${renderEnvironmentBadge(batch.renderEnvironment)}<i class="history-state" data-state="${escapeHtml(batch.state)}">${escapeHtml(historyStateLabel(batch.state))}</i></span></span><span class="history-card-meta"><b>${batch.modelCount} model${batch.modelCount === 1 ? "" : "s"} · ${escapeHtml(renderEnvironmentLabel(batch.renderEnvironment))}</b><b>${batch.renderCount}/${batch.expectedRenders} renders · ${batch.postProcessCount || 0} POST</b></span><small>${escapeHtml(formatDate(batch.updatedAt || batch.generatedAt))}</small></button><button class="card-delete" type="button" aria-expanded="false" aria-label="Delete this batch" title="Delete batch" data-delete-batch="${escapeHtml(batch.id)}">${TRASH_ICON}</button></div>`).join("") : '<div class="empty-state">No jobs match this filter.</div>';
+    renderJobSelection();
   };
   const humanDuration = totalSeconds => {
     const value = Math.max(0, Math.round(Number(totalSeconds) || 0));
@@ -981,6 +1025,7 @@
         }
       }
       state.history = batches;
+      state.selectedJobs = new Set([...state.selectedJobs].filter(id => batches.some(batch => batch.id === id)));
       const selectedBatch = batches.find(batch => batch.id === selectedId) || batches[0] || null, changedBatch = state.historyBatch?.id !== selectedBatch?.id;
       state.historyBatch = selectedBatch;
       if (changedBatch || !state.historySelection.size) state.historySelection = new Set((selectedBatch?.models || []).map(model => model.name));
@@ -1154,8 +1199,37 @@
   $("refreshHistory").addEventListener("click", loadHistory);
   $("historySearch").addEventListener("input", renderHistoryList); $("historyFilter").addEventListener("change", renderHistoryList);
   $("historyList").addEventListener("click", event => {
+    const picker = event.target.closest("[data-select-job]");
+    if (picker) {
+      const id = picker.dataset.selectJob;
+      if (state.selectedJobs.has(id)) state.selectedJobs.delete(id); else state.selectedJobs.add(id);
+      renderHistoryList(); return;
+    }
     const card = event.target.closest("[data-history-id]"); if (!card) return;
     const batch = state.history.find(item => item.id === card.dataset.historyId); if (batch) selectHistoryBatch(batch);
+  });
+  $("toggleJobSelection").addEventListener("click", () => { state.jobSelectionMode = !state.jobSelectionMode; renderHistoryList(); });
+  $("clearJobSelection").addEventListener("click", () => { state.selectedJobs.clear(); renderHistoryList(); });
+  $("addJobsToQueue").addEventListener("click", async () => {
+    const jobPaths = state.history.filter(batch => state.selectedJobs.has(batch.id)).map(batch => batch.jobPath);
+    if (!jobPaths.length) return;
+    try {
+      const result = await api("/api/job-queue", { method: "POST", body: JSON.stringify({ action: "add", jobPaths }) });
+      renderJobQueue(result); state.selectedJobs.clear(); state.jobSelectionMode = false; renderHistoryList();
+      toast(result.added ? `${result.added} job${result.added === 1 ? "" : "s"} added to queue` : "Those jobs are already queued");
+    } catch (error) { toast(error.message, true); }
+  });
+  const runQueueAction = async action => {
+    try { renderJobQueue(await api("/api/job-queue", { method: "POST", body: JSON.stringify({ action }) })); if (["retry", "skip"].includes(action)) startPolling(); }
+    catch (error) { toast(error.message, true); }
+  };
+  $("retryQueue").addEventListener("click", () => runQueueAction("retry"));
+  $("skipQueue").addEventListener("click", () => runQueueAction("skip"));
+  $("clearQueue").addEventListener("click", () => runQueueAction("clear"));
+  $("jobQueueList").addEventListener("click", async event => {
+    const button = event.target.closest("[data-remove-queue]"); if (!button) return;
+    try { renderJobQueue(await api("/api/job-queue", { method: "POST", body: JSON.stringify({ action: "remove", itemId: button.dataset.removeQueue }) })); }
+    catch (error) { toast(error.message, true); }
   });
   $("historyDetail").addEventListener("click", async event => {
     const button = event.target.closest("[data-history-action]"), batch = state.historyBatch; if (!button || !batch) return;

@@ -1745,6 +1745,14 @@ test("a saved crop can be dropped, and preflight counts every camera the type ha
   const store = path.join(dir, "crop-profiles.json");
   const previous = process.env.RH_CROP_CACHE_FILE;
   try {
+    const frame = {
+      Fabric: { Resolution: { X: 5000, Y: 5000 }, SensorSize: { X: 36, Y: 36 } },
+      Shadow: { Resolution: { X: 15000, Y: 5000 }, SensorSize: { X: 108, Y: 36 } }
+    };
+    assert.deepEqual(crop.cropContextResolutions({
+      Shadow: { Name: "Shadow", SensorSize: { Y: "36", X: "108" }, Resolution: { Y: "5000", X: "15000" } },
+      Fabric: { Name: "Fabric", SensorSize: { Y: "36", X: "36" }, Resolution: { Y: "5000", X: "5000" } }
+    }), frame, "display fields, key order and numeric strings do not invalidate the same frame");
     process.env.RH_CROP_CACHE_FILE = store;
     crop.writeCropProfiles(dir, [
       { fingerprint: "aaa", camera: "F",   contextToken: "frame-a", cropRatio: 0.4, modelName: "SOFA_A", analyzedAt: "2026-01-01T00:00:00.000Z" },

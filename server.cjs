@@ -6,7 +6,7 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 const { spawn, spawnSync } = require("node:child_process");
 const { Worker } = require("node:worker_threads");
-const { SheetStore } = require("./lib/rig.cjs");
+const { SheetStore, jobLights } = require("./lib/rig.cjs");
 const { ModelStore } = require("./lib/models.cjs");
 const { productType, writeBatchJob, groupedMaterials, materialCombinationCount } = require("./lib/jobs.cjs");
 const { buildRenderPlan, cameraStateKey, applyCameraHandoff } = require("./lib/render-plan.cjs");
@@ -14,7 +14,7 @@ const { siblingBranch, isInBranch } = require("./lib/output-layout.cjs");
 const { publishPreviews, previewFileFor } = require("./lib/preview.cjs");
 const { checkModel, summarise } = require("./lib/model-check.cjs");
 const { inspectObjParts, normalizeObjParts, writeMaterialLibrary } = require("./lib/obj-parts.cjs");
-const { modelFingerprint, readCropProfiles, writeCropProfiles, cropProfileFor, forgetCropProfiles, analyzeCalibrationPair, applyCropProfileToCamera, calibrationFiles } = require("./lib/crop.cjs");
+const { modelFingerprint, readCropProfiles, writeCropProfiles, cropProfileFor, cropContextResolutions, forgetCropProfiles, analyzeCalibrationPair, applyCropProfileToCamera, calibrationFiles } = require("./lib/crop.cjs");
 const { rendererToken, readCameraFitProfiles, cameraFitStatesForJob, writeCameraFitState } = require("./lib/camera-fit.cjs");
 const { buildUnrealLaunch } = require("./lib/unreal.cjs");
 const { DEFAULT_ENVIRONMENT, renderEnvironments, resolveRenderEnvironment, environmentForJob, publicRenderEnvironment } = require("./lib/render-environments.cjs");
@@ -45,13 +45,40 @@ const runtimeSourceToken = () => {
 };
 const RUNTIME_STARTED_AT = new Date().toISOString();
 const RUNTIME_SOURCE_TOKEN = runtimeSourceToken();
-const CROP_CONTEXT_VERSION = 2;
-const cropContextTokenFor = ({ input, selection, model, side, fingerprint, camera, rig, shadowConfig }) => crypto.createHash("sha256").update(JSON.stringify({
-  version: CROP_CONTEXT_VERSION, fingerprint, camera,
-  productType: productType(input.productType || model.group).key, side, dimensions: selection.dimensions || model.dimensions,
-  importYaw: selection.importYaw ?? model.importYaw, renderProfile: input.renderProfile || "high", resolutions: input.resolutions || null,
-  renderer: cameraFitRendererToken(renderEnvironment(input.renderEnvironment)), rig, shadowAlpha: shadowConfig.shadow?.substrateAlpha || null
-})).digest("hex").slice(0, 20);
+const CROP_CONTEXT_VERSION = 3, LEGACY_CROP_CONTEXT_VERSION = 2;
+const cropContextHash = value => crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex").slice(0, 20);
+const cropContextDimensions = value => ({
+  width: Number(value?.width), depth: Number(value?.depth), height: Number(value?.height)
+});
+const cropContextTokensFor = ({ input, selection, model, side, fingerprint, camera, rig, shadowConfig }) => {
+  const type = productType(input.productType || model.group), scene = type.scene(side);
+  const shared = {
+    fingerprint, camera, productType: type.key, side,
+    dimensions: cropContextDimensions(selection.dimensions || model.dimensions),
+    importYaw: Number(selection.importYaw ?? model.importYaw) || 0,
+    renderProfile: input.renderProfile || "high",
+    resolutions: cropContextResolutions(input.resolutions),
+    renderer: cameraFitRendererToken(renderEnvironment(input.renderEnvironment)),
+    shadowAlpha: shadowConfig.shadow?.substrateAlpha || null
+  };
+  return {
+    // Version 3 hashes only the scene/camera lights that can affect this crop. Editing an
+    // unrelated sheet row no longer makes every saved model recalibrate.
+    current: cropContextHash({ version: CROP_CONTEXT_VERSION, ...shared, scene,
+      lights: { Fabric: jobLights(rig, scene, camera), Shadow: jobLights(rig, scene, camera, "Shadow") } }),
+    // Version 2 used the whole rig. Keep accepting it so verified existing profiles migrate
+    // naturally instead of forcing one blanket recalibration after this improvement.
+    legacy: cropContextHash({ version: LEGACY_CROP_CONTEXT_VERSION, fingerprint, camera,
+      productType: type.key, side, dimensions: shared.dimensions, importYaw: shared.importYaw,
+      renderProfile: shared.renderProfile, resolutions: shared.resolutions, renderer: shared.renderer,
+      rig, shadowAlpha: shared.shadowAlpha })
+  };
+};
+const cropProfileForContext = (store, fingerprint, camera, tokens) => {
+  const saved = cropProfileFor(store, fingerprint, camera);
+  if (!saved || ![tokens.current, tokens.legacy].includes(saved.contextToken)) return null;
+  return saved.contextToken === tokens.current ? saved : { ...saved, contextToken: tokens.current };
+};
 const MAX_PHASE_RESTARTS = 3;
 let render = { state: "idle", pid: null, jobPath: null, startedAt: null, finishedAt: null, exitCode: null, log: "" };
 let child = null, bridge = null, activeRun = null, lastUnrealContactAt = null;
@@ -515,16 +542,21 @@ async function preflight(input) {
   checks.push(cameras.length ? { id: "cameras", level: "ok", label: "Cameras", detail: cameras.join(" · ") } : { id: "cameras", level: "error", label: "Cameras", detail: "Select at least one camera." });
   const shadowOnly = layers.includes("Shadow") && !layers.includes("Fabric");
   checks.push(layers.length ? { id: "layers", level: "ok", label: "Layers", detail: shadowOnly ? "Shadow · automatic 500×500 Fabric camera prefit" : layers.join(" → ") } : { id: "layers", level: "error", label: "Layers", detail: "Select at least one layer." });
-  let cropCalibrations = 0;
+  let cropCalibrations = 0, staleCrops = 0;
   const reusedCrops = [];
   if (String(input.cropMode || "full").toLowerCase() === "optimized" && inspected.length && cameras.length) {
-    const cropStore = readCropProfiles(ROOT);
+    const cropStore = readCropProfiles(ROOT), rig = sheet.rig(), shadowConfig = loadPostProcessConfig(ROOT);
     // Saying only how many pairs will be measured leaves the other half silent, so a camera
     // that quietly reuses a crop measured days ago looks like a missing calibration render.
     for (const model of inspected) {
+      const selection = selections.find(item => path.resolve(String(item.modelPath || "")).toLowerCase() === path.resolve(model.path).toLowerCase()) || {};
+      const side = input.side === "auto" || !input.side ? model.side : String(input.side).toUpperCase();
       const fingerprint = modelFingerprint(model.path);
       for (const camera of cameras) {
-        const profile = cropProfileFor(cropStore, fingerprint, camera);
+        const saved = cropProfileFor(cropStore, fingerprint, camera);
+        const tokens = cropContextTokensFor({ input, selection, model, side, fingerprint, camera, rig, shadowConfig });
+        const profile = cropProfileForContext(cropStore, fingerprint, camera, tokens);
+        if (saved && !profile) staleCrops += 1;
         if (profile) reusedCrops.push(profile); else cropCalibrations += 1;
       }
     }
@@ -535,7 +567,7 @@ async function preflight(input) {
       : "";
     checks.push(cropCalibrations
       ? { id: "crop", level: "warning", label: "Optimized crop",
-          detail: `${cropCalibrations} model/camera pair${cropCalibrations === 1 ? "" : "s"} will run one-time 500px Fabric + Shadow calibration before final renders.${reusedNote}` }
+          detail: `${cropCalibrations} model/camera pair${cropCalibrations === 1 ? "" : "s"} will run one-time 500px Fabric + Shadow calibration before final renders.${staleCrops ? ` ${staleCrops} saved crop${staleCrops === 1 ? "" : "s"} did not match the current model, frame, light, or renderer context.` : ""}${reusedNote}` }
       : { id: "crop", level: "ok", label: "Optimized crop",
           detail: `Every selected model/camera pair has a saved safe crop profile${when ? `, oldest ${when}` : ""}. No calibration will run.` });
   } else checks.push({ id: "crop", level: "ok", label: "Frame crop", detail: "Full frame · original resolution and sensor aspect." });
@@ -805,8 +837,9 @@ async function api(request, response, url) {
         throw new Error(`Could not determine L, R, or U form factor for ${model.name}`);
       }
       const fingerprint = modelFingerprint(model.path);
-      const cropContextTokens = Object.fromEntries((input.cameras || []).map(camera => [camera, cropContextTokenFor({ input, selection, model, side, fingerprint, camera, rig, shadowConfig })]));
-      const cropProfiles = Object.fromEntries((input.cameras || []).map(camera => [camera, cropProfileFor(cropStore, fingerprint, camera, cropContextTokens[camera])]).filter(([, profile]) => profile));
+      const tokenPairs = Object.fromEntries((input.cameras || []).map(camera => [camera, cropContextTokensFor({ input, selection, model, side, fingerprint, camera, rig, shadowConfig })]));
+      const cropContextTokens = Object.fromEntries(Object.entries(tokenPairs).map(([camera, tokens]) => [camera, tokens.current]));
+      const cropProfiles = Object.fromEntries(Object.entries(tokenPairs).map(([camera, tokens]) => [camera, cropProfileForContext(cropStore, fingerprint, camera, tokens)]).filter(([, profile]) => profile));
       entries.push({ model, input: { ...input, ...selection, side, dimensions: selection.dimensions || model.dimensions, importYaw: selection.importYaw ?? model.importYaw, modelFingerprint: fingerprint, cropProfiles, cropContextTokens } });
     }
     const result = writeBatchJob(ROOT, entries, rig);

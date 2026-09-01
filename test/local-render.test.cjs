@@ -2046,6 +2046,9 @@ test("main page renders the workspace, previews and dropdowns", () => {
   assert.match(styles, /\.render-material-carousel\{[^}]*gap:0[^}]*scrollbar-width:none/);
   assert.match(client, /data-gallery-material-select/);
   assert.match(client, /data-gallery-page/);
+  assert.match(client, /style="--page-digits:\$\{String\(sets\.length\)\.length\}"/);
+  assert.match(styles, /\.render-material-page\{[^}]*min-width:max-content;white-space:nowrap/);
+  assert.match(styles, /\.render-material-carousel-shell\[data-single=true\] \.render-material-navigation\{grid-template-columns:minmax\(240px,620px\) max-content\}/);
   assert.match(client, /data-gallery-scrubber/);
   assert.match(styles, /render-soft-glow/);
   assert.match(styles, /aspect-ratio:3\/1!important/);

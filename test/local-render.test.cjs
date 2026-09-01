@@ -1986,6 +1986,7 @@ test("model checks open in one accessible information dialog without generic enl
   assert.match(styles, /\.setup-panel>\.model-details\{display:none\}/);
   assert.match(styles, /\.focus-dialog\[data-focus-kind=model\] \.model-details/);
   assert.match(styles, /\.focus-dialog\[data-focus-kind=model\] \.model-check/);
+  assert.match(styles, /\.batch-model-info\{width:24px;height:24px;flex:0 0 24px;[^}]*border-radius:7px;[^}]*background:transparent;box-shadow:none/);
   assert.match(client, /<small><span>\$\{modelCount\} model/);
   assert.match(client, /<\/span><span>\$\{sourceIds\.length\} component ID/);
   assert.match(styles, /\.material-id>small\{display:flex;flex-direction:column/);

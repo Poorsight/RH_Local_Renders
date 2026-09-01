@@ -3,9 +3,12 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 HOST="exile.dreamsoft.us"
-REMOTE_DIR="dmitriy.derevyanko/light-rig"
+REMOTE_DIR="dmitriy.derevyanko/renders-control"
 PUBLIC_URL="https://preview.3dsource.com/$REMOTE_DIR/"
-FILES=(index.html app.css app.js config.js favicon.svg data/sectionals-indoor.csv data/models.json)
+# config.js is deliberately not uploaded here. The boot restore publishes it with
+# the current tunnel URL; replacing it with the repo's empty local value disconnects
+# the public page from the render service.
+FILES=(index.html app.css app.js favicon.svg data/sectionals-indoor.csv data/models.json)
 
 [[ "$(git branch --show-current)" == "main" ]] || { echo "Deploy requires main" >&2; exit 1; }
 git fetch --quiet origin main
@@ -58,6 +61,8 @@ for file in "${FILES[@]}"; do
   echo "Uploading $file"
   curl -sS --max-time 180 --netrc-file "$NETRC" --ftp-create-dirs -T "$file" "ftp://$HOST/$REMOTE_DIR/$file"
 done
+
+echo "Preserving remote config.js (managed by boot restore)"
 
 curl -sS -o /dev/null -w "Preview http=%{http_code} size=%{size_download}\n" --max-time 30 "$PUBLIC_URL"
 echo "$PUBLIC_URL"

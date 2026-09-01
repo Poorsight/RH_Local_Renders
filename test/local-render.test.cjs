@@ -1897,6 +1897,14 @@ test("legacy light-rig project files stay out of the unified project", () => {
   assert.deepEqual(Object.keys(scripts).sort(), ["build", "start", "test"]);
 });
 
+test("manual preview deploy targets the live control page without erasing its tunnel config", () => {
+  const deploy = fs.readFileSync(path.join(root, "scripts", "deploy.sh"), "utf8");
+  assert.match(deploy, /REMOTE_DIR="dmitriy\.derevyanko\/renders-control"/);
+  const files = deploy.match(/FILES=\(([^)]*)\)/)?.[1] || "";
+  assert.doesNotMatch(files, /config\.js/);
+  assert.match(deploy, /Preserving remote config\.js/);
+});
+
 test("desktop launcher replaces a stale hidden server and waits before opening the site", () => {
   const launcher = fs.readFileSync(path.join(root, "Launch_RH_Local_Renders.vbs"), "utf8");
   const powerShellLauncher = fs.readFileSync(path.join(root, "Launch_RH_Local_Renders.ps1"), "utf8");

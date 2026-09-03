@@ -405,38 +405,33 @@ test("camera Shadow LUTs are the primary conversion for every product type", () 
   } finally { fs.rmSync(temp, { recursive: true, force: true }); }
 });
 
-test("render environments keep production UE 5.6 and beta UE 5.8 isolated", () => {
+test("render environment resolves every job to production UE 5.6", () => {
   const profiles = renderEnvironments({
     RH_UNREAL_EDITOR_56: "D:\\UE56\\UnrealEditor.exe",
-    RH_UNREAL_PROJECT_56: "D:\\RH56\\rh.uproject",
-    RH_UNREAL_EDITOR_58: "D:\\UE58\\UnrealEditor.exe",
-    RH_UNREAL_PROJECT_58: "D:\\RH58\\rh.uproject"
+    RH_UNREAL_PROJECT_56: "D:\\RH56\\rh.uproject"
   });
   assert.equal(DEFAULT_ENVIRONMENT, "ue56");
-  assert.equal(normalizeEnvironment("UE-5.8"), "ue58");
-  assert.equal(normalizeEnvironment("beta"), "ue58");
+  assert.equal(normalizeEnvironment("legacy-value"), "ue56");
   assert.equal(normalizeEnvironment("unknown"), "ue56");
-  assert.equal(resolveRenderEnvironment("ue58", profiles).project, "D:\\RH58\\rh.uproject");
   assert.equal(resolveRenderEnvironment("ue56", profiles).editor, "D:\\UE56\\UnrealEditor.exe");
+  assert.equal(Object.keys(profiles).length, 1);
   assert.equal(profiles.ue56.recoverLegacyShadow, true);
-  assert.equal(profiles.ue58.recoverLegacyShadow, false);
-  assert.equal(profiles.ue58.beta, true);
-  assert.equal(publicRenderEnvironment(profiles.ue58).id, "ue58");
+  assert.equal(publicRenderEnvironment(profiles.ue56).id, "ue56");
 });
 
-test("generated and saved jobs stay pinned to their selected render environment", () => {
+test("generated and saved jobs stay pinned to production UE 5.6", () => {
   const current = { ...model, materialIds: ["UPH", "Stitches", "Feet"] };
-  const single = buildJob({ ...baseInput, renderEnvironment: "ue58" }, current, rig, "D:\\renders\\ue58");
+  const single = buildJob({ ...baseInput, renderEnvironment: "ue56" }, current, rig, "D:\\renders\\ue56");
   const batch = buildBatchJob([
-    { model: current, input: { ...baseInput, renderEnvironment: "ue58" } },
-    { model: { ...current, name: "TEST_prod2" }, input: { ...baseInput, renderEnvironment: "ue58" } }
-  ], rig, "D:\\renders\\ue58-batch", "ue58_batch");
-  assert.equal(single._rhLocal.renderEnvironment, "ue58");
+    { model: current, input: { ...baseInput, renderEnvironment: "ue56" } },
+    { model: { ...current, name: "TEST_prod2" }, input: { ...baseInput, renderEnvironment: "ue56" } }
+  ], rig, "D:\\renders\\ue56-batch", "ue56_batch");
+  assert.equal(single._rhLocal.renderEnvironment, "ue56");
   assert.equal(single._rhLocal.models, undefined);
   assert.equal(single.tasks[0]._rhLocal, undefined);
-  assert.equal(environmentForJob(single, renderEnvironments()).id, "ue58");
-  assert.equal(batch._rhLocal.renderEnvironment, "ue58");
-  assert.ok(batch._rhLocal.models.every(item => item.renderEnvironment === "ue58"));
+  assert.equal(environmentForJob(single, renderEnvironments()).id, "ue56");
+  assert.equal(batch._rhLocal.renderEnvironment, "ue56");
+  assert.ok(batch._rhLocal.models.every(item => item.renderEnvironment === "ue56"));
   assert.equal(environmentForJob({ _rhLocal: {} }, renderEnvironments()).id, "ue56");
 });
 
@@ -489,21 +484,6 @@ test("a recovered camera-LUT matte still receives the configured delivery boost"
     const alphas = [...output.data].filter((_, index) => index % 4 === 3);
     assert.equal(Math.max(...alphas), 25);
     assert.deepEqual(alphas.filter(value => value > 0).sort((a, b) => a - b), [19, 21, 23, 25]);
-  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
-});
-
-test("UE 5.8 delivery preserves native Shadow alpha without creating a legacy recovery backup", { skip: !availability(root).ok }, async () => {
-  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "rh-native-shadow-post-test-")), source = path.join(temp, "00000000_F_Shadow.png");
-  const png = new PNG({ width: 2, height: 2 });
-  for (let index = 0; index < png.data.length; index += 4) { png.data[index] = 0; png.data[index + 1] = 0; png.data[index + 2] = 0; png.data[index + 3] = index === 0 ? 64 : 192; }
-  fs.writeFileSync(source, PNG.sync.write(png));
-  const originalAlpha = [...PNG.sync.read(fs.readFileSync(source)).data].filter((_, index) => index % 4 === 3);
-  const job = buildJob({ ...baseInput, renderEnvironment: "ue58", cameras: ["F"], layers: ["Shadow"] }, { ...model, materialIds: ["UPH", "Stitches", "Feet"] }, rig, temp), task = job.tasks[0];
-  try {
-    const result = await processImage(root, source, job, task, { prepareShadow: false, config: { canvas: { width: 6, height: 4 }, dpi: 300, outputSuffix: "_POST", shadow: { color: "#120C06", alphaBoostPercent: { F: 0 } } } });
-    assert.equal(result.skipped, false);
-    assert.equal(fs.existsSync(`${source}.substrate-rgb.bak`), false);
-    assert.deepEqual([...PNG.sync.read(fs.readFileSync(source)).data].filter((_, index) => index % 4 === 3), originalAlpha);
   } finally { fs.rmSync(temp, { recursive: true, force: true }); }
 });
 
@@ -2010,8 +1990,6 @@ test("Unreal launch points the stock BatchRender plugin at the local API", () =>
   const shadow = buildUnrealLaunch("D:\\UE\\UnrealEditor.exe", "D:\\RH\\rh.uproject", apiUrl, { substrate: false });
   assert.ok(shadow.args.includes("-ini:Engine:[/Script/Engine.RendererSettings]:r.Substrate=False"));
   assert.ok(!shadow.args.some(argument => argument.startsWith("-ExecCmds=")));
-  const diagnostic = buildUnrealLaunch("D:\\UE\\UnrealEditor.exe", "D:\\RH\\rh.uproject", apiUrl, { substrate: false, nativeShadowDiagnostics: true });
-  assert.ok(diagnostic.args.includes("-ExecCmds=r.BatchRender.NativeShadowDiagnostics 1"));
 });
 
 test("the local BatchRender URL includes a query before the plugin appends Substrate", () => {
@@ -2078,13 +2056,11 @@ test("main page renders the workspace, previews and dropdowns", () => {
   assert.match(styles, /\.material-multiply/);
   assert.match(html, /id="modelPath"[^>]*data-suggest-action="inspect-model"/);
   assert.match(client, /input\.dataset\.suggestAction === "inspect-model"\) inspect\(\)/);
-  assert.match(html, /id="renderEnvironmentSwitcher"/);
-  assert.match(html, /data-render-environment="ue56"/);
-  assert.match(html, /data-render-environment="ue58"/);
+  assert.doesNotMatch(html, /renderEnvironmentSwitcher|data-render-environment/);
   assert.match(client, /renderEnvironment: state\.renderEnvironment/);
   assert.match(client, /\/api\/materials\?environment=/);
   assert.match(client, /chooseRenderEnvironment\(batch\.renderEnvironment/);
-  assert.match(styles, /\.render-environment-switcher/);
+  assert.doesNotMatch(styles, /\.render-environment-switcher/);
   assert.match(client, /const CLOSE_ICON = '<svg viewBox="0 0 24 24"/);
   assert.doesNotMatch(client, />×<\/button>/, "icon-only close controls must not rely on a font glyph");
   assert.match(styles, /\.material-remove\{[^}]*display:grid;place-items:center/);
@@ -2177,8 +2153,7 @@ test("main page renders the workspace, previews and dropdowns", () => {
   assert.doesNotMatch(styles, /\.render-preview-media\{background-color:[^}]*linear-gradient/);
   assert.doesNotMatch(html, /shadowSubstrate|Shadow Substrate/);
   assert.match(html, /id="shadowPipelineNote"/);
-  assert.match(client, /UE 5\.8 uses the native Composite shadow alpha/);
-  assert.match(client, /button\[data-render-environment\]/);
+  assert.doesNotMatch(client, /button\[data-render-environment\]/);
   assert.match(html, /name="renderProfile" value="low"/);
   assert.match(html, /name="renderProfile" value="high" checked/);
   assert.match(html, /name="cropMode" value="optimized"/);

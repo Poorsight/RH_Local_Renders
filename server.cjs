@@ -451,8 +451,7 @@ function startRenderPhase() {
   }
   bridge = { job: phaseJob, jobPath: activeRun.jobPath, outputFolder: activeRun.outputFolder, before: imageSnapshot(activeRun.outputFolder), delivered: false, completed: false, success: false, phase, exitHandled: false };
   const environment = activeRun.environment;
-  const nativeShadowDiagnostics = environment.id === "ue58" && activeRun.job?._rhLocal?.nativeShadowDiagnostics === true;
-  const phaseBridge = bridge, launch = buildUnrealLaunch(environment.editor, environment.project, apiUrl, { substrate: phase.substrate, nativeShadowDiagnostics });
+  const phaseBridge = bridge, launch = buildUnrealLaunch(environment.editor, environment.project, apiUrl, { substrate: phase.substrate });
   appendRenderLog(`\nStarting ${phase.name} phase ${activeRun.index + 1}/${activeRun.phases.length} in ${environment.label}; ${phaseJob.tasks.length} incomplete model${phaseJob.tasks.length === 1 ? "" : "s"}; Substrate ${phase.substrate ? "ON" : "OFF"}.\n${launch.command}\n${launch.args.join(" ")}\n`);
   child = spawn(launch.command, launch.args, launch.options);
   const phaseProcess = child;
@@ -491,8 +490,7 @@ function beginRender(jobPath, options = {}) {
   activeRun = { job, jobPath: resolved, outputFolder, environment, before: options.resume ? new Map() : imageSnapshot(outputFolder), phases, index: 0, cameraStates: new Map(), phaseRestarts: new Map(), maxPhaseRestarts, queueItemId: options.queueItemId || null };
   const queue = (job.tasks || []).map(task => ({ name: task.taskId, state: "queued" }));
   const totalRenders = phases.reduce((total, phase) => total + (phase.job.tasks || []).reduce((phaseTotal, task) => phaseTotal + taskLayerExpected(task, phase.layerName || phase.name), 0), 0);
-  const nativeShadowDiagnostics = environment.id === "ue58" && job._rhLocal?.nativeShadowDiagnostics === true;
-  render = { state: "running", pid: null, jobPath: resolved, startedAt: new Date().toISOString(), finishedAt: null, exitCode: null, rendered: 0, totalRenders, currentTask: null, currentCamera: null, message: options.resume ? "Resuming completed files" : "Queued", queue, phase: null, phaseIndex: 0, phaseCount: phases.length, substrate: null, environment: publicRenderEnvironment(environment), autoRestarts: 0, log: `Queued ${phases.map(phase => phase.name).join(" → ")} render plan for ${environment.label}${options.resume ? " in resume mode" : ""}.\nPersistent camera-fit cache: ${cachedFits.hits}/${cachedFits.total} exact-frame records available for diagnostics; every Fabric phase calculates a fresh Fit.\nShadow alpha: ${environment.recoverLegacyShadow ? "Legacy Composure recovery" : "native Composite output"}.\nNative Shadow diagnostics: ${nativeShadowDiagnostics ? "ON via process-local -ExecCmds" : "OFF"}.\nAutomatic phase restarts: ${maxPhaseRestarts}.\nLocal BatchRender API: http://${HOST}:${PORT}/api/unreal\n` };
+  render = { state: "running", pid: null, jobPath: resolved, startedAt: new Date().toISOString(), finishedAt: null, exitCode: null, rendered: 0, totalRenders, currentTask: null, currentCamera: null, message: options.resume ? "Resuming completed files" : "Queued", queue, phase: null, phaseIndex: 0, phaseCount: phases.length, substrate: null, environment: publicRenderEnvironment(environment), autoRestarts: 0, log: `Queued ${phases.map(phase => phase.name).join(" → ")} render plan for ${environment.label}${options.resume ? " in resume mode" : ""}.\nPersistent camera-fit cache: ${cachedFits.hits}/${cachedFits.total} exact-frame records available for diagnostics; every Fabric phase calculates a fresh Fit.\nShadow alpha: Legacy Composure recovery.\nAutomatic phase restarts: ${maxPhaseRestarts}.\nLocal BatchRender API: http://${HOST}:${PORT}/api/unreal\n` };
   refreshRunProgress();
   startRenderPhase();
   return currentRender();
@@ -697,7 +695,7 @@ async function preflight(input) {
   try { fs.accessSync(path.join(ROOT, "local", "renders"), fs.constants.W_OK); checks.push({ id: "output", level: "ok", label: "Output", detail: "Local render folder is writable." }); }
   catch { checks.push({ id: "output", level: "error", label: "Output", detail: "Local render folder is not writable." }); }
   const post = postProcessAvailability(ROOT);
-  checks.push(post.ok ? { id: "postprocess", level: "ok", label: "Post-process", detail: selectedEnvironment.recoverLegacyShadow ? "Legacy Shadow recovery, libvips, and AdobeRGB1998 are ready; originals will be preserved." : "Native 5.8 Shadow alpha will pass directly to delivery; libvips and AdobeRGB1998 are ready." } : { id: "postprocess", level: "error", label: "Post-process", detail: post.error });
+  checks.push(post.ok ? { id: "postprocess", level: "ok", label: "Post-process", detail: "Legacy Shadow recovery, libvips, and AdobeRGB1998 are ready; originals will be preserved." } : { id: "postprocess", level: "error", label: "Post-process", detail: post.error });
   const expectedPerCamera = (layers.includes("Fabric") ? Math.max(materialVariants, 1) : 0) + (layers.includes("Shadow") ? 1 : 0);
   const expected = inspected.length * cameras.length * expectedPerCamera;
   return { ok: !checks.some(check => check.level === "error"), checks, counts: { models: inspected.length, cameras: cameras.length, layers: layers.length, materialVariants, expectedRenders: expected, cropCalibrations }, materials: assets.length, renderEnvironment: publicRenderEnvironment(selectedEnvironment) };

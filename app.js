@@ -27,28 +27,16 @@
     write(name, value) { try { value ? localStorage.setItem(name, value) : localStorage.removeItem(name); } catch {} }
   };
   let ACCESS_KEY = settings.read("rhAccessKey");
-  const RENDER_ENVIRONMENT_KEY = "rhRenderEnvironment";
-  const normalizeRenderEnvironment = value => String(value || "").toLowerCase().replace(/[\s._-]+/g, "") === "ue58" ? "ue58" : "ue56";
-  state.renderEnvironment = normalizeRenderEnvironment(settings.read(RENDER_ENVIRONMENT_KEY));
+  const normalizeRenderEnvironment = () => "ue56";
   const renderEnvironmentProfile = value => state.renderEnvironments.find(environment => environment.id === normalizeRenderEnvironment(value))
-    || { id: normalizeRenderEnvironment(value), label: normalizeRenderEnvironment(value) === "ue58" ? "UE 5.8 Beta" : "UE 5.6", engineVersion: normalizeRenderEnvironment(value) === "ue58" ? "5.8" : "5.6", beta: normalizeRenderEnvironment(value) === "ue58", available: true };
+    || { id: "ue56", label: "UE 5.6", engineVersion: "5.6", beta: false, available: true };
   const renderEnvironmentLabel = value => renderEnvironmentProfile(value).label;
-  const renderEnvironmentBadge = value => normalizeRenderEnvironment(value) === "ue58"
-    ? '<i class="environment-badge" aria-label="Unreal Engine 5.8 beta job">UE 5.8 · BETA</i>'
-    : "";
+  const renderEnvironmentBadge = () => "";
   const syncRenderEnvironment = () => {
     const profile = renderEnvironmentProfile(state.renderEnvironment);
     document.documentElement.dataset.renderEnvironment = profile.id;
-    document.querySelectorAll("button[data-render-environment]").forEach(button => {
-      const environment = renderEnvironmentProfile(button.dataset.renderEnvironment), selected = environment.id === profile.id;
-      button.setAttribute("aria-pressed", String(selected));
-      button.dataset.available = String(environment.available !== false);
-      button.title = `${environment.label} · ${environment.description || (environment.available === false ? "Not available" : "Render environment")}`;
-    });
-    $("shadowPipelineNote").textContent = profile.id === "ue58"
-      ? "Fabric and Shadow run with Substrate enabled in separate Unreal processes. UE 5.8 uses the native Composite shadow alpha before previews, crop measurement, and delivery processing; no UE 5.6 LUT recovery is applied."
-      : "Fabric and Shadow run with Substrate enabled in separate Unreal processes. UE 5.6 converts Legacy Composure Shadow RGB to visible alpha before previews, crop measurement, and delivery processing.";
-    if (state.status) $("unrealState").textContent = profile.available === false ? "MISSING" : profile.beta ? "BETA READY" : "READY";
+    $("shadowPipelineNote").textContent = "Fabric and Shadow run with Substrate enabled in separate Unreal processes. UE 5.6 converts Legacy Composure Shadow RGB to visible alpha before previews, crop measurement, and delivery processing.";
+    if (state.status) $("unrealState").textContent = profile.available === false ? "MISSING" : "READY";
   };
   const API_BASE = (() => {
     const clean = value => String(value || "").trim().replace(/\/+$/, "");
@@ -516,10 +504,8 @@
   };
   const chooseRenderEnvironment = async (value, remember = true, quiet = false) => {
     const next = normalizeRenderEnvironment(value);
-    if (state.status?.render?.state === "running") return toast("Finish the active render before changing Unreal environment", true);
     const changed = state.renderEnvironment !== next;
     state.renderEnvironment = next;
-    if (remember) settings.write(RENDER_ENVIRONMENT_KEY, next);
     syncRenderEnvironment();
     if (state.status?.render) updateRender(state.status.render);
     if (!changed) return;
@@ -529,7 +515,7 @@
     validate(false);
     if (!quiet) {
       refreshPreflight();
-      toast(`${renderEnvironmentLabel(next)} selected · new jobs stay pinned to this environment`);
+      toast(`${renderEnvironmentLabel(next)} selected`);
     }
   };
   const escapeHtml = (value) => String(value).replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[ch]);
@@ -653,10 +639,7 @@
   const updateRender = (render) => {
     state.status ||= {}; state.status.render = render;
     if (render.jobQueue) renderJobQueue(render.jobQueue);
-    document.querySelectorAll("button[data-render-environment]").forEach(button => { button.disabled = render.state === "running"; });
-    const badge = $("renderBadge"), environmentBadge = $("activeEnvironmentBadge"), box = $("renderStatus"), log = $("renderLog"), progress = $("renderProgress");
-    const activeEnvironment = render.environment?.id || state.renderEnvironment;
-    environmentBadge.hidden = normalizeRenderEnvironment(activeEnvironment) !== "ue58" || (render.state === "idle" && !render.jobPath);
+    const badge = $("renderBadge"), box = $("renderStatus"), log = $("renderLog"), progress = $("renderProgress");
     badge.dataset.state = render.state; badge.textContent = render.state === "running" && render.phase ? render.phase : ({running:"Rendering",success:"Complete",failed:"Failed",stopped:"Stopped",idle:"Idle"})[render.state] || render.state;
     box.dataset.state = render.state;
     const phase = render.phase ? ` · ${render.phase}${render.phaseCount > 1 ? ` (${render.phaseIndex}/${render.phaseCount})` : ""}` : "";
@@ -1354,7 +1337,6 @@
     if (trigger?.isConnected) trigger.focus({ preventScroll: true });
   });
   document.querySelectorAll("[data-theme-value]").forEach(button => button.addEventListener("click", () => applyTheme(button.dataset.themeValue, true)));
-  document.querySelectorAll("button[data-render-environment]").forEach(button => button.addEventListener("click", () => chooseRenderEnvironment(button.dataset.renderEnvironment)));
   applyTheme(document.documentElement.dataset.theme);
   /* ── suggestion popups ────────────────────────────────────────────────────
      A native datalist popup cannot be styled, cannot be animated, and cuts long

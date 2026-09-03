@@ -15,7 +15,6 @@
      green managed 4.57:1. The ink is matched to the green ink it replaces. */
   --accent:#1d4ed8; --accent-soft:rgba(29,78,216,.11); --accent-line:rgba(29,78,216,.30); --accent-ink:#173da8;
   --amber:#b0812f; --amber-soft:rgba(176,129,47,.12);
-  --beta:#7541a7; --beta-soft:rgba(117,65,167,.13); --beta-line:rgba(117,65,167,.36);
   --danger:#b4483f; --danger-soft:rgba(180,72,63,.10); --danger-line:rgba(180,72,63,.30);
   --ink-btn:#2e2e2e; --ink-btn-text:#f2f2f2;
   /* soft relief: light from the top-left, shadow to the bottom-right */
@@ -57,7 +56,6 @@
     --text:#ebebeb; --soft:#c6c6c6; --muted:#9a9a9a; --faint:#868686;
     --accent:#74bd97; --accent-soft:rgba(116,189,151,.12); --accent-line:rgba(116,189,151,.28); --accent-ink:#a6cdb8;
     --amber:#d8b478; --amber-soft:rgba(216,180,120,.12);
-    --beta:#d2a6f5; --beta-soft:rgba(210,166,245,.13); --beta-line:rgba(210,166,245,.34);
     --danger:#e08a80; --danger-soft:rgba(224,138,128,.11); --danger-line:rgba(224,138,128,.28);
     --ink-btn:#3a3a3a; --ink-btn-text:#f0f0f0;
     --lift:inset 0 1px 0 rgba(255,255,255,.075), 0 10px 26px rgba(0,0,0,.5), 0 2px 5px rgba(0,0,0,.42); --lift-sm:inset 0 1px 0 rgba(255,255,255,.065), 0 5px 14px rgba(0,0,0,.42), 0 1px 3px rgba(0,0,0,.38); --lift-lg:inset 0 1px 0 rgba(255,255,255,.08), 0 26px 60px rgba(0,0,0,.6), 0 3px 8px rgba(0,0,0,.45);
@@ -80,7 +78,6 @@
   --text:#ebebeb; --soft:#c6c6c6; --muted:#9a9a9a; --faint:#868686;
   --accent:#74bd97; --accent-soft:rgba(116,189,151,.12); --accent-line:rgba(116,189,151,.28); --accent-ink:#a6cdb8;
   --amber:#d8b478; --amber-soft:rgba(216,180,120,.12);
-  --beta:#d2a6f5; --beta-soft:rgba(210,166,245,.13); --beta-line:rgba(210,166,245,.34);
   --danger:#e08a80; --danger-soft:rgba(224,138,128,.11); --danger-line:rgba(224,138,128,.28);
   --ink-btn:#3a3a3a; --ink-btn-text:#f0f0f0;
   --lift:inset 0 1px 0 rgba(255,255,255,.075), 0 10px 26px rgba(0,0,0,.5), 0 2px 5px rgba(0,0,0,.42); --lift-sm:inset 0 1px 0 rgba(255,255,255,.065), 0 5px 14px rgba(0,0,0,.42), 0 1px 3px rgba(0,0,0,.38); --lift-lg:inset 0 1px 0 rgba(255,255,255,.08), 0 26px 60px rgba(0,0,0,.6), 0 3px 8px rgba(0,0,0,.45);
@@ -124,16 +121,7 @@ main{width:calc(100% - clamp(18px,2.4vw,44px));max-width:none;margin:0 auto;padd
 .brand div span{font-size:11.5px;color:var(--muted)}
 .topbar-actions{display:flex;align-items:center;gap:12px}
 
-.render-environment-switcher,.theme-switcher{display:flex;align-items:center;gap:2px;padding:3px;border-radius:var(--radius-pill);background:var(--inset);box-shadow:var(--press),inset 0 0 0 1px var(--line-soft)}
-.render-environment-switcher button{min-width:76px;height:32px;padding:0 10px;border-radius:var(--radius-pill);display:flex;align-items:center;justify-content:center;gap:6px;color:var(--faint);white-space:nowrap;transition:transform .16s cubic-bezier(.2,.8,.2,1),box-shadow .2s,background .2s,color .16s,opacity .16s}
-.render-environment-switcher button span{font-size:11.5px;font-weight:680;letter-spacing:-.01em}
-.render-environment-switcher button small{font-size:8px;font-weight:720;letter-spacing:.075em;text-transform:uppercase;color:var(--muted)}
-.render-environment-switcher button:hover:not(:disabled):not([aria-pressed=true]){color:var(--text);background:color-mix(in srgb,var(--surface-2) 72%,transparent);box-shadow:inset 0 0 0 1px var(--line-strong)}
-.render-environment-switcher button[aria-pressed=true]{color:var(--accent-ink);background:var(--inset);box-shadow:var(--press),inset 0 0 0 1px var(--accent-edge);transform:translateY(1px)}
-.render-environment-switcher button[aria-pressed=true]:hover:not(:disabled){color:var(--accent-ink);background:var(--inset);box-shadow:var(--press),inset 0 0 0 1px var(--accent);transform:translateY(1px)}
-.render-environment-switcher button[aria-pressed=true] small{color:var(--accent-ink)}
-.render-environment-switcher button[data-available=false]{opacity:.58}
-.render-environment-switcher button:disabled{cursor:not-allowed;opacity:.52}
+.theme-switcher{display:flex;align-items:center;gap:2px;padding:3px;border-radius:var(--radius-pill);background:var(--inset);box-shadow:var(--press),inset 0 0 0 1px var(--line-soft)}
 
 .theme-switcher button{position:relative;z-index:1;width:30px;height:28px;border-radius:var(--radius-pill);display:grid;place-items:center;color:var(--faint);transition:transform .16s cubic-bezier(.2,.8,.2,1),color .16s,background .16s,box-shadow .16s}
 .theme-switcher button:hover:not([aria-pressed=true]){color:var(--text);background:color-mix(in srgb,var(--surface-2) 72%,transparent);box-shadow:inset 0 0 0 1px var(--line-strong)}
@@ -404,8 +392,6 @@ input[type=range]:hover::-moz-range-thumb,input[type=range]:active::-moz-range-t
 .preflight-checks>span:not([data-level]){grid-column:1/-1;grid-template-columns:minmax(0,1fr);padding:10px 12px;line-height:1.55}
 .job-result{display:flex;align-items:center;justify-content:space-between;gap:11px;padding:12px 14px;border-radius:var(--radius-sm);background:var(--accent-soft);color:var(--accent-ink);font-size:11.5px;font-weight:600;letter-spacing:.02em}
 .job-result button{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-:root:not([data-render-environment=ue58]) #jobEnvironmentBadge{display:none}
-.environment-badge{flex:none;padding:4px 8px;border-radius:var(--radius-pill);background:var(--beta-soft);box-shadow:inset 0 0 0 1px var(--beta-line);color:var(--beta);font-size:9px;font-style:normal;font-weight:800;letter-spacing:.075em;line-height:1.25;white-space:nowrap}
 .job-result button{color:inherit;text-decoration:underline;text-underline-offset:3px;font-size:12px}
 .inline-warning{padding:11px 13px;border-radius:var(--radius-xs);background:var(--amber-soft);color:var(--amber);font-size:12px;line-height:1.55}
 .render-warning{color:var(--amber);font-size:11.5px}
@@ -602,8 +588,6 @@ input[type=range]:hover::-moz-range-thumb,input[type=range]:active::-moz-range-t
 @media (max-width:720px){
   .topbar{height:auto;padding:12px clamp(14px,4vw,22px);flex-wrap:wrap;gap:11px}
   .topbar-actions{width:100%;justify-content:space-between;flex-wrap:wrap}
-  .render-environment-switcher{flex:1 1 100%;order:-1}
-  .render-environment-switcher button{flex:1;min-width:0}
   .hero{padding:20px}
   .hero-stats{grid-template-columns:repeat(auto-fit,minmax(120px,1fr))}
   .actions{flex-direction:column}
@@ -1082,12 +1066,12 @@ input[type=radio]:checked{animation:accent-breathe 3.6s ease-in-out infinite}
    actually respond get it — panels are furniture, not controls. */
 .history-card,.history-model-row,.gallery-model,.batch-model,.render-preview-card,.suggest-item,
 .secondary-button,.primary-button,.quiet-button,.icon-button,.danger-solid-button,.card-delete,
-.render-environment-switcher button,.theme-switcher button,.choice-row label>span,.selective-options label>span,select,
+.theme-switcher button,.choice-row label>span,.selective-options label>span,select,
 .render-queue>span,.status-badge{transition:transform .16s cubic-bezier(.2,.8,.2,1),box-shadow .2s,background .2s,color .16s}
 
 /* Recessed controls answer by shallowing, since rising would contradict the groove. */
 select:hover:not(:disabled){box-shadow:var(--press-sm);color:var(--text)}
-.render-environment-switcher button:active:not([aria-pressed=true]),.theme-switcher button:active:not([aria-pressed=true]){box-shadow:var(--press);transform:translateY(1px)}
+.theme-switcher button:active:not([aria-pressed=true]){box-shadow:var(--press);transform:translateY(1px)}
 
 /* The card the pointer is on lifts a little further than the rest. */
 .gallery-model:hover,.history-model-row:hover{transform:translateY(-2px)}

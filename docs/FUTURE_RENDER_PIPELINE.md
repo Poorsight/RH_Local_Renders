@@ -4,7 +4,7 @@ This file records investigated or proposed improvements for a later dedicated im
 
 ## Implemented local changes
 
-The local dashboard now exposes UE 5.6 Production and UE 5.8 Beta as isolated render environments. Every generated job records the selected environment. UE 5.6 retains Legacy Composure RGB-to-alpha recovery; UE 5.8 is wired to bypass that recovery and consume native Composite shadow alpha once the in-editor integration test passes.
+The local dashboard uses the UE 5.6 production renderer with Legacy Composure RGB-to-alpha recovery.
 
 The BatchRender plugin has a separate local branch `codex/rh-fit-convergence`:
 

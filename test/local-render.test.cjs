@@ -488,6 +488,59 @@ test("a recovered camera-LUT matte still receives the configured delivery boost"
   } finally { fs.rmSync(temp, { recursive: true, force: true }); }
 });
 
+test("Windows delivery accepts long input and output paths without changing source pixels", { skip: process.platform !== "win32" || !availability(root).ok }, async () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "rh-post-long-"));
+  const folder = path.join(temp, "sectional-model-".repeat(7), "component material ".repeat(6).trim());
+  fs.mkdirSync(folder, { recursive: true });
+  const source = path.join(folder, "00000000_F_Product_FABRIC_A.png"), shortSource = path.join(temp, "00000000_F_Product_FABRIC_A.png");
+  const png = new PNG({ width: 4, height: 4 }); png.data.fill(160);
+  const original = PNG.sync.write(png); fs.writeFileSync(source, original); fs.writeFileSync(shortSource, original);
+  const job = buildJob({ ...baseInput, cameras: ["F"] }, { ...model, materialIds: ["UPH", "Stitches", "Feet"] }, rig, temp);
+  const config = { canvas: { width: 8, height: 8 }, dpi: 300, outputSuffix: "_POST", shadow: { color: "#120C06", alphaBoostPercent: {} } };
+  try {
+    assert.ok(source.length > 260);
+    const long = await processImage(root, source, job, job.tasks[0], { config });
+    const short = await processImage(root, shortSource, job, job.tasks[0], { config });
+    assert.ok(long.output.length > 260); assert.ok(fs.existsSync(long.output));
+    assert.deepEqual(fs.readFileSync(source), original);
+    assert.deepEqual(PNG.sync.read(fs.readFileSync(long.output)).data, PNG.sync.read(fs.readFileSync(short.output)).data);
+  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+});
+
+test("automatic POST failure fails the whole run while preserving rendered originals", async () => {
+  const suffix = `${process.pid}_${Date.now()}`, port = await freePort();
+  const output = path.join(root, "local", "renders", `test_post_failure_${suffix}`);
+  const jobPath = path.join(root, "local", "jobs", "generated", `test_post_failure_${suffix}.job.json`);
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "rh-post-failure-"));
+  const fakeLog = path.join(temp, "fake.log");
+  fs.mkdirSync(output, { recursive: true });
+  const job = buildJob({ ...baseInput, cameras: ["F"], layers: ["Fabric"] }, { ...model, materialIds: ["UPH", "Stitches", "Feet"] }, rig, output);
+  job.jobId = `test_post_failure_${suffix}`; job._rhLocal.outputFolder = output + path.sep;
+  fs.writeFileSync(jobPath, JSON.stringify(job));
+  const service = spawn(process.execPath, [path.join(root, "server.cjs")], { cwd: root, windowsHide: true, stdio: "ignore", env: {
+    ...process.env, RH_LOCAL_RENDERS_PORT: String(port), RH_UNREAL_EDITOR: process.execPath, RH_UNREAL_PROJECT: path.join(root, "test", "fake-unreal.cjs"),
+    RH_FAKE_UNREAL_LOG: fakeLog, RH_FAKE_UNREAL_VALID_PNG: "1", RH_VIPS: process.execPath,
+    RH_JOB_QUEUE_FILE: path.join(temp, "queue.json"), RH_RUN_STATS_FILE: path.join(temp, "stats.json"), RH_CHECK_CACHE_FILE: path.join(temp, "checks.json")
+  }});
+  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), at = endpoint => `http://127.0.0.1:${port}/api/${endpoint}`;
+  try {
+    let online = false;
+    for (let i = 0; i < 100 && !online; i++) { try { online = (await fetch(at("status"))).ok; } catch {} if (!online) await sleep(50); }
+    assert.equal(online, true);
+    const launch = await fetch(at("renders"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jobPath }) });
+    assert.equal(launch.status, 202);
+    let status;
+    for (let i = 0; i < 300; i++) { status = await (await fetch(at("renders/status"))).json(); if (status.state !== "running") break; await sleep(50); }
+    assert.equal(status.state, "failed", status.message);
+    assert.equal(status.postProcess.state, "failed"); assert.equal(status.rendered, 1);
+    assert.match(status.message, /Render files are safe, but post-process failed/);
+    assert.ok(fs.readdirSync(job.tasks[0].layers[0].output.folder).some(file => file.endsWith(".png")));
+  } finally {
+    if (service.exitCode === null) { const exited = new Promise(resolve => service.once("exit", resolve)); service.kill(); await exited; }
+    fs.rmSync(jobPath, { force: true }); fs.rmSync(output, { recursive: true, force: true }); fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
 test("single-model jobs keep unique JSON and output folders", () => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "rh-saved-jobs-")), current = { ...model, materialIds: ["UPH", "Stitches", "Feet"] };
   try {
@@ -756,7 +809,7 @@ test("local render service completes Fabric before restarting for Substrate-on S
   fs.writeFileSync(jobPath, JSON.stringify(job));
   const service = spawn(process.execPath, [path.join(root, "server.cjs")], {
     cwd: root, windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, RH_LOCAL_RENDERS_PORT: String(port), RH_UNREAL_EDITOR: process.execPath, RH_UNREAL_PROJECT: path.join(root, "test", "fake-unreal.cjs"), RH_FAKE_UNREAL_LOG: fakeLog, RH_RUN_STATS_FILE: path.join(path.dirname(fakeLog), "run-stats.json"), RH_CHECK_CACHE_FILE: path.join(path.dirname(fakeLog), "model-checks.json") }
+    env: { ...process.env, RH_LOCAL_RENDERS_PORT: String(port), RH_UNREAL_EDITOR: process.execPath, RH_UNREAL_PROJECT: path.join(root, "test", "fake-unreal.cjs"), RH_FAKE_UNREAL_LOG: fakeLog, RH_FAKE_UNREAL_VALID_PNG: "1", RH_RUN_STATS_FILE: path.join(path.dirname(fakeLog), "run-stats.json"), RH_CHECK_CACHE_FILE: path.join(path.dirname(fakeLog), "model-checks.json") }
   });
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   const statusUrl = `http://127.0.0.1:${port}/api/status`;
@@ -767,7 +820,7 @@ test("local render service completes Fabric before restarting for Substrate-on S
     const launch = await fetch(`http://127.0.0.1:${port}/api/renders`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jobPath }) });
     assert.equal(launch.status, 202);
     let status;
-    for (let attempt = 0; attempt < 150; attempt++) {
+    for (let attempt = 0; attempt < 1200; attempt++) {
       status = await (await fetch(`http://127.0.0.1:${port}/api/renders/status`)).json();
       if (status.state !== "running") break;
       await sleep(50);
@@ -899,7 +952,7 @@ test("local render service automatically resumes after an Unreal crash and skips
   fs.writeFileSync(jobPath, JSON.stringify(job));
   const service = spawn(process.execPath, [path.join(root, "server.cjs")], {
     cwd: root, windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, RH_LOCAL_RENDERS_PORT: String(port), RH_UNREAL_EDITOR: process.execPath, RH_UNREAL_PROJECT: path.join(root, "test", "fake-unreal.cjs"), RH_FAKE_UNREAL_LOG: fakeLog, RH_FAKE_UNREAL_CRASH_ONCE: crashMarker, RH_RUN_STATS_FILE: path.join(path.dirname(fakeLog), "run-stats.json"), RH_CHECK_CACHE_FILE: path.join(path.dirname(fakeLog), "model-checks.json") }
+    env: { ...process.env, RH_LOCAL_RENDERS_PORT: String(port), RH_UNREAL_EDITOR: process.execPath, RH_UNREAL_PROJECT: path.join(root, "test", "fake-unreal.cjs"), RH_FAKE_UNREAL_LOG: fakeLog, RH_FAKE_UNREAL_VALID_PNG: "1", RH_FAKE_UNREAL_CRASH_ONCE: crashMarker, RH_RUN_STATS_FILE: path.join(path.dirname(fakeLog), "run-stats.json"), RH_CHECK_CACHE_FILE: path.join(path.dirname(fakeLog), "model-checks.json") }
   });
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   try {
@@ -909,7 +962,7 @@ test("local render service automatically resumes after an Unreal crash and skips
     const launch = await fetch(`http://127.0.0.1:${port}/api/renders`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jobPath }) });
     assert.equal(launch.status, 202);
     let status;
-    for (let attempt = 0; attempt < 300; attempt++) {
+    for (let attempt = 0; attempt < 1800; attempt++) {
       status = await (await fetch(`http://127.0.0.1:${port}/api/renders/status`)).json();
       if (status.state !== "running") break;
       await sleep(50);

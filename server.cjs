@@ -354,7 +354,7 @@ function startPostProcessing(job, jobPath, files, options = {}) {
     updateCatalog(jobPath);
     finishQueuedJob(options.queueItemId);
   }).catch(postError => {
-    render.state = options.queueItemId || !options.automatic ? "failed" : "success"; render.finishedAt = new Date().toISOString(); render.currentTask = null; render.currentCamera = null;
+    render.state = "failed"; render.finishedAt = new Date().toISOString(); render.currentTask = null; render.currentCamera = null;
     render.message = `Render files are safe, but post-process failed: ${postError.message}`;
     render.postProcess = { ...render.postProcess, state: "failed", error: postError.message, finishedAt: render.finishedAt };
     appendRenderLog(`Post-process failed without changing originals: ${postError.stack || postError.message}\n`);

@@ -9,11 +9,11 @@ Created 2026-09-11. These are local branches of `D:/GitHub/RH_Local_Renders`; th
 
 ## Current-project branch status
 
-This branch is a restoration baseline, not a completed compatibility release. The legacy camera-handoff patch passes `git apply --check` against plugin `41e4edc`, but it has not been applied or compiled as part of this branch split. That check alone does not prove runtime compatibility. Existing bridge checks may correctly reject an unpatched plugin.
+Restored and built with the user's subsequent authorization on 2026-09-11. Both Fabric and Shadow use Substrate ON. Shadow RGB-to-alpha conversion runs in the Unreal plugin after MRQ; the controller's external RGB recovery is disabled. The controller still owns local crop calibration, job planning, preview and delivery POST.
 
-The old controller's shadow defaults come from the baseline. The baseline archive also contains an experimental native Substrate shadow processor. Choosing which shadow mode to restore remains pending; do not infer that making these branches authorizes restoring that processor or launching a render.
+The project and plugin each use a local `codex/current-project-integration` branch. The project starts at lighting commit `b4904ee`; its scene/material assets are preserved. The plugin starts at `41e4edc` and adds camera handoff (`56ad0d4`), focal convergence correction (`78720e3`), and native shadow processing (`9f4ec7e`), followed by a local rebuilt-binaries commit. The upstream limiting-axis fix is retained, not duplicated.
 
-Keep the current project's lighting commit `b4904ee` and scene/material assets. Any needed local plugin adaptation belongs on a separate local plugin branch; do not rewrite project or plugin remote history.
+See [current-project-restoration.md](current-project-restoration.md) for actual test results and limits. Low-resolution technical tests do not certify every camera, model or historical lighting match.
 
 ## Experimental branch status
 
@@ -28,7 +28,4 @@ The snapshot preserves the tool-owned Python adapter, camera handoff, crop/cache
 
 ## Recovery sources
 
-- `C:/Users/Dima/Desktop/BatchRender_Baseline_2026-09-10/snapshots/render-tool-source.zip`
-- `C:/Users/Dima/Desktop/BatchRender_Baseline_2026-09-10/snapshots/plugin-working-tree.zip`
-- `C:/Users/Dima/Desktop/BatchRender_UE56_2026-09-10/rh-local-history.bundle`
-
+Git preserves the controller baseline at `e2f864b`, the experimental snapshot at `9a4b163` (branch head `706a99f`), and the original plugin patch commits `2668a2e`, `2edff0c`, `477c123`. Desktop archives recorded during the earlier backup were not present when checked during restoration; do not rely on those paths as the only recovery copy.

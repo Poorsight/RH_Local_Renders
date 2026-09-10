@@ -31,8 +31,8 @@ const { PNG } = require("pngjs");
         for (let y = top; y <= bottom; y += 1) for (let x = Math.floor(resolution.X * 0.3); x < Math.ceil(resolution.X * 0.7); x += 1) {
           const pixel = ((y * resolution.X + x) << 2);
           if (layerName === "Shadow") {
-            // UE 5.6 Substrate + Legacy Composure writes the matte into RGB and clears alpha.
-            png.data[pixel] = 255; png.data[pixel + 1] = 255; png.data[pixel + 2] = 255; png.data[pixel + 3] = 0;
+            // Simulate the restored native processor's black RGBA output, not its input matte.
+            png.data[pixel + 3] = 235;
           } else png.data[pixel + 3] = 220;
         }
         fs.writeFileSync(outputFile, PNG.sync.write(png));
@@ -40,7 +40,7 @@ const { PNG } = require("pngjs");
         const png = new PNG({ width: 8, height: 4 });
         for (let y = 1; y < 3; y += 1) for (let x = 2; x < 7; x += 1) {
           const pixel = ((y * png.width + x) << 2);
-          png.data[pixel] = 255; png.data[pixel + 1] = 255; png.data[pixel + 2] = 255; png.data[pixel + 3] = 0;
+          png.data[pixel + 3] = 235;
         }
         fs.writeFileSync(outputFile, PNG.sync.write(png));
       } else if (process.env.RH_FAKE_UNREAL_VALID_PNG === "1") {

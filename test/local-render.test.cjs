@@ -415,7 +415,8 @@ test("render environment resolves every job to production UE 5.6", () => {
   assert.equal(normalizeEnvironment("unknown"), "ue56");
   assert.equal(resolveRenderEnvironment("ue56", profiles).editor, "D:\\UE56\\UnrealEditor.exe");
   assert.equal(Object.keys(profiles).length, 1);
-  assert.equal(profiles.ue56.recoverLegacyShadow, true);
+  assert.equal(profiles.ue56.recoverLegacyShadow, false);
+  assert.equal(profiles.ue56.nativeShadowAlpha, true);
   assert.equal(publicRenderEnvironment(profiles.ue56).id, "ue56");
 });
 
@@ -872,9 +873,11 @@ test("local render service calibrates, saves and applies an optimized crop befor
     assert.equal(saved._rhLocal.cameraStates["test_prod1::sectional_indoor_r_f"].focalLength, 140, "the delivery passport can reuse the actual Fabric camera state");
     assert.equal(Object.keys(JSON.parse(fs.readFileSync(cropCache, "utf8")).profiles).length, 1);
     assert.match(status.log, /Saved 1 crop profile; average vertical pixel saving/);
-    assert.match(status.log, /Starting Shadow alpha recovery for 1 calibration image; crop and previews wait for this stage/);
+    assert.doesNotMatch(status.log, /Starting Shadow alpha recovery/);
+    assert.match(status.log, /external RGB recovery disabled/);
     const calibrationShadow = calibrationFiles(siblingBranch(job.tasks[0].layers[0].output.folder, "calibration"), "F").shadow;
     const normalized = PNG.sync.read(fs.readFileSync(calibrationShadow));
+    assert.equal(fs.existsSync(`${calibrationShadow}.substrate-rgb.bak`), false, "the controller must not reconstruct the native matte");
     assert.ok([...normalized.data].some((value, index) => index % 4 === 3 && value > 0), "crop sees recovered Shadow alpha");
     assert.ok([...normalized.data].every((value, index) => index % 4 === 3 || value === 0), "recovered Shadow RGB is black");
   } finally {

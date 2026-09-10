@@ -17,7 +17,7 @@ const { inspectObjParts, normalizeObjParts, writeMaterialLibrary } = require("./
 const { modelFingerprint, readCropProfiles, writeCropProfiles, cropProfileFor, cropContextResolutions, forgetCropProfiles, analyzeCalibrationPair, applyCropProfileToCamera, calibrationFiles } = require("./lib/crop.cjs");
 const { rendererToken, readCameraFitProfiles, cameraFitStatesForJob, writeCameraFitState } = require("./lib/camera-fit.cjs");
 const { buildUnrealLaunch } = require("./lib/unreal.cjs");
-const { DEFAULT_ENVIRONMENT, renderEnvironments, resolveRenderEnvironment, environmentForJob, publicRenderEnvironment } = require("./lib/render-environments.cjs");
+const { DEFAULT_ENVIRONMENT, renderEnvironments, resolveRenderEnvironment, environmentForJob, publicRenderEnvironment, nativeShadowSupport } = require("./lib/render-environments.cjs");
 const { history, expectedRenders } = require("./lib/history.cjs");
 const runStats = require("./lib/run-stats.cjs");
 const checkCache = require("./lib/check-cache.cjs");
@@ -490,7 +490,7 @@ function beginRender(jobPath, options = {}) {
   activeRun = { job, jobPath: resolved, outputFolder, environment, before: options.resume ? new Map() : imageSnapshot(outputFolder), phases, index: 0, cameraStates: new Map(), phaseRestarts: new Map(), maxPhaseRestarts, queueItemId: options.queueItemId || null };
   const queue = (job.tasks || []).map(task => ({ name: task.taskId, state: "queued" }));
   const totalRenders = phases.reduce((total, phase) => total + (phase.job.tasks || []).reduce((phaseTotal, task) => phaseTotal + taskLayerExpected(task, phase.layerName || phase.name), 0), 0);
-  render = { state: "running", pid: null, jobPath: resolved, startedAt: new Date().toISOString(), finishedAt: null, exitCode: null, rendered: 0, totalRenders, currentTask: null, currentCamera: null, message: options.resume ? "Resuming completed files" : "Queued", queue, phase: null, phaseIndex: 0, phaseCount: phases.length, substrate: null, environment: publicRenderEnvironment(environment), autoRestarts: 0, log: `Queued ${phases.map(phase => phase.name).join(" → ")} render plan for ${environment.label}${options.resume ? " in resume mode" : ""}.\nPersistent camera-fit cache: ${cachedFits.hits}/${cachedFits.total} exact-frame records available for diagnostics; every Fabric phase calculates a fresh Fit.\nShadow alpha: Legacy Composure recovery.\nAutomatic phase restarts: ${maxPhaseRestarts}.\nLocal BatchRender API: http://${HOST}:${PORT}/api/unreal\n` };
+  render = { state: "running", pid: null, jobPath: resolved, startedAt: new Date().toISOString(), finishedAt: null, exitCode: null, rendered: 0, totalRenders, currentTask: null, currentCamera: null, message: options.resume ? "Resuming completed files" : "Queued", queue, phase: null, phaseIndex: 0, phaseCount: phases.length, substrate: null, environment: publicRenderEnvironment(environment), autoRestarts: 0, log: `Queued ${phases.map(phase => phase.name).join(" → ")} render plan for ${environment.label}${options.resume ? " in resume mode" : ""}.\nPersistent camera-fit cache: ${cachedFits.hits}/${cachedFits.total} exact-frame records available for diagnostics; every Fabric phase calculates a fresh Fit.\nShadow alpha: Unreal native conversion with Substrate ON; external RGB recovery disabled.\nAutomatic phase restarts: ${maxPhaseRestarts}.\nLocal BatchRender API: http://${HOST}:${PORT}/api/unreal\n` };
   refreshRunProgress();
   startRenderPhase();
   return currentRender();
@@ -690,12 +690,14 @@ async function preflight(input) {
   const runtimeRelative = [path.join("Source", "BatchRenderEditor", "Public", "JobModel.h"), path.join("Source", "BatchRenderEditor", "Private", "JobModel.cpp"), path.join("Source", "BatchRender", "Private", "BatchRender.cpp"), ...binaryRelative];
   const binariesCurrent = pluginRuntimeIsCommitted(pluginRoot, runtimeRelative) || binaryFiles.every(file => fs.existsSync(file) && fs.statSync(file).mtimeMs >= sourceTime);
   const bridgeReady = bridgeSource && binariesCurrent;
+  const nativeShadow = nativeShadowSupport(selectedEnvironment.project);
+  checks.push({ id: "native-shadow", level: nativeShadow.ready ? "ok" : "error", label: "Unreal shadow alpha", detail: nativeShadow.detail });
   const bridgeDetail = !bridgeSource ? "BatchRender camera handoff is not installed." : !binariesCurrent ? "BatchRender camera handoff must be rebuilt." : `${selectedEnvironment.label}, project, and Fabric camera handoff are ready.`;
   checks.push(fs.existsSync(selectedEnvironment.editor) && fs.existsSync(selectedEnvironment.project) ? { id: "unreal", level: bridgeReady ? "ok" : "error", label: selectedEnvironment.label, detail: bridgeDetail } : { id: "unreal", level: "error", label: selectedEnvironment.label, detail: "Editor or project file is missing." });
   try { fs.accessSync(path.join(ROOT, "local", "renders"), fs.constants.W_OK); checks.push({ id: "output", level: "ok", label: "Output", detail: "Local render folder is writable." }); }
   catch { checks.push({ id: "output", level: "error", label: "Output", detail: "Local render folder is not writable." }); }
   const post = postProcessAvailability(ROOT);
-  checks.push(post.ok ? { id: "postprocess", level: "ok", label: "Post-process", detail: "Legacy Shadow recovery, libvips, and AdobeRGB1998 are ready; originals will be preserved." } : { id: "postprocess", level: "error", label: "Post-process", detail: post.error });
+  checks.push(post.ok ? { id: "postprocess", level: "ok", label: "Post-process", detail: "Delivery POST is ready; shadow alpha comes from Unreal and is not reconstructed by the controller." } : { id: "postprocess", level: "error", label: "Post-process", detail: post.error });
   const expectedPerCamera = (layers.includes("Fabric") ? Math.max(materialVariants, 1) : 0) + (layers.includes("Shadow") ? 1 : 0);
   const expected = inspected.length * cameras.length * expectedPerCamera;
   return { ok: !checks.some(check => check.level === "error"), checks, counts: { models: inspected.length, cameras: cameras.length, layers: layers.length, materialVariants, expectedRenders: expected, cropCalibrations }, materials: assets.length, renderEnvironment: publicRenderEnvironment(selectedEnvironment) };

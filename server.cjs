@@ -31,6 +31,7 @@ const renderEnvironment = value => resolveRenderEnvironment(value, RENDER_ENVIRO
 const cameraFitRendererToken = environment => rendererToken(environment.project);
 const sheet = new SheetStore(ROOT), models = new ModelStore(ROOT);
 const RUNTIME_FILES = [
+  "material-id.js", "lib/png-privacy.cjs", "lib/model-check.cjs", "lib/check-cache.cjs",
   "server.cjs", "package.json", "data/postprocess.json", "data/sofa-shadow-lut.json", "assets/AdobeRGB1998.icc", "lib/camera-fit.cjs", "lib/crop.cjs", "lib/csv.cjs", "lib/history.cjs", "lib/jobs.cjs", "lib/models.cjs", "lib/post-process.cjs", "lib/render-plan.cjs", "lib/shadow-alpha-worker.cjs",
   "lib/render-environments.cjs", "lib/rig.cjs", "lib/unreal.cjs", "scripts/calibrate-shadow-lut.cjs", "scripts/inspect_fbx.py", "scripts/reprocess-shadow-from-source.cjs"
 ];

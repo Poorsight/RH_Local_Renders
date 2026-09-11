@@ -120,7 +120,7 @@ try {
   $staging = Join-Path $env:TEMP ("rh-web-" + [Guid]::NewGuid().ToString("N").Substring(0, 8))
   New-Item -ItemType Directory -Path $staging -Force | Out-Null
   try {
-    foreach ($file in "index.html", "app.css", "app.js", "favicon.svg") {
+    foreach ($file in "index.html", "app.css", "material-id.js", "app.js", "favicon.svg") {
       Copy-Item -LiteralPath (Join-Path $repoRoot $file) -Destination $staging
     }
     @(

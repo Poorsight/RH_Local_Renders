@@ -132,7 +132,7 @@
         <div id="materialsEmpty" class="empty-state">Shared Material IDs appear after model inspection.</div>
         <div id="materialsList" class="materials-list"></div>
         <datalist id="materialOptions"></datalist>
-        <p class="field-hint">Component IDs are reduced to their final word with digits removed. One assignment targets every original mesh ID in that UPH, Stitches, or Feet group.</p>
+        <p class="field-hint">Parts are grouped by name, ignoring duplicate-number suffixes and repeated export prefixes. Assignments keep every original mesh ID; no geometry is removed.</p>
       </section>
 
       </div>
@@ -281,6 +281,7 @@
   </dialog>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="config.js"></script>
+  <script src="material-id.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

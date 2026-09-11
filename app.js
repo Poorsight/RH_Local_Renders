@@ -81,10 +81,7 @@
   const materialInputs = () => [...document.querySelectorAll("[data-material-key]")];
   const materialAssignmentsReady = () => materialRows().length > 0 && materialRows().every(row => row.materials.length > 0 && row.materials.every(Boolean));
   const materialAsset = name => state.materialAssets.find(asset => asset.name.toLowerCase() === String(name || "").trim().toLowerCase());
-  const normalizedMaterialId = id => {
-    const value = String(id || ""), last = value.split(/[:_]/).filter(Boolean).pop() || value;
-    return last.replace(/\d/g, "") || last;
-  };
+  const normalizedMaterialId = id => materialPartName(id);
   const sectionalFormFactor = (name, side = "") => {
     const modelName = String(name || "").toUpperCase(), recorded = String(side || "").toUpperCase();
     if (/(?:^|_)U(?:_|$)/.test(modelName) || modelName.includes("U_SECTIONAL") || modelName.includes("U_CHAISE")) return "U";

@@ -243,7 +243,8 @@ test("processed renders publish into an isolated ready-to-upload model structure
     fs.mkdirSync(task.layers[1].output.folder, { recursive: true });
     for (const camera of ["F", "FH", "TQ"]) for (const layer of ["Fabric", "Shadow"]) {
       const source = path.join(task.layers[layer === "Shadow" ? 1 : 0].output.folder, layer === "Shadow" ? `00000000_${camera}_Shadow.png` : `00000000_${camera}_Product_FABRIC_A.png`);
-      fs.writeFileSync(source, `raw-${camera}-${layer}`); fs.writeFileSync(processedPathFor(source), `post-${camera}-${layer}`);
+      fs.writeFileSync(source, `raw-${camera}-${layer}`); fs.writeFileSync(processedPathFor(source), PNG.sync.write(new PNG({ width: 1, height: 1 })));
+      writePngText(processedPathFor(source), { _SID: "PRIVATE-PC" });
     }
     const delivery = publishReadyToUpload(job, { root, config: { outputSuffix: "_POST" } });
     assert.equal(READY_FOLDER_NAME, "POST");
@@ -252,6 +253,7 @@ test("processed renders publish into an isolated ready-to-upload model structure
     assert.deepEqual(fs.readdirSync(modelFolder).sort(), ["materials", "shadows"]);
     assert.deepEqual(fs.readdirSync(path.join(modelFolder, "materials")).sort(), [`${model.name}_F.png`, `${model.name}_FH.png`, `${model.name}_TQ.png`].sort());
     assert.deepEqual(fs.readdirSync(path.join(modelFolder, "shadows")).sort(), [`${model.name}_F_Shadow.png`, `${model.name}_FH_Shadow.png`, `${model.name}_TQ_Shadow.png`].sort());
+    assert.doesNotMatch(fs.readFileSync(path.join(modelFolder, "materials", `${model.name}_F.png`)).toString("latin1"), /PRIVATE-PC/);
     const manifest = JSON.parse(fs.readFileSync(path.join(output, "manifest.json"), "utf8"));
     assert.equal(manifest.fileCount, 6); assert.equal(manifest.complete, true); assert.ok(manifest.files.every(file => !path.isAbsolute(file.source)));
     assert.deepEqual(fs.readdirSync(path.join(output, READY_FOLDER_NAME)), [model.name], "POST holds delivery folders only");
@@ -269,7 +271,7 @@ test("delivery keeps every Fabric variant beside one shared Shadow", () => {
       path.join(task.layers[0].output.folder, "00000000_F_Product_FABRIC_BLUE_THREAD_WOOD.png"),
       path.join(task.layers[1].output.folder, "00000000_F_Shadow.png")
     ];
-    for (const source of sources) { fs.writeFileSync(source, "raw"); fs.writeFileSync(processedPathFor(source), "post"); }
+    for (const source of sources) { fs.writeFileSync(source, "raw"); fs.writeFileSync(processedPathFor(source), PNG.sync.write(new PNG({ width: 1, height: 1 }))); }
     const delivery = publishReadyToUpload(job, { root, config: { outputSuffix: "_POST" } });
     const materialFolder = path.join(delivery.folder, model.name, "materials"), shadowFolder = path.join(delivery.folder, model.name, "shadows");
     assert.deepEqual(fs.readdirSync(materialFolder).sort(), [`${model.name}_F_FABRIC_BLUE__THREAD__WOOD.png`, `${model.name}_F_FABRIC_RED__THREAD__WOOD.png`].sort());
@@ -441,13 +443,21 @@ test("post-process creates a delivery PNG beside an untouched original", { skip:
   const png = new PNG({ width: 4, height: 4 });
   for (let index = 0; index < png.data.length; index += 4) { png.data[index] = 180; png.data[index + 1] = 120; png.data[index + 2] = 80; png.data[index + 3] = 255; }
   fs.writeFileSync(source, PNG.sync.write(png));
+  writePngText(source, { _SID: "PRIVATE-PC", objPath: "C:\\Users\\Private\\model.fbx" });
   const original = fs.readFileSync(source), job = buildJob({ ...baseInput, cameras: ["F"] }, { ...model, materialIds: ["UPH", "Stitches", "Feet"] }, rig, temp), task = job.tasks[0];
   try {
     const result = await processImage(root, source, job, task, { config: { canvas: { width: 12, height: 8 }, dpi: 300, outputSuffix: "_POST", shadow: { color: "#120C06", alphaBoostPercent: { F: 25 } } } });
     assert.equal(result.skipped, false); assert.ok(fs.existsSync(result.output)); assert.deepEqual(fs.readFileSync(source), original);
     const processed = PNG.sync.read(fs.readFileSync(result.output)); assert.equal(processed.width, 12); assert.equal(processed.height, 8);
-    assert.match(fs.readFileSync(result.output).toString("latin1"), /PostProcessVersion\x00RH_LOCAL_1/);
+    assert.equal(require("../lib/png-privacy.cjs").sanitizePng(fs.readFileSync(result.output)).removed.length, 0, "delivery has no private metadata");
+    const bytes = fs.readFileSync(result.output);
+    assert.ok(bytes.includes(Buffer.from("iCCP")), "color profile retained");
+    assert.ok(bytes.includes(Buffer.from("pHYs")), "DPI retained");
+    assert.doesNotMatch(bytes.toString("latin1"), /PRIVATE-PC|Users\\Private/);
+    writePngText(result.output, { Author: "PRIVATE AUTHOR" });
     const second = await processImage(root, source, job, task, { config: { canvas: { width: 12, height: 8 }, dpi: 300, outputSuffix: "_POST", shadow: { color: "#120C06", alphaBoostPercent: { F: 25 } } } });
+    assert.equal(second.metadataCleaned, true);
+    assert.equal(require("../lib/png-privacy.cjs").sanitizePng(fs.readFileSync(result.output)).removed.length, 0);
     assert.equal(second.skipped, true); assert.equal(second.reason, "current");
   } finally { fs.rmSync(temp, { recursive: true, force: true }); }
 });

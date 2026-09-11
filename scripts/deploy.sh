@@ -8,7 +8,7 @@ PUBLIC_URL="https://preview.3dsource.com/$REMOTE_DIR/"
 # config.js is deliberately not uploaded here. The boot restore publishes it with
 # the current tunnel URL; replacing it with the repo's empty local value disconnects
 # the public page from the render service.
-FILES=(index.html app.css app.js favicon.svg data/sectionals-indoor.csv data/models.json)
+FILES=(index.html app.css material-id.js app.js favicon.svg data/sectionals-indoor.csv data/models.json)
 
 [[ "$(git branch --show-current)" == "main" ]] || { echo "Deploy requires main" >&2; exit 1; }
 git fetch --quiet origin main

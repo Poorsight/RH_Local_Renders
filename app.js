@@ -89,9 +89,11 @@
     if (/(?:^|_)LEFT_ARM(?:_|$)/.test(modelName)) return "L";
     if (recorded === "R" || recorded.includes("RIGHT")) return "R";
     if (recorded === "L" || recorded.includes("LEFT")) return "L";
+    if (recorded === "STRAIGHT") return "U";
     if (recorded === "U" || recorded.includes("U_SHAPE") || recorded.includes("U_SECTIONAL") || recorded.includes("U_CHAISE")) return "U";
     return "UNKNOWN";
   };
+  const formLabel = model => ({ STRAIGHT: "Straight", U: "U-shape", R: "L-shape · right", L: "L-shape · left" }[model.formFactor || model.side] || "Shape unknown");
   const sideFromModel = () => {
     const value = $("sceneSide").value;
     if (value !== "auto") return value;
@@ -431,12 +433,14 @@
     renderCheckSummary();
     $("modelBatch").hidden = !state.batch.length; $("batchCount").textContent = `${state.batch.length} model${state.batch.length === 1 ? "" : "s"}`;
     loadCachedChecks();
-    $("batchList").innerHTML = state.batch.map(model => `<div class="batch-model${state.model?.path === model.path ? " active" : ""}" data-model-path="${escapeHtml(model.path)}"${checkStateOf(model.name) ? ` data-check="${checkStateOf(model.name)}"` : ""}><button class="batch-model-select" type="button" title="Select ${escapeHtml(model.name)}"><span>${escapeHtml(model.name)}</span><small>${model.dimensions.width} × ${model.dimensions.depth} × ${model.dimensions.height} cm · ${escapeHtml(model.materialIds.length)} IDs</small></button><button class="batch-model-info" type="button" data-focus-source="#modelDetails" data-focus-title="${escapeHtml(model.name)}" data-focus-kind="model" data-focus-move="self" aria-label="Open information for ${escapeHtml(model.name)}" title="Model information"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 10.5v6M12 7.5h.01"/></svg></button><button class="batch-model-remove" type="button" title="Remove ${escapeHtml(model.name)}" aria-label="Remove ${escapeHtml(model.name)}">${CLOSE_ICON}</button></div>`).join("");
+    $("batchList").innerHTML = state.batch.map(model => `<div class="batch-model${state.model?.path === model.path ? " active" : ""}" data-model-path="${escapeHtml(model.path)}"${checkStateOf(model.name) ? ` data-check="${checkStateOf(model.name)}"` : ""}><button class="batch-model-select" type="button" title="Select ${escapeHtml(model.name)}"><span>${escapeHtml(model.name)}</span><small>${model.dimensions.width} × ${model.dimensions.depth} × ${model.dimensions.height} cm · ${escapeHtml(model.materialIds.length)} IDs · ${escapeHtml(formLabel(model))}</small></button><button class="batch-model-info" type="button" data-focus-source="#modelDetails" data-focus-title="${escapeHtml(model.name)}" data-focus-kind="model" data-focus-move="self" aria-label="Open information for ${escapeHtml(model.name)}" title="Model information"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 10.5v6M12 7.5h.01"/></svg></button><button class="batch-model-remove" type="button" title="Remove ${escapeHtml(model.name)}" aria-label="Remove ${escapeHtml(model.name)}">${CLOSE_ICON}</button></div>`).join("");
   };
   const selectModel = model => {
     state.model = model; state.historyModel = null;
     $("modelEmpty").hidden = true; $("modelDetails").hidden = false;
-    $("inspectedName").textContent = model.name; $("modelSide").textContent = model.side || "Unknown side";
+    $("inspectedName").textContent = model.name;
+    $("modelSide").textContent = formLabel(model);
+    $("modelSide").title = `Detected form: ${formLabel(model)}. Auto render logic: ${model.side || "UNKNOWN"}.`;
     $("width").value = model.dimensions.width; $("depth").value = model.dimensions.depth; $("height").value = model.dimensions.height; $("importYaw").value = model.importYaw;
     $("modelPath").value = model.path;
     $("modelWarning").hidden = !model.warning; $("modelWarning").textContent = model.warning || "";
@@ -750,7 +754,7 @@
   const renderHistoryDetail = () => {
     const batch = state.historyBatch;
     if (!batch) { $("historyDetail").innerHTML = '<div class="empty-state">Choose a saved job to inspect its models, JSON, and render output.</div>'; return; }
-    const models = batch.models?.length ? `<div class="history-model-list" aria-label="Models in ${escapeHtml(batch.id)}">${batch.models.map((model, index) => `<div class="history-model-row"><label><input type="checkbox" data-history-model-select="${escapeHtml(model.name)}"${state.historySelection.has(model.name) ? " checked" : ""}><span>${String(index + 1).padStart(2, "0")}</span><strong>${escapeHtml(model.name)}</strong><small>${escapeHtml(model.side || "UNKNOWN")} · ${model.dimensions ? `${model.dimensions.width} × ${model.dimensions.depth} × ${model.dimensions.height} cm` : "No dimensions"} · ${model.renders.length}/${model.expectedRenders}</small></label></div>`).join("")}</div>` : '<div class="empty-state history-model-empty">No models stored in this job.</div>';
+    const models = batch.models?.length ? `<div class="history-model-list" aria-label="Models in ${escapeHtml(batch.id)}">${batch.models.map((model, index) => `<div class="history-model-row"><label><input type="checkbox" data-history-model-select="${escapeHtml(model.name)}"${state.historySelection.has(model.name) ? " checked" : ""}><span>${String(index + 1).padStart(2, "0")}</span><strong>${escapeHtml(model.name)}</strong><small>${escapeHtml(model.formFactor === "STRAIGHT" ? "Straight" : model.side || "UNKNOWN")} · ${model.dimensions ? `${model.dimensions.width} × ${model.dimensions.depth} × ${model.dimensions.height} cm` : "No dimensions"} · ${model.renders.length}/${model.expectedRenders}</small></label></div>`).join("")}</div>` : '<div class="empty-state history-model-empty">No models stored in this job.</div>';
     // The cameras and layers a job was built with, not a list written for sectionals and
     // shown for every product -- a sofa job was offering F, FH, TQ, and "Edit selection"
     // then restored those.

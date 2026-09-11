@@ -14,6 +14,7 @@ import numpy as np
 
 
 MAX_POINTS = 300_000
+INSPECTOR_VERSION = 2
 UNIT_CANDIDATES = [
     (1.0, "metres"),
     (0.01, "centimetres"),
@@ -113,11 +114,13 @@ def named_form_factor(stem):
     return "UNKNOWN"
 
 
-def geometric_form_factor(points, back):
+def front_profile(points, back):
     if back not in {"-X", "+X", "-Y", "+Y"}:
-        return "UNKNOWN"
+        return None
     xy = points[:, :2]
     low, high = xy.min(0), xy.max(0)
+    if np.any(high - low < 1e-9):
+        return None
     grid = occupancy(xy, low, high)
     ix, iy = np.nonzero(grid)
     size = high - low
@@ -137,7 +140,11 @@ def geometric_form_factor(points, back):
         selected = indices == index
         if selected.any():
             profile[index] = forward[selected].max()
-    floor = np.nanmin(profile)
+    populated = np.isfinite(profile)
+    # Sparse sampled vertices can leave a bin empty. Interpolate the contour;
+    # an empty bin is not evidence of a physical recess in the sofa.
+    profile = np.interp(np.arange(bins), np.flatnonzero(populated), profile[populated])
+    floor = np.min(profile)
     span = np.nanmax(profile) - floor
     normalized = np.where(np.isnan(profile), floor, profile)
     normalized = (normalized - floor) / (span if span > 1e-9 else 1.0)
@@ -146,11 +153,49 @@ def geometric_form_factor(points, back):
     center = normalized[int(bins * 0.30):int(bins * 0.70)].mean()
     ends = np.concatenate([normalized[:int(bins * 0.18)], normalized[bins - int(bins * 0.18):]]).mean()
     notch = float(ends - center)
+    return {
+        "asymmetry": asymmetry, "notch": notch,
+        "relativeDepth": float(span / max(np.ptp(forward), 1e-9)),
+        "innerDepth": float(np.ptp(profile[5:-5]) / max(np.ptp(forward), 1e-9)),
+        "widthDepth": float(np.ptp(lateral) / max(np.ptp(forward), 1e-9)),
+        "coverage": float(populated.mean()),
+    }
+
+
+def geometric_form_factor(points, back):
+    metrics = front_profile(points, back)
+    if metrics is None:
+        return "UNKNOWN"
+    asymmetry, notch = metrics["asymmetry"], metrics["notch"]
+    # Compare contour variation with the actual sofa depth BEFORE normalizing
+    # it to 0..1. Otherwise a centimetre of padding can look like a chaise.
+    if metrics["coverage"] < 0.90:
+        return "UNKNOWN"
+    if metrics["relativeDepth"] <= 0.10 and metrics["widthDepth"] >= 1.10:
+        return "STRAIGHT"
+    if metrics["relativeDepth"] < 0.15:
+        return "UNKNOWN"
     if abs(asymmetry) >= 0.13:
         return "R" if asymmetry > 0 else "L"
     if notch >= 0.22:
         return "U"
     return "UNKNOWN"
+
+
+def resolve_back(points):
+    back, coverage = detect_back(points)
+    if back is not None:
+        return back, coverage, "backrest-wall"
+    # A curved backrest may never occupy 55% of any straight bounding-box
+    # edge. Accept only one deep, symmetric opening, not any unknown outline.
+    candidates = []
+    for axis in ("+Y", "-Y", "+X", "-X"):
+        profile = front_profile(points, axis)
+        if (profile is not None and profile["coverage"] >= 0.90 and profile["relativeDepth"] >= 0.30
+                and profile["notch"] >= 0.50 and abs(profile["asymmetry"]) <= 0.08
+                and profile["widthDepth"] >= 1.10):
+            candidates.append(axis)
+    return (candidates[0], coverage, "curved-footprint") if len(candidates) == 1 else (None, coverage, "unknown")
 
 
 def material_id(name):
@@ -212,7 +257,7 @@ def inspect(source):
 
     raw = bounds_high - bounds_low
     (unit_factor, unit_name), ambiguous_units = guess_unit(float(raw[2]), float(raw[0]), float(raw[1]))
-    back, coverage = detect_back(points)
+    back, coverage, back_method = resolve_back(points)
     # BatchRender rotates the camera, not the imported actor. In Unreal's yaw
     # convention a model whose back points -X needs a +90 degree camera offset
     # to face its front; this sign is independent of the FBX unit profile.
@@ -233,7 +278,11 @@ def inspect(source):
     if form_factor == "UNKNOWN":
         form_factor = geometric_form_factor(points, back)
     return {
-        "side": form_factor,
+        # Physical shape is independent of the existing engine scene selector.
+        # Straight sectionals intentionally share U's cameras and light rig.
+        "formFactor": form_factor,
+        "side": "U" if form_factor == "STRAIGHT" else form_factor,
+        "inspectorVersion": INSPECTOR_VERSION,
         "dimensions": [round(width, 1), round(depth, 1), round(z_cm, 1)],
         "yaw": import_yaw,
         "scale": unit_factor,
@@ -242,6 +291,9 @@ def inspect(source):
         "warning": " | ".join(warnings),
         "analysis": {
             "detectedBack": back,
+            "backMethod": back_method,
+            "formFactorSource": "name" if named_form_factor(stem) != "UNKNOWN" else "geometry",
+            "frontProfile": front_profile(points, back),
             "unit": unit_name,
             "coverage": {key: round(value, 2) for key, value in coverage.items()},
         },

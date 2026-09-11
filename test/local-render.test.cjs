@@ -611,6 +611,44 @@ test("sectional form factors normalize filenames and metadata to exact L/R/U val
   assert.equal(sectionalFormFactor("MODULAR_RIGHT_ARM_U_SECTIONAL_prod1"), "U");
   assert.equal(sectionalFormFactor("AMBIGUOUS_SECTIONAL_prod2", "U_SHAPE"), "U");
   assert.equal(sectionalFormFactor("AMBIGUOUS_SECTIONAL_prod3"), "UNKNOWN");
+  assert.equal(sectionalFormFactor("GENERIC_SOFA_prod4", "STRAIGHT"), "U");
+  assert.equal(sectionalFormFactor("ISOLA_L_SECTIONAL_CLASSIC_9x9_prod32820190"), "UNKNOWN");
+});
+
+test("inspector upgrades stale shape caches once, preserving Straight independently of U routing", async () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "rh-shape-version-"));
+  const modelsRoot = path.join(temp, "models"), localMetadataPath = path.join(temp, "metadata.json");
+  fs.mkdirSync(modelsRoot);
+  const modelPath = path.join(modelsRoot, "UNNAMED_SOFA.fbx");
+  fs.writeFileSync(modelPath, "fixture");
+  const info = fs.statSync(modelPath);
+  const old = { side: "UNKNOWN", dimensions: [320, 110, 80], yaw: 0, scale: 1, materialIds: ["UPH"], fingerprint: { size: info.size, modifiedMs: Math.round(info.mtimeMs) } };
+  fs.writeFileSync(localMetadataPath, JSON.stringify({ version: 1, models: { "UNNAMED_SOFA.fbx": old } }));
+  let calls = 0;
+  try {
+    const store = new ModelStore(root, { modelsRoot, localMetadataPath, analyzeModel: async () => { calls++; return { ...old, side: "U", formFactor: "STRAIGHT" }; } });
+    const first = await store.inspect(modelPath), second = await store.inspect(modelPath);
+    assert.equal(calls, 1); assert.equal(first.newlyAnalyzed, true); assert.equal(second.newlyAnalyzed, false);
+    assert.equal(first.side, "U"); assert.equal(first.formFactor, "STRAIGHT");
+    assert.deepEqual(first.dimensions, { width: 320, depth: 110, height: 80 });
+    assert.deepEqual(first.materialIds, ["UPH"]); assert.equal(first.importYaw, 0);
+  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+});
+
+test("Straight shares the complete sectional U task while preserving physical shape in history", () => {
+  const straight = { ...model, side: "U", formFactor: "STRAIGHT", materialIds: ["UPH", "Stitches", "Feet"] };
+  const input = { ...baseInput, side: "U", layers: ["Fabric", "Shadow"] };
+  const a = buildJob(input, straight, rig, "D:\\renders\\shape-test");
+  const b = buildJob(input, { ...straight, formFactor: "U" }, rig, "D:\\renders\\shape-test");
+  assert.deepEqual(a.tasks, b.tasks);
+  assert.equal(a._rhLocal.side, "U"); assert.equal(a._rhLocal.formFactor, "STRAIGHT");
+  assert.equal(b._rhLocal.formFactor, "U");
+  const mixed = buildBatchJob(["STRAIGHT", "U", "R", "L"].map((form, i) => ({
+    model: { ...straight, name: `FORM_${i}`, formFactor: form },
+    input: { ...input, side: form === "STRAIGHT" ? "U" : form }
+  })), rig, "D:\\renders\\mixed-shapes", "shapes_test");
+  assert.deepEqual(mixed.tasks.map(task => task.sequence.cameras[2].Actor.Rotation.Yaw), [36, 36, -36, 36]);
+  assert.deepEqual(mixed._rhLocal.models.map(row => row.formFactor), ["STRAIGHT", "U", "R", "L"]);
 });
 
 test("batch jobs keep per-model geometry and apply shared IDs only where present", () => {

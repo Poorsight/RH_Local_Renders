@@ -10,6 +10,20 @@ const { PNG } = require("pngjs");
   const substrateArgument = args.find(argument => argument.includes(":r.Substrate="));
   if (!apiArgument || !substrateArgument) throw new Error("Missing BatchRender API or Substrate override");
   const apiUrl = apiArgument.slice(apiArgument.indexOf("=") + 1);
+  if (process.env.RH_FAKE_UNREAL_STALE_EVENTS === "1") {
+    for (const attempt of [null, "an-older-unreal-process"]) {
+      const staleUrl = new URL(apiUrl);
+      if (attempt) staleUrl.searchParams.set("attempt", attempt);
+      else staleUrl.searchParams.delete("attempt");
+      const staleGet = await fetch(staleUrl);
+      if (staleGet.status !== 204) throw new Error("A stale process fetched the live job");
+      for (const event of ["job_completed", "error"]) {
+        const stalePost = await fetch(staleUrl, { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ event, data: { error: "stale error must be ignored" } }) });
+        if ((await stalePost.json()).ignored !== "inactive attempt") throw new Error("A stale event was not ignored");
+      }
+    }
+  }
   const response = await fetch(apiUrl), job = await response.json();
   const phase = job._rhLocal?.renderPhase || job.tasks?.[0]?.layers?.[0]?.name || "Unknown", layerName = job.tasks?.[0]?.layers?.[0]?.name || phase;
   const keyLight = job.tasks?.[0]?.sequence?.cameras?.[0]?.lights?.find(light => light.name === "key_lgt");
@@ -61,4 +75,8 @@ const { PNG } = require("pngjs");
   }
   if (crashMarker && !fs.existsSync(crashMarker)) { fs.writeFileSync(crashMarker, "crashed"); return; }
   await fetch(apiUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "job_completed", data: { jobId: job.jobId } }) });
+  if (process.env.RH_FAKE_UNREAL_ERROR_AFTER_COMPLETE === "1") {
+    await fetch(apiUrl, { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ event: "error", data: { jobId: job.jobId, error: "late material failure" } }) });
+  }
 })().catch(error => { console.error(error); process.exitCode = 1; });

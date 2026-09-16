@@ -2,6 +2,11 @@
 
 Created 2026-09-11. These are local branches of `D:/GitHub/RH_Local_Renders`; they do not switch the Unreal project or its plugin.
 
+Update 2026-09-16: active local controller branch is now `codex/ue56-integration`,
+preserving the current controller features while targeting clean upstream project
+and plugin `5.6`. See [ue56-switch-2026-09-16.md](ue56-switch-2026-09-16.md).
+The older branch descriptions below remain historical recovery context.
+
 | Branch | Purpose | Starting point |
 | --- | --- | --- |
 | `codex/current-project` | Restore and adapt the pre-migration controller for the current Unreal project on `main`, with BatchRender `41e4edc`. | Controller `e2f864b`, matching the source baseline captured on 2026-09-10. |

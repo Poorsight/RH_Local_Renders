@@ -48,6 +48,14 @@ test("native shadow capability requires source, compiled support and valid camer
   assert.equal(nativeShadowSupport(project).ready, false);
 });
 
+test("stock 5.6 shadow processor uses its upstream compiled marker", t => {
+  const { project, write, prefix } = fixture(t);
+  write(prefix + "Source/BatchRenderEditor/Public/BatchRenderManager.h", "native manager");
+  assert.equal(nativeShadowSupport(project).ready, false);
+  write(prefix + "Binaries/Win64/UnrealEditor-BatchRenderEditor.dll", Buffer.from("Shadow alpha recovered: file='", "utf16le"));
+  assert.equal(nativeShadowSupport(project).ready, true);
+});
+
 test("renderer identity invalidates old crop context when native editor, LUT or material changes", t => {
   const { project, write, prefix, lut } = fixture(t);
   const before = rendererToken(project);

@@ -17,6 +17,7 @@ const { inspectObjParts, normalizeObjParts, writeMaterialLibrary } = require("./
 const { modelFingerprint, readCropProfiles, writeCropProfiles, cropProfileFor, cropContextResolutions, forgetCropProfiles, analyzeCalibrationPair, applyCropProfileToCamera, calibrationFiles } = require("./lib/crop.cjs");
 const { rendererToken, readCameraFitProfiles, cameraFitStatesForJob, calibrationFitStatesForResume, writeCameraFitState } = require("./lib/camera-fit.cjs");
 const { buildUnrealLaunch } = require("./lib/unreal.cjs");
+const { inspectAdapter, stageAdapterRun } = require("./lib/batchrender-adapter.cjs");
 const { DEFAULT_ENVIRONMENT, renderEnvironments, resolveRenderEnvironment, environmentForJob, publicRenderEnvironment, nativeShadowSupport } = require("./lib/render-environments.cjs");
 const { history, expectedRenders } = require("./lib/history.cjs");
 const runStats = require("./lib/run-stats.cjs");
@@ -31,6 +32,7 @@ const renderEnvironment = value => resolveRenderEnvironment(value, RENDER_ENVIRO
 const cameraFitRendererToken = environment => rendererToken(environment.project);
 const sheet = new SheetStore(ROOT), models = new ModelStore(ROOT);
 const RUNTIME_FILES = [
+  "lib/batchrender-adapter.cjs", "integration/batchrender/upstream-bootstrap.py",
   "material-id.js", "lib/png-privacy.cjs", "lib/model-check.cjs", "lib/check-cache.cjs",
   "server.cjs", "package.json", "data/postprocess.json", "data/sofa-shadow-lut.json", "assets/AdobeRGB1998.icc", "lib/camera-fit.cjs", "lib/crop.cjs", "lib/csv.cjs", "lib/history.cjs", "lib/jobs.cjs", "lib/models.cjs", "lib/post-process.cjs", "lib/render-plan.cjs", "lib/shadow-alpha-worker.cjs",
   "lib/render-environments.cjs", "lib/rig.cjs", "lib/unreal.cjs", "scripts/calibrate-shadow-lut.cjs", "scripts/inspect_fbx.py", "scripts/reprocess-shadow-from-source.cjs"
@@ -278,10 +280,14 @@ function remainingPhaseJob(run, phase) {
 }
 
 function finishBridge(state, message) {
-  if (!bridge || bridge.completed) return;
+  if (!bridge) return;
+  // An error arriving after job_completed still invalidates this attempt.
+  if (state !== "success") bridge.failure = message;
+  if (bridge.completed) { if (bridge.failure) bridge.success = false; return; }
   const produced = changedImages(bridge.outputFolder, bridge.before);
   bridge.completed = true;
-  bridge.success = state === "success" && produced.length > 0;
+  bridge.success = state === "success" && !bridge.failure && produced.length > 0;
+  if (bridge.startupTimer) clearTimeout(bridge.startupTimer);
   appendRenderLog(`\n${bridge.phase.name} phase ${bridge.success ? "completed" : "failed"}: ${message}; changed images: ${produced.length}\n`);
   const processToClose = child;
   setTimeout(() => {
@@ -434,7 +440,8 @@ function startRenderPhase() {
   // The production BatchRender plugin appends `&Substrate=...` unconditionally. Give it an
   // existing query string so the suffix stays a query parameter instead of becoming part of
   // the pathname (`/api/unreal&Substrate=true`), which the local bridge cannot route.
-  const phase = activeRun.phases[activeRun.index], apiUrl = `http://${HOST}:${PORT}/api/unreal?source=local`;
+  const phase = activeRun.phases[activeRun.index], attemptId = crypto.randomUUID();
+  const apiUrl = `http://${HOST}:${PORT}/api/unreal?source=local&attempt=${attemptId}`;
   // Stamped once, not on every automatic restart, so a retry does not reset the clock on
   // work the phase has already done.
   if (!phase.startedAt) {
@@ -453,16 +460,32 @@ function startRenderPhase() {
       appendRenderLog(`Applied ${handoff.applied.length} camera state${handoff.applied.length === 1 ? "" : "s"} from Fabric handoff to ${phase.name}; fit disabled for inherited views.\n`);
     }
   }
-  bridge = { job: phaseJob, jobPath: activeRun.jobPath, outputFolder: activeRun.outputFolder, before: imageSnapshot(activeRun.outputFolder), delivered: false, completed: false, success: false, phase, exitHandled: false };
   const environment = activeRun.environment;
-  const phaseBridge = bridge, launch = buildUnrealLaunch(environment.editor, environment.project, apiUrl, { substrate: phase.substrate });
+  let adapter = null;
+  try {
+    const support = inspectAdapter(environment.project, environment.editor);
+    if (support.native) {
+      if (!support.ready) throw new Error(support.problems.join("; "));
+      adapter = stageAdapterRun(ROOT, phaseJob, { attemptId, apiUrl });
+      phaseJob = adapter.runtimeJob;
+    }
+  } catch (adapterError) { return finishRun("failed", `Upstream adapter: ${adapterError.message}`); }
+  bridge = { job: phaseJob, jobPath: activeRun.jobPath, outputFolder: activeRun.outputFolder, before: imageSnapshot(activeRun.outputFolder), delivered: false, completed: false, success: false, failure: null, phase, exitHandled: false, attemptId, adapter };
+  const phaseBridge = bridge, launch = buildUnrealLaunch(environment.editor, environment.project, apiUrl, { substrate: phase.substrate, adapter });
   appendRenderLog(`\nStarting ${phase.name} phase ${activeRun.index + 1}/${activeRun.phases.length} in ${environment.label}; ${phaseJob.tasks.length} incomplete model${phaseJob.tasks.length === 1 ? "" : "s"}; Substrate ${phase.substrate ? "ON" : "OFF"}.\n${launch.command}\n${launch.args.join(" ")}\n`);
   child = spawn(launch.command, launch.args, launch.options);
   const phaseProcess = child;
+  if (adapter) {
+    appendRenderLog(`Stock upstream adapter: local TestJob; ${adapter.inherited.length} inherited focal values; no plugin or asset files will be patched.\n`);
+    phaseBridge.startupTimer = setTimeout(() => {
+      if (bridge === phaseBridge && !phaseBridge.delivered && !phaseBridge.completed) finishBridge("failed", "Upstream Python adapter did not report readiness within 180 seconds");
+    }, 180000);
+  }
   render.pid = child.pid; render.phase = phase.name; render.phaseIndex = activeRun.index + 1; render.phaseCount = activeRun.phases.length; render.substrate = phase.substrate;
   child.stdout.on("data", appendRenderLog); child.stderr.on("data", appendRenderLog);
   child.on("error", launchError => {
     if (phaseBridge.exitHandled) return; phaseBridge.exitHandled = true;
+    clearTimeout(phaseBridge.startupTimer);
     appendRenderLog(`\n${launchError.message}\n`);
     if (child === phaseProcess) child = null;
     if (bridge === phaseBridge) bridge = null;
@@ -470,10 +493,12 @@ function startRenderPhase() {
   });
   child.on("exit", code => {
     if (phaseBridge.exitHandled) return; phaseBridge.exitHandled = true;
+    clearTimeout(phaseBridge.startupTimer);
     render.exitCode = code;
     if (child === phaseProcess) child = null;
     if (bridge === phaseBridge) bridge = null;
     if (!activeRun) return;
+    if (phaseBridge.failure) return finishRun("failed", phaseBridge.failure);
     if (!phaseBridge.completed) return advancePhaseOrFinish(`${phase.name} exited before job_completed`);
     if (!phaseBridge.success) return restartRenderPhase(`${phase.name} did not produce render files`);
     advancePhaseOrFinish(`${phase.name} job_completed`);
@@ -699,7 +724,13 @@ async function preflight(input) {
   const nativeShadow = nativeShadowSupport(selectedEnvironment.project);
   checks.push({ id: "native-shadow", level: nativeShadow.ready ? "ok" : "error", label: "Unreal shadow alpha", detail: nativeShadow.detail });
   const bridgeDetail = !bridgeSource ? "BatchRender camera handoff is not installed." : !binariesCurrent ? "BatchRender camera handoff must be rebuilt." : `${selectedEnvironment.label}, project, and Fabric camera handoff are ready.`;
-  checks.push(fs.existsSync(selectedEnvironment.editor) && fs.existsSync(selectedEnvironment.project) ? { id: "unreal", level: bridgeReady ? "ok" : "error", label: selectedEnvironment.label, detail: bridgeDetail } : { id: "unreal", level: "error", label: selectedEnvironment.label, detail: "Editor or project file is missing." });
+  const upstreamAdapter = inspectAdapter(selectedEnvironment.project, selectedEnvironment.editor);
+  checks.push(fs.existsSync(selectedEnvironment.editor) && fs.existsSync(selectedEnvironment.project)
+    ? upstreamAdapter.native
+      ? { id: "unreal", level: upstreamAdapter.ready ? "warning" : "error", label: selectedEnvironment.label,
+        detail: upstreamAdapter.ready ? "Stock 5.6 plugin with tool-owned camera adapter. Static compatibility passed; validate a test render after updates." : upstreamAdapter.problems.join("; ") }
+      : { id: "unreal", level: bridgeReady ? "ok" : "error", label: selectedEnvironment.label, detail: bridgeDetail }
+    : { id: "unreal", level: "error", label: selectedEnvironment.label, detail: "Editor or project file is missing." });
   try { fs.accessSync(path.join(ROOT, "local", "renders"), fs.constants.W_OK); checks.push({ id: "output", level: "ok", label: "Output", detail: "Local render folder is writable." }); }
   catch { checks.push({ id: "output", level: "error", label: "Output", detail: "Local render folder is not writable." }); }
   const post = postProcessAvailability(ROOT);
@@ -751,7 +782,7 @@ async function api(request, response, url) {
   if (ACCESS_KEY && !isAuthorized(request, url)) return error(response, 401, "This action needs the access key");
   if (url.pathname === "/api/unreal" && request.method === "GET") {
     lastUnrealContactAt = new Date().toISOString();
-    if (!bridge || bridge.delivered) { response.writeHead(204, { "Cache-Control": "no-store" }); response.end(); return; }
+    if (!bridge || bridge.delivered || bridge.adapter || url.searchParams.get("attempt") !== bridge.attemptId) { response.writeHead(204, { "Cache-Control": "no-store" }); response.end(); return; }
     bridge.delivered = true;
     appendRenderLog("BatchRender fetched the queued local job.\n");
     return json(response, 200, bridge.job);
@@ -759,6 +790,14 @@ async function api(request, response, url) {
   if (url.pathname === "/api/unreal" && request.method === "POST") {
     lastUnrealContactAt = new Date().toISOString();
     const event = await body(request), eventName = String(event.event || "unknown"), data = event.data || {};
+    // An earlier UE process must not complete or corrupt the next phase with a late event.
+    if (!bridge || url.searchParams.get("attempt") !== bridge.attemptId) return json(response, 200, { ok: true, ignored: "inactive attempt" });
+    if (eventName === "rh_adapter_ready" || eventName === "rh_adapter_error") {
+      if (!bridge.adapter || data.attemptId !== bridge.attemptId || data.jobId !== bridge.job.jobId) return json(response, 409, { error: "Adapter attempt mismatch" });
+      if (eventName === "rh_adapter_error") finishBridge("failed", data.error || "Upstream adapter failed");
+      else { bridge.delivered = true; clearTimeout(bridge.startupTimer); appendRenderLog(`Upstream adapter ready: ${Number(data.inheritedCameras) || 0} inherited cameras verified in memory.\n`); }
+      return json(response, 200, { ok: true });
+    }
     appendRenderLog(`BatchRender event ${eventName}: ${JSON.stringify(data).slice(0, 4000)}\n`);
     if (bridge) {
       if (data.taskId) {

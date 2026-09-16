@@ -15,7 +15,7 @@ const { publishPreviews, previewFileFor } = require("./lib/preview.cjs");
 const { checkModel, summarise } = require("./lib/model-check.cjs");
 const { inspectObjParts, normalizeObjParts, writeMaterialLibrary } = require("./lib/obj-parts.cjs");
 const { modelFingerprint, readCropProfiles, writeCropProfiles, cropProfileFor, cropContextResolutions, forgetCropProfiles, analyzeCalibrationPair, applyCropProfileToCamera, calibrationFiles } = require("./lib/crop.cjs");
-const { rendererToken, readCameraFitProfiles, cameraFitStatesForJob, writeCameraFitState } = require("./lib/camera-fit.cjs");
+const { rendererToken, readCameraFitProfiles, cameraFitStatesForJob, calibrationFitStatesForResume, writeCameraFitState } = require("./lib/camera-fit.cjs");
 const { buildUnrealLaunch } = require("./lib/unreal.cjs");
 const { DEFAULT_ENVIRONMENT, renderEnvironments, resolveRenderEnvironment, environmentForJob, publicRenderEnvironment, nativeShadowSupport } = require("./lib/render-environments.cjs");
 const { history, expectedRenders } = require("./lib/history.cjs");
@@ -409,6 +409,9 @@ async function advancePhaseOrFinish(message) {
   }
   phase.finishedAt = phase.finishedAt || new Date().toISOString();
   if (activeRun.index + 1 < activeRun.phases.length) {
+    // Probe states are valid only for the probe frame. Final Fabric must calculate
+    // its own Fit, including when probe states were restored during Resume.
+    if (phase.isCalibration && !activeRun.phases[activeRun.index + 1].isCalibration) activeRun.cameraStates.clear();
     activeRun.index += 1; render.pid = null; render.phase = `Preparing ${activeRun.phases[activeRun.index].name}`; render.phaseIndex = activeRun.index + 1; render.substrate = null; render.currentTask = null;
     appendRenderLog(`${phase.name} is complete. Restarting Unreal for ${activeRun.phases[activeRun.index].name} with Substrate ${activeRun.phases[activeRun.index].substrate ? "ON" : "OFF"}.\n`);
     setTimeout(startRenderPhase, 300);
@@ -487,12 +490,14 @@ function beginRender(jobPath, options = {}) {
   const rendersRoot = path.join(ROOT, "local", "renders"), outputFolder = path.resolve(String(job._rhLocal?.outputFolder || ""));
   if (!within(outputFolder, rendersRoot)) throw Object.assign(new Error("Job output must stay inside RH_Local_Renders/local/renders"), { status: 400 });
   const phases = buildRenderPlan(job), cachedFits = cameraFitStatesForJob(ROOT, job, { projectPath: environment.project, rendererToken: fitToken });
+  const probeFits = calibrationFitStatesForResume(ROOT, phases, { resume: options.resume, projectPath: environment.project, rendererToken: fitToken });
   const maxPhaseRestarts = job._rhLocal?.disableAutomaticRestarts === true ? 0 : MAX_PHASE_RESTARTS;
-  activeRun = { job, jobPath: resolved, outputFolder, environment, before: options.resume ? new Map() : imageSnapshot(outputFolder), phases, index: 0, cameraStates: new Map(), phaseRestarts: new Map(), maxPhaseRestarts, queueItemId: options.queueItemId || null };
+  activeRun = { job, jobPath: resolved, outputFolder, environment, before: options.resume ? new Map() : imageSnapshot(outputFolder), phases, index: 0, cameraStates: new Map(probeFits.states), phaseRestarts: new Map(), maxPhaseRestarts, queueItemId: options.queueItemId || null };
   const queue = (job.tasks || []).map(task => ({ name: task.taskId, state: "queued" }));
   const totalRenders = phases.reduce((total, phase) => total + (phase.job.tasks || []).reduce((phaseTotal, task) => phaseTotal + taskLayerExpected(task, phase.layerName || phase.name), 0), 0);
   render = { state: "running", pid: null, jobPath: resolved, startedAt: new Date().toISOString(), finishedAt: null, exitCode: null, rendered: 0, totalRenders, currentTask: null, currentCamera: null, message: options.resume ? "Resuming completed files" : "Queued", queue, phase: null, phaseIndex: 0, phaseCount: phases.length, substrate: null, environment: publicRenderEnvironment(environment), autoRestarts: 0, log: `Queued ${phases.map(phase => phase.name).join(" → ")} render plan for ${environment.label}${options.resume ? " in resume mode" : ""}.\nPersistent camera-fit cache: ${cachedFits.hits}/${cachedFits.total} exact-frame records available for diagnostics; every Fabric phase calculates a fresh Fit.\nShadow alpha: Unreal native conversion with Substrate ON; external RGB recovery disabled.\nAutomatic phase restarts: ${maxPhaseRestarts}.\nLocal BatchRender API: http://${HOST}:${PORT}/api/unreal\n` };
   refreshRunProgress();
+  if (probeFits.hits) appendRenderLog(`Restored ${probeFits.hits}/${probeFits.total} exact-frame calibration cameras for Resume; completed probes can be reused. Final Fabric still calculates a fresh Fit.\n`);
   startRenderPhase();
   return currentRender();
 }

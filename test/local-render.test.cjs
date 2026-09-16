@@ -15,7 +15,7 @@ const { buildUnrealLaunch } = require("../lib/unreal.cjs");
 const { history, expectedRenders } = require("../lib/history.cjs");
 const { buildRenderPlan, cameraStateKey, applyCameraHandoff } = require("../lib/render-plan.cjs");
 const { analyzeCalibrationPair, applyCropProfile, calibrationFiles } = require("../lib/crop.cjs");
-const { cameraFitStatesForJob, writeCameraFitStates } = require("../lib/camera-fit.cjs");
+const { cameraFitStatesForJob, calibrationFitStatesForResume, writeCameraFitStates } = require("../lib/camera-fit.cjs");
 const { inspectObjParts, normalizeObjParts, writeMaterialLibrary } = require("../lib/obj-parts.cjs");
 const { applyCropProfileToCamera } = require("../lib/crop.cjs");
 const { sublevelPrefix } = require("../lib/rig.cjs");
@@ -785,12 +785,23 @@ test("camera Fit states persist across jobs and invalidate when fit inputs chang
     assert.equal(cached.hits, 3); assert.equal(cached.total, 3);
     assert.equal(cached.states.get(cameraStateKey(currentModel.name, job.tasks[0].sequence.cameras[1].sequenceName)).focalLength, 141);
 
+    const resumeOptions = { projectPath, rendererToken: "renderer-a", resume: true };
+    const probePhase = { isCalibration: true, layerName: "Fabric", job };
+    assert.equal(calibrationFitStatesForResume(temp, [probePhase], resumeOptions).hits, 3, "Resume restores exact probe-frame cameras");
+    assert.equal(calibrationFitStatesForResume(temp, [probePhase], { ...resumeOptions, resume: false }).hits, 0, "a fresh run does not skip probes");
+    assert.equal(calibrationFitStatesForResume(temp, [{ ...probePhase, isCalibration: false }], resumeOptions).hits, 0, "final Fabric cannot inherit probe states");
+    assert.equal(calibrationFitStatesForResume(temp, [{ ...probePhase, layerName: "Shadow" }], resumeOptions).hits, 0);
+    const wrongFrame = JSON.parse(JSON.stringify(job));
+    wrongFrame.tasks[0].sequence.cameras.forEach(camera => camera.LayerResolutions.forEach(layer => layer.Resolution.X += 8));
+    assert.equal(calibrationFitStatesForResume(temp, [{ ...probePhase, job: wrongFrame }], resumeOptions).hits, 0, "resume does not reuse a different frame");
+
     const changedYaw = JSON.parse(JSON.stringify(job));
     changedYaw.tasks[0].sequence.cameras[0].Actor.Rotation.Yaw += 1;
     assert.equal(cameraFitStatesForJob(temp, changedYaw, { projectPath, rendererToken: "renderer-a" }).hits, 2, "only the changed view is invalidated");
     assert.equal(cameraFitStatesForJob(temp, job, { projectPath, rendererToken: "renderer-b" }).hits, 0, "a rebuilt renderer invalidates old camera states");
     fs.appendFileSync(modelPath, "-changed");
     assert.equal(cameraFitStatesForJob(temp, job, { projectPath, rendererToken: "renderer-a" }).hits, 0, "an updated FBX invalidates every view");
+    assert.equal(calibrationFitStatesForResume(temp, [probePhase], resumeOptions).hits, 0, "resume preserves FBX invalidation");
   } finally {
     if (previousCache === undefined) delete process.env.RH_CAMERA_FIT_CACHE_FILE; else process.env.RH_CAMERA_FIT_CACHE_FILE = previousCache;
     fs.rmSync(temp, { recursive: true, force: true });

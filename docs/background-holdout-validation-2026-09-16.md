@@ -23,6 +23,12 @@ Measured test configuration:
 
 The product is placed at x=1000, y=0 on the common canvas, without resampling. For optimized jobs, use their recorded crop placement instead of this full-frame example. Camera transforms and inherited focal values in staged native jobs match exactly between Background and Shadow for both views.
 
+The dimensions above are RAW. Existing POST processing centers all three layers
+on the same configured 15000 × 5000 delivery canvas without resampling; all six
+measured POST files have that size. Thus low-resolution test content is padded,
+not enlarged into a full-quality 15K image, and the same relative alignment is
+preserved in delivery files.
+
 ## Render evidence
 
 BELLA_TWO_SEAT_SOFA_CLASSIC_6_10180712; PERFORMANCE_LINEN_WEAVE_SAND_V1; UPH_WOOD_BROWN_OAK. Current tool lights and project scene. Substrate ON. Background uses the product Path Tracer preset and the `Sofa_Indoor_Background` + `Sofa_Indoor_KeyLight` levels. Shadow keeps the existing native pipeline.

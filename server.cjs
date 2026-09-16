@@ -33,7 +33,7 @@ const cameraFitRendererToken = environment => rendererToken(environment.project)
 const sheet = new SheetStore(ROOT), models = new ModelStore(ROOT);
 const RUNTIME_FILES = [
   "lib/batchrender-adapter.cjs", "integration/batchrender/upstream-bootstrap.py",
-  "material-id.js", "lib/png-privacy.cjs", "lib/model-check.cjs", "lib/check-cache.cjs",
+  "material-id.js", "lib/png-privacy.cjs", "lib/model-check.cjs", "lib/check-cache.cjs", "lib/output-layout.cjs",
   "server.cjs", "package.json", "data/postprocess.json", "data/sofa-shadow-lut.json", "assets/AdobeRGB1998.icc", "lib/camera-fit.cjs", "lib/crop.cjs", "lib/csv.cjs", "lib/history.cjs", "lib/jobs.cjs", "lib/models.cjs", "lib/post-process.cjs", "lib/render-plan.cjs", "lib/shadow-alpha-worker.cjs",
   "lib/render-environments.cjs", "lib/rig.cjs", "lib/unreal.cjs", "scripts/calibrate-shadow-lut.cjs", "scripts/inspect_fbx.py", "scripts/reprocess-shadow-from-source.cjs"
 ];
@@ -143,7 +143,7 @@ function changedImages(folder, before) {
   });
 }
 
-const imageLayer = file => /(?:^|_)shadow(?:_|\.)/i.test(path.basename(file)) ? "Shadow" : "Fabric";
+const { imageLayer } = require("./lib/output-layout.cjs");
 const taskLayerExpected = (task, layerName) => {
   const layer = (task.layers || []).find(item => !item.doNotRender && String(item.name || "").toLowerCase() === layerName.toLowerCase());
   if (!layer) return 0;

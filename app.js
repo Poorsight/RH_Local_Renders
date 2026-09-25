@@ -306,8 +306,8 @@
     } catch (error) { toast(error.message, true); }
     finally { button.disabled = false; button.textContent = "Repair OBJ parts"; }
   };
-  // Sofas are shot from four angles and only ever render Fabric; sectionals from three, with
-  // a Shadow pass. Options that belong to the other type are taken off the page rather than
+  // Sofas (fabric and leather) use four angles, sectionals three. Options that belong to
+  // the other type are taken off the page rather than
   // left to be ticked into a job that would reject them.
   const applyProductType = () => {
     const type = $("category").value || "Sectionals";
@@ -453,7 +453,7 @@
     if (index >= 0) state.batch[index] = model; else state.batch.push(model);
     const groups = new Set(state.batch.map(item => String(item.group || "").toLowerCase()).filter(Boolean));
     if (groups.size === 1) {
-      const implied = [...groups][0] === "sofas" ? "Sofas" : "Sectionals";
+      const implied = ({ sofas: "Sofas", leather_sofas: "Leather_Sofas" })[[...groups][0]] || "Sectionals";
       if ($("category").value !== implied) { $("category").value = implied; applyProductType(); }
     }
     if (!state.models.some(item => item.path.toLowerCase() === model.path.toLowerCase())) {
@@ -937,10 +937,10 @@
   // camera in them is shot in a scene that names it: Sofa_Indoor, Sectional_Indoor_<side>.
   const productTypeOfJob = (job, tasks) => {
     const recorded = job._rhLocal?.productType || (job._rhLocal?.models || [])[0]?.productType;
-    if (recorded) return /sofa/i.test(recorded) ? "Sofas" : "Sectionals";
+    if (recorded) return /^leather_sofas$/i.test(recorded) ? "Leather_Sofas" : /sofa/i.test(recorded) ? "Sofas" : "Sectionals";
     const scene = [...tasks.flatMap(task => (task.sequence?.cameras || []).map(camera => camera.sequenceName)),
                    ...tasks.flatMap(task => (task.layers || []).flatMap(layer => layer.SubLevels || []))].find(Boolean) || "";
-    return /^sofa/i.test(scene) ? "Sofas" : /^sectional/i.test(scene) ? "Sectionals" : "";
+    return /^(Leather_Sofa_Indoor|Sofa_Indoor_Leather)/i.test(scene) ? "Leather_Sofas" : /^sofa/i.test(scene) ? "Sofas" : /^sectional/i.test(scene) ? "Sectionals" : "";
   };
   const editHistoryJob = async (batch, options = {}) => {
     const job = await api(batch.jobUrl), sourceTasks = job.tasks || [];
@@ -1022,7 +1022,7 @@
   };
   const refreshSheet = async () => {
     $("refreshSheet").disabled = true;
-    try { const data = await api("/api/sheet/refresh", { method: "POST", body: "{}" }); $("sheetState").textContent = data.source === "live" ? "LIVE" : "CACHE"; toast(`Light data: ${data.rows} Sectionals / Indoor rows`); }
+    try { const data = await api("/api/sheet/refresh", { method: "POST", body: "{}" }); $("sheetState").textContent = data.source === "live" ? "LIVE" : "CACHE"; toast(`Light data: ${data.rows} active indoor rows`); }
     catch (error) { toast(error.message, true); }
     finally { $("refreshSheet").disabled = false; }
   };

@@ -15,7 +15,7 @@ const { buildUnrealLaunch } = require("../lib/unreal.cjs");
 const { history, expectedRenders } = require("../lib/history.cjs");
 const { buildRenderPlan, cameraStateKey, applyCameraHandoff } = require("../lib/render-plan.cjs");
 const { analyzeCalibrationPair, applyCropProfile, calibrationFiles } = require("../lib/crop.cjs");
-const { cameraFitStatesForJob, calibrationFitStatesForResume, writeCameraFitStates } = require("../lib/camera-fit.cjs");
+const { cameraFitStatesForJob, calibrationFitStatesForResume, fixedCameraStatesForPhase, writeCameraFitStates } = require("../lib/camera-fit.cjs");
 const { inspectObjParts, normalizeObjParts, writeMaterialLibrary } = require("../lib/obj-parts.cjs");
 const { applyCropProfileToCamera } = require("../lib/crop.cjs");
 const { sublevelPrefix } = require("../lib/rig.cjs");
@@ -43,6 +43,51 @@ const baseInput = {
   side: "R", dimensions: { width: 343, depth: 307, height: 79 }, importYaw: 0,
   cameras: ["F", "FH", "TQ"], layers: ["Fabric"], materials: [{ meshes: ["UPH", "Stitches"], material: "FABRIC_A" }, { meshes: ["Feet"], material: "WOOD_A" }]
 };
+
+test("fixed Fabric completion uses complete current overrides, not cached or fitted cameras", () => {
+  const camera = { name: "F", sequenceName: "Sofa_F", fit: "none",
+    Camera: { OverrideLocation: true, Location: { x: 1, y: 980, z: 70 },
+      OverrideRotation: true, Rotation: { Pitch: -2, Yaw: -90, Roll: 0 },
+      OverrideFocalLength: true, FocalLength: 121.5 },
+    LayerResolutions: [{ Name: "Fabric", Resolution: { X: 5000, Y: 1904 }, SensorSize: { X: 36, Y: 13.7088 } }] };
+  const phase = { layerName: "Fabric", job: { tasks: [{ taskId: "SOFA", sequence: { cameras: [camera] } }],
+    _rhLocal: { cameraStates: { stale: { focalLength: 999 } } } } };
+  const state = fixedCameraStatesForPhase(phase).get(cameraStateKey("SOFA", "Sofa_F"));
+  assert.equal(state.focalLength, 121.5);
+  assert.equal(state.sensorHeight, 13.7088);
+  assert.deepEqual(state.cameraRotation, { pitch: -2, yaw: -90, roll: 0 });
+  const server = fs.readFileSync(path.join(root, "server.cjs"), "utf8");
+  const progressSource = server.slice(server.indexOf("function phaseTaskProgress("), server.indexOf("function refreshRunProgress("));
+  let imageCount = 32;
+  const progress = require("node:vm").runInNewContext(`(${progressSource.trim()})`, {
+    fs: { existsSync: () => true }, taskLayerExpected: () => 32, taskOutputFolder: () => "fixture",
+    runProducedImages: () => Array(imageCount), phaseUsesCalibrationBranch: () => false, cameraStateKey
+  });
+  assert.equal(progress({ cameraStates: new Map() }, phase)[0].complete, false, "reproduces the original 32/32 dead end");
+  assert.equal(progress({ cameraStates: fixedCameraStatesForPhase(phase) }, phase)[0].complete, true);
+  imageCount = 31;
+  assert.equal(progress({ cameraStates: fixedCameraStatesForPhase(phase) }, phase)[0].complete, false, "fixed cameras never excuse missing frames");
+  assert.ok(server.indexOf("const fixedCameras = fixedCameraStatesForPhase(phase)") < server.indexOf("let phaseJob = remainingPhaseJob(activeRun, phase)"));
+  assert.equal(fixedCameraStatesForPhase({ ...phase, isCalibration: true }).size, 0);
+  assert.equal(fixedCameraStatesForPhase({ ...phase, layerName: "Shadow" }).size, 0);
+  for (const mutate of [
+    c => { c.fit = "horizontal"; },
+    c => { delete c.Camera; },
+    c => { c.Camera.OverrideLocation = false; },
+    c => { c.Camera.OverrideRotation = false; },
+    c => { c.Camera.OverrideFocalLength = false; },
+    c => { c.Camera.FocalLength = 0; },
+    c => { c.Camera.FocalLength = NaN; },
+    c => { c.Camera.Location.x = null; },
+    c => { c.Camera.Rotation.Yaw = Infinity; },
+    c => { c.LayerResolutions[0].SensorSize.Y = 0; },
+    c => { c.LayerResolutions[0].Resolution.X = -1; }
+  ]) {
+    const copy = structuredClone(phase);
+    mutate(copy.job.tasks[0].sequence.cameras[0]);
+    assert.equal(fixedCameraStatesForPhase(copy).size, 0);
+  }
+});
 
 test("CSV parser preserves quoted comma-separated scene prefixes", () => {
   const parsed = parseCsv('a,b\n1,"R, U"\n'); assert.deepEqual(parsed, [{ a: "1", b: "R, U" }]);

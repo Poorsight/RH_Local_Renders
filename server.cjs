@@ -15,7 +15,7 @@ const { publishPreviews, previewFileFor } = require("./lib/preview.cjs");
 const { checkModel, summarise } = require("./lib/model-check.cjs");
 const { inspectObjParts, normalizeObjParts, writeMaterialLibrary } = require("./lib/obj-parts.cjs");
 const { modelFingerprint, readCropProfiles, writeCropProfiles, cropProfileFor, cropContextResolutions, forgetCropProfiles, analyzeCalibrationPair, applyCropProfileToCamera, calibrationFiles } = require("./lib/crop.cjs");
-const { rendererToken, readCameraFitProfiles, cameraFitStatesForJob, calibrationFitStatesForResume, writeCameraFitState } = require("./lib/camera-fit.cjs");
+const { rendererToken, readCameraFitProfiles, cameraFitStatesForJob, calibrationFitStatesForResume, fixedCameraStatesForPhase, writeCameraFitState } = require("./lib/camera-fit.cjs");
 const { buildUnrealLaunch } = require("./lib/unreal.cjs");
 const { inspectAdapter, stageAdapterRun } = require("./lib/batchrender-adapter.cjs");
 const { DEFAULT_ENVIRONMENT, renderEnvironments, resolveRenderEnvironment, environmentForJob, publicRenderEnvironment, nativeShadowSupport } = require("./lib/render-environments.cjs");
@@ -448,6 +448,11 @@ function startRenderPhase() {
     phase.startedAt = new Date().toISOString();
     phase.frames = Object.values(runStats.frameCounts(phase.job)).reduce((total, count) => total + count, 0);
   }
+  // Seed only the current non-calibration Fabric frame, including on Resume.
+  // Automatic Fit still waits for a valid runtime camera event as before.
+  const fixedCameras = fixedCameraStatesForPhase(phase);
+  for (const [key, state] of fixedCameras) activeRun.cameraStates.set(key, state);
+  if (fixedCameras.size) appendRenderLog(`Using ${fixedCameras.size} fully explicit camera states; fit:none does not require a fitted-camera report.\n`);
   let phaseJob = remainingPhaseJob(activeRun, phase);
   if (!phaseJob.tasks.length) return advancePhaseOrFinish(`${phase.name} already complete`);
   // A calibration probe must fit its own exact frame. Reusing a parent-job camera here made
@@ -708,7 +713,7 @@ async function preflight(input) {
   const resolvedSide = ["R", "L", "U"].includes(String(input.side).toUpperCase())
     ? String(input.side).toUpperCase()
     : String(inspected[0]?.side || "R").toUpperCase();
-  const lightScene = productType(input.productType).scene(resolvedSide);
+  const lightScene = productType(input.productType || inspected[0]?.group).scene(resolvedSide);
   const sceneRows = Object.keys(sheet.rig()[lightScene] || {}).length;
   checks.push(sheet.status().rows
     ? sceneRows

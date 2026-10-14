@@ -10,7 +10,10 @@
     "alphaBoostPercent": {
       "F": 25,
       "FH": 25,
-      "TQ": 25
+      "P": 25,
+      "TQ": 25,
+      "TQB": 25,
+      "DTL": 25
     },
     "substrateAlpha": {
       "inputBlack": 0,

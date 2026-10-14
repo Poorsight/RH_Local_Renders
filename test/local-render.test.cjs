@@ -31,11 +31,24 @@ const freePort = () => new Promise((resolve, reject) => {
 const { checkModel, summarise, unrealScaleFor } = require("../lib/model-check.cjs");
 const { siblingBranch, siblingLayerBranch, batchRootOf } = require("../lib/output-layout.cjs");
 const { publishPreviews, previewFileFor } = require("../lib/preview.cjs");
-const { READY_FOLDER_NAME, availability, isProcessedImage, prepareSubstrateShadow, processImage, processedPathFor, publishReadyToUpload, writePngText } = require("../lib/post-process.cjs");
+const { DEFAULT_CONFIG, loadConfig, READY_FOLDER_NAME, availability, isProcessedImage, prepareSubstrateShadow, processImage, processedPathFor, publishReadyToUpload, writePngText } = require("../lib/post-process.cjs");
 const { DEFAULT_ENVIRONMENT, normalizeEnvironment, renderEnvironments, resolveRenderEnvironment, environmentForJob, publicRenderEnvironment } = require("../lib/render-environments.cjs");
 const runStats = require("../lib/run-stats.cjs");
 
 const root = path.join(__dirname, "..");
+test("5.6 shadow POST defaults include every server camera view", () => {
+  const expected = { F: 25, FH: 25, P: 25, TQ: 25, TQB: 25, DTL: 25 };
+  assert.deepEqual(DEFAULT_CONFIG.shadow.alphaBoostPercent, expected);
+  assert.deepEqual(loadConfig(root).shadow.alphaBoostPercent, expected);
+  assert.equal(loadConfig(root).shadow.color, "#120C06");
+});
+
+test("5.6 POST prefers installed server libvips unless explicitly overridden", () => {
+  const serverVips = "C:\\vips\\vips-dev-8.18.5\\bin\\vips.exe";
+  if (!process.env.RH_VIPS && fs.existsSync(serverVips)) {
+    assert.equal(availability(root).vips, serverVips);
+  }
+});
 const rows = parseCsv(fs.readFileSync(path.join(root, "data", "sectionals-indoor.csv"), "utf8"));
 const rig = buildRig(rows);
 const model = { name: "TEST_prod1", path: "D:\\models\\TEST_prod1.fbx", offsetUniformScale: 1 };

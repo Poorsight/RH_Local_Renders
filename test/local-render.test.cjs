@@ -535,6 +535,25 @@ test("Shadow post-process recolors RGB and boosts alpha on the delivery canvas",
   } finally { fs.rmSync(temp, { recursive: true, force: true }); }
 });
 
+test("Shadow boost of 100% or more is one server self-OVER, never a stronger overlay", { skip: !availability(root).ok }, async () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "rh-shadow-self-over-")), source = path.join(temp, "00000000_F_Shadow.png");
+  const alpha = [0, 1, 51, 102, 128, 204, 254, 255], png = new PNG({ width: alpha.length, height: 1 });
+  alpha.forEach((a, i) => png.data.set([240, 120, 80, a], i * 4));
+  fs.writeFileSync(source, PNG.sync.write(png));
+  const original = fs.readFileSync(source), task = { sequence: { cameras: [{ name: "F" }] } }, outputs = {};
+  try {
+    for (const percent of [100, 150, 300]) {
+      const config = { canvas: { width: alpha.length, height: 1 }, dpi: 300, outputSuffix: "_POST", shadow: { color: "#120C06", alphaBoostPercent: { F: percent } } };
+      const result = await processImage(root, source, {}, task, { config, prepareShadow: false, outputPath: path.join(temp, `F_${percent}_POST.png`) });
+      outputs[percent] = PNG.sync.read(fs.readFileSync(result.output)).data;
+      // Self-OVER: a + a(1 - a); a stronger overlay (e.g. 150%) would make 204 fully opaque.
+      alpha.forEach((a, i) => assert.ok(Math.abs(outputs[percent][i * 4 + 3] - Math.floor(a + a * (1 - a / 255))) <= 1, `${percent}/${a}`));
+    }
+    assert.deepEqual(outputs[150], outputs[100]); assert.deepEqual(outputs[300], outputs[100]);
+    assert.deepEqual(fs.readFileSync(source), original);
+  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+});
+
 test("a recovered camera-LUT matte still receives the configured delivery boost", { skip: !availability(root).ok }, async () => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "rh-shadow-lut-post-test-")), source = path.join(temp, "00000000_F_Shadow.png");
   const png = new PNG({ width: 2, height: 2 });

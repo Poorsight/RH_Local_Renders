@@ -27,6 +27,16 @@
     write(name, value) { try { value ? localStorage.setItem(name, value) : localStorage.removeItem(name); } catch {} }
   };
   let ACCESS_KEY = settings.read("rhAccessKey");
+  let savedUnrealMode = "headless", savingUnrealMode = false;
+  const syncUnrealMode = (status) => {
+    const mode = status.renderSettings?.unrealMode, available = ["headless", "windowed"].includes(mode);
+    if (savingUnrealMode) return;
+    savedUnrealMode = available ? mode : "headless";
+    $("settingsUnrealMode").value = savedUnrealMode;
+    $("settingsUnrealMode").disabled = !available || state.canAct === false;
+    $("settingsModeStatus").dataset.error = String(!available);
+    $("settingsModeStatus").textContent = !available ? "Restart the local service to load launch settings." : state.canAct === false ? "Enter the access key to change this setting." : "Saved automatically for new runs.";
+  };
   const normalizeRenderEnvironment = () => "ue56";
   const renderEnvironmentProfile = value => state.renderEnvironments.find(environment => environment.id === normalizeRenderEnvironment(value))
     || { id: "ue56", label: "UE 5.6", engineVersion: "5.6", beta: false, available: true };
@@ -1039,6 +1049,7 @@
       // Without the key the page is still fully readable, so it loads as usual and only
       // says that actions are out of reach.
       state.canAct = !status.access?.required || Boolean(status.access.authorized);
+      syncUnrealMode(status);
       setConnection(true);
       if (!state.canAct) $("connection").lastChild.textContent = " Read-only · key needed to act";
       $("modelCount").textContent = status.models.length; $("sheetState").textContent = status.sheet.source.toUpperCase();
@@ -1104,6 +1115,17 @@
   $("settingsToggle").addEventListener("click", () => {
     $("settingsAccessKey").value = ACCESS_KEY;
     $("settingsService").textContent = state.canAct === false ? "Read-only until the key is entered" : "Looking is open to everyone";
+  });
+  $("settingsUnrealMode").addEventListener("change", async () => {
+    const input = $("settingsUnrealMode"), note = $("settingsModeStatus"), previous = savedUnrealMode;
+    savingUnrealMode = true; input.disabled = true; note.dataset.error = "false"; note.textContent = "Saving launch mode…";
+    try {
+      const result = await api("/api/settings/render", { method: "POST", body: JSON.stringify({ unrealMode: input.value }) });
+      savedUnrealMode = result.unrealMode; input.value = savedUnrealMode;
+      note.textContent = "Saved. Applies to new runs only.";
+    } catch (error) {
+      input.value = previous; note.dataset.error = "true"; note.textContent = `Not saved: ${error.message}`;
+    } finally { savingUnrealMode = false; input.disabled = state.canAct === false; }
   });
   $("settingsSave").addEventListener("click", () => {
     ACCESS_KEY = $("settingsAccessKey").value.trim();

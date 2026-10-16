@@ -17,6 +17,7 @@ const { inspectObjParts, normalizeObjParts, writeMaterialLibrary } = require("./
 const { modelFingerprint, readCropProfiles, writeCropProfiles, cropProfileFor, cropContextResolutions, forgetCropProfiles, analyzeCalibrationPair, applyCropProfileToCamera, calibrationFiles } = require("./lib/crop.cjs");
 const { rendererToken, readCameraFitProfiles, cameraFitStatesForJob, calibrationFitStatesForResume, fixedCameraStatesForPhase, writeCameraFitState } = require("./lib/camera-fit.cjs");
 const { buildUnrealLaunch } = require("./lib/unreal.cjs");
+const { readRenderSettings, writeRenderSettings } = require("./lib/render-settings.cjs");
 const { inspectAdapter, stageAdapterRun } = require("./lib/batchrender-adapter.cjs");
 const { DEFAULT_ENVIRONMENT, renderEnvironments, resolveRenderEnvironment, environmentForJob, publicRenderEnvironment, nativeShadowSupport } = require("./lib/render-environments.cjs");
 const { history, expectedRenders } = require("./lib/history.cjs");
@@ -32,6 +33,7 @@ const renderEnvironment = value => resolveRenderEnvironment(value, RENDER_ENVIRO
 const cameraFitRendererToken = environment => rendererToken(environment.project);
 const sheet = new SheetStore(ROOT), models = new ModelStore(ROOT);
 const RUNTIME_FILES = [
+  "lib/render-settings.cjs",
   "lib/batchrender-adapter.cjs", "integration/batchrender/upstream-bootstrap.py",
   "material-id.js", "lib/png-privacy.cjs", "lib/model-check.cjs", "lib/check-cache.cjs", "lib/output-layout.cjs",
   "server.cjs", "package.json", "data/postprocess.json", "data/sofa-shadow-lut.json", "assets/AdobeRGB1998.icc", "lib/camera-fit.cjs", "lib/crop.cjs", "lib/csv.cjs", "lib/history.cjs", "lib/jobs.cjs", "lib/models.cjs", "lib/post-process.cjs", "lib/render-plan.cjs", "lib/shadow-alpha-worker.cjs",
@@ -476,7 +478,7 @@ function startRenderPhase() {
     }
   } catch (adapterError) { return finishRun("failed", `Upstream adapter: ${adapterError.message}`); }
   bridge = { job: phaseJob, jobPath: activeRun.jobPath, outputFolder: activeRun.outputFolder, before: imageSnapshot(activeRun.outputFolder), delivered: false, completed: false, success: false, failure: null, phase, exitHandled: false, attemptId, adapter };
-  const phaseBridge = bridge, launch = buildUnrealLaunch(environment.editor, environment.project, apiUrl, { substrate: phase.substrate, adapter });
+  const phaseBridge = bridge, launch = buildUnrealLaunch(environment.editor, environment.project, apiUrl, { substrate: phase.substrate, adapter, headless: activeRun.unrealMode === "headless" });
   appendRenderLog(`\nStarting ${phase.name} phase ${activeRun.index + 1}/${activeRun.phases.length} in ${environment.label}; ${phaseJob.tasks.length} incomplete model${phaseJob.tasks.length === 1 ? "" : "s"}; Substrate ${phase.substrate ? "ON" : "OFF"}.\n${launch.command}\n${launch.args.join(" ")}\n`);
   child = spawn(launch.command, launch.args, launch.options);
   const phaseProcess = child;
@@ -522,10 +524,16 @@ function beginRender(jobPath, options = {}) {
   const phases = buildRenderPlan(job), cachedFits = cameraFitStatesForJob(ROOT, job, { projectPath: environment.project, rendererToken: fitToken });
   const probeFits = calibrationFitStatesForResume(ROOT, phases, { resume: options.resume, projectPath: environment.project, rendererToken: fitToken });
   const maxPhaseRestarts = job._rhLocal?.disableAutomaticRestarts === true ? 0 : MAX_PHASE_RESTARTS;
+  const unrealMode = readRenderSettings(ROOT).unrealMode;
   activeRun = { job, jobPath: resolved, outputFolder, environment, before: options.resume ? new Map() : imageSnapshot(outputFolder), phases, index: 0, cameraStates: new Map(probeFits.states), phaseRestarts: new Map(), maxPhaseRestarts, queueItemId: options.queueItemId || null };
+  // Freeze the selected mode for every phase/restart of this run; settings only
+  // affect jobs begun later, never an already running editor or its next phase.
+  activeRun.unrealMode = unrealMode;
   const queue = (job.tasks || []).map(task => ({ name: task.taskId, state: "queued" }));
   const totalRenders = phases.reduce((total, phase) => total + (phase.job.tasks || []).reduce((phaseTotal, task) => phaseTotal + taskLayerExpected(task, phase.layerName || phase.name), 0), 0);
   render = { state: "running", pid: null, jobPath: resolved, startedAt: new Date().toISOString(), finishedAt: null, exitCode: null, rendered: 0, totalRenders, currentTask: null, currentCamera: null, message: options.resume ? "Resuming completed files" : "Queued", queue, phase: null, phaseIndex: 0, phaseCount: phases.length, substrate: null, environment: publicRenderEnvironment(environment), autoRestarts: 0, log: `Queued ${phases.map(phase => phase.name).join(" → ")} render plan for ${environment.label}${options.resume ? " in resume mode" : ""}.\nPersistent camera-fit cache: ${cachedFits.hits}/${cachedFits.total} exact-frame records available for diagnostics; every Fabric phase calculates a fresh Fit.\nShadow alpha: Unreal native conversion with Substrate ON; external RGB recovery disabled.\nAutomatic phase restarts: ${maxPhaseRestarts}.\nLocal BatchRender API: http://${HOST}:${PORT}/api/unreal\n` };
+  render.unrealMode = activeRun.unrealMode;
+  appendRenderLog(`Unreal launch mode: ${activeRun.unrealMode}. Frozen for this run.\n`);
   refreshRunProgress();
   if (probeFits.hits) appendRenderLog(`Restored ${probeFits.hits}/${probeFits.total} exact-frame calibration cameras for Resume; completed probes can be reused. Final Fabric still calculates a fresh Fit.\n`);
   startRenderPhase();
@@ -844,11 +852,16 @@ async function api(request, response, url) {
     return json(response, 200, {
     project: "RH_Local_Renders", models: models.list(), sheet: sheet.status(),
     unreal: { ...publicRenderEnvironment(defaultEnvironment), lastContactAt: lastUnrealContactAt, cameraFitCache: { profiles: Object.keys(readCameraFitProfiles(ROOT).profiles).length, rendererToken: cameraFitRendererToken(defaultEnvironment) } },
-    renderEnvironments: publicEnvironments, defaultRenderEnvironment: DEFAULT_ENVIRONMENT, render: currentRender(),
+    renderEnvironments: publicEnvironments, defaultRenderEnvironment: DEFAULT_ENVIRONMENT, render: currentRender(), renderSettings: readRenderSettings(ROOT),
     runtime: { startedAt: RUNTIME_STARTED_AT, sourceToken: RUNTIME_SOURCE_TOKEN, stale: RUNTIME_SOURCE_TOKEN !== runtimeSourceToken() },
     // The same verdict the gate uses, or the page would call itself read-only while acting.
     access: { required: Boolean(ACCESS_KEY), authorized: !ACCESS_KEY || isLocalOperator(request) || timingEqual(presentedKey(request), ACCESS_KEY) }
     });
+  }
+  if (request.method === "GET" && url.pathname === "/api/settings/render") return json(response, 200, readRenderSettings(ROOT));
+  if (request.method === "POST" && url.pathname === "/api/settings/render") {
+    try { return json(response, 200, writeRenderSettings(ROOT, await body(request))); }
+    catch (settingsError) { return error(response, settingsError.status || 500, settingsError.message); }
   }
   if (request.method === "POST" && url.pathname === "/api/models/repair") {
     // Some downloads name their parts where an importer never looks. Rewriting the file puts

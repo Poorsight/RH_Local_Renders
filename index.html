@@ -30,7 +30,7 @@
         </button>
       </div>
       <div id="connection" class="connection" data-state="loading"><span></span>Connecting to local service…</div>
-      <button id="settingsToggle" class="icon-button" type="button" aria-label="Connection settings" title="Connection settings" popovertarget="settingsPanel">
+      <button id="settingsToggle" class="icon-button" type="button" aria-label="Settings" title="Settings" popovertarget="settingsPanel">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.1"/><path d="M12 4v2.2M12 17.8V20M4 12h2.2M17.8 12H20M6.3 6.3l1.6 1.6M16.1 16.1l1.6 1.6M17.7 6.3l-1.6 1.6M7.9 16.1l-1.6 1.6"/></svg>
       </button>
       <div id="deleteConfirm" class="confirm-pop" popover>
@@ -42,6 +42,16 @@
         </div>
       </div>
       <div id="settingsPanel" class="settings-panel" popover>
+        <section class="render-settings" aria-labelledby="renderSettingsTitle">
+          <div class="settings-heading"><strong id="renderSettingsTitle">Rendering</strong><span>Unreal launch mode</span></div>
+          <label for="settingsUnrealMode">Mode</label>
+          <select id="settingsUnrealMode" aria-describedby="settingsModeHint settingsModeStatus" disabled>
+            <option value="headless">Headless · no editor window</option>
+            <option value="windowed">Normal · editor window</option>
+          </select>
+          <small id="settingsModeHint">Headless by default. Saved for this local service; applies to new runs only. Running jobs stay unchanged.</small>
+          <small id="settingsModeStatus" role="status" aria-live="polite">Loading launch settings…</small>
+        </section>
         <div class="settings-heading"><strong>Access</strong><span id="settingsService">Looking is open to everyone</span></div>
         <label for="settingsAccessKey">Access key</label>
         <input id="settingsAccessKey" type="password" spellcheck="false" placeholder="paste the key to start renders" autocomplete="off">

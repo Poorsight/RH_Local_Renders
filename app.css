@@ -141,6 +141,13 @@ main{width:calc(100% - clamp(18px,2.4vw,44px));max-width:none;margin:0 auto;padd
 .settings-panel input{width:100%;padding:9px 11px;border-radius:var(--radius-sm);background:var(--inset);color:var(--text);box-shadow:inset 0 0 0 1px var(--line);font-size:13px;transition:box-shadow .16s}
 .settings-panel input:focus-visible{outline:0;box-shadow:var(--sel-ring)}
 .settings-panel small{font-size:11.5px;line-height:1.45;color:var(--faint)}
+.render-settings{display:flex;flex-direction:column;gap:8px;padding-bottom:16px;margin-bottom:8px;border-bottom:1px solid var(--line)}
+.render-settings select{width:100%;min-height:40px;padding:9px 11px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--inset);color:var(--text);font:inherit;font-size:13px}
+.render-settings select:focus-visible{outline:2px solid var(--text);outline-offset:2px}
+.render-settings select:disabled{opacity:.55;cursor:not-allowed}
+#settingsModeStatus{min-height:17px}
+#settingsModeStatus[data-error=true]{color:var(--danger,#c34b43)}
+.settings-panel{max-height:calc(100dvh - 80px);overflow-y:auto}
 .settings-actions{display:flex;gap:8px;align-items:center;margin-top:12px}
 /* The shell replaced the card as the grid item, so it has to hand the whole track back:
    a card that sizes to its content collapses to nothing when that content is an
@@ -1183,7 +1190,9 @@ input[readonly]:hover,input[readonly]:focus{box-shadow:none}
    frame is already painted, so the panel lags and visibly shakes; the
    browser can hold it in place itself. */
 #frameSizeToggle{anchor-name:--frame-size-anchor}
-#settingsToggle{anchor-name:--settings-anchor}
+/* This button is the popover's CSS anchor: translating it on hover also moves
+   the open panel. Keep the anchor still; color and shadow feedback remain. */
+#settingsToggle{anchor-name:--settings-anchor;transform:none}
 .card-delete[data-anchor=active]{anchor-name:--card-delete-anchor}
 #frameSizePanel{position-anchor:--frame-size-anchor}
 .settings-panel{position-anchor:--settings-anchor}
